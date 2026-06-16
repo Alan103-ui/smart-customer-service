@@ -9,6 +9,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const { v4: uuidv4 } = require('uuid');
 
 // ============ 日志系统 ============
 const { auditLog, errorLog, getLogFiles, readLogFile, cleanOldLogs } = require('./logger');
@@ -649,6 +650,101 @@ router.post('/logs/clean', (req, res) => {
     res.json({ success: true, message: `已清理${daysToKeep}天前的日志` });
   } catch (err) {
     errorLog('清理旧日志失败', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ 对话记录 & 满意度 API ============
+const DB_PATH = path.join(__dirname, '../data/conversations.db');
+
+function readDB() {
+  const fp = DB_PATH.replace('.db', '.json');
+  if (!fs.existsSync(fp)) return { conversations: [], faq_logs: [], satisfaction_stats: [] };
+  return JSON.parse(fs.readFileSync(fp, 'utf8'));
+}
+
+function writeDB(data) {
+  const fp = DB_PATH.replace('.db', '.json');
+  fs.writeFileSync(fp, JSON.stringify(data, null, 2));
+}
+
+// 获取对话列表（分页）
+router.get('/conversations', (req, res) => {
+  try {
+    const db = readDB();
+    const { limit = 100, offset = 0 } = req.query;
+    const slice = db.conversations.slice(Number(offset), Number(offset) + Number(limit));
+    res.json(slice.map(c => ({ ...c, messages: JSON.parse(c.messages) })));
+  } catch (err) {
+    errorLog('获取对话列表失败', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 获取单个对话详情
+router.get('/conversations/:sessionId', (req, res) => {
+  try {
+    const db = readDB();
+    const conv = db.conversations.find(c => c.session_id === req.params.sessionId);
+    if (!conv) return res.status(404).json({ error: 'Not found' });
+    res.json({ ...conv, messages: JSON.parse(conv.messages) });
+  } catch (err) {
+    errorLog('获取对话详情失败', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 删除单个对话
+router.delete('/conversations/:sessionId', (req, res) => {
+  try {
+    const db = readDB();
+    const before = db.conversations.length;
+    db.conversations = db.conversations.filter(c => c.session_id !== req.params.sessionId);
+    if (db.conversations.length === before) return res.status(404).json({ error: 'Not found' });
+    writeDB(db);
+    auditLog('删除对话记录', `session_id=${req.params.sessionId}`, req.user);
+    res.json({ success: true });
+  } catch (err) {
+    errorLog('删除对话记录失败', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 批量删除对话
+router.post('/conversations/batch-delete', (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids 必须是非空数组' });
+    const db = readDB();
+    const before = db.conversations.length;
+    db.conversations = db.conversations.filter(c => !ids.includes(c.session_id));
+    const deleted = before - db.conversations.length;
+    if (deleted === 0) return res.status(404).json({ error: '未找到要删除的记录' });
+    writeDB(db);
+    auditLog('批量删除对话记录', `删除${deleted}条`, req.user);
+    res.json({ success: true, deleted });
+  } catch (err) {
+    errorLog('批量删除对话失败', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 提交满意度评价
+router.post('/satisfaction', (req, res) => {
+  try {
+    const { sessionId, rating, comment } = req.body;
+    const db = readDB();
+    const id = uuidv4();
+    db.satisfaction_stats.push({ id, session_id: sessionId, rating, comment: comment || '', created_at: new Date().toISOString() });
+
+    const conv = db.conversations.find(c => c.session_id === sessionId);
+    if (conv) { conv.satisfaction = rating; conv.resolved = true; conv.updated_at = new Date().toISOString(); }
+
+    writeDB(db);
+    auditLog('提交满意度评价', `session=${sessionId}, rating=${rating}`, req.user);
+    res.json({ success: true });
+  } catch (err) {
+    errorLog('提交满意度失败', err);
     res.status(500).json({ error: err.message });
   }
 });
