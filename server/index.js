@@ -7,6 +7,9 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const multer = require('multer');
 
+// ============ 日志系统 ============
+const { performanceMiddleware, auditLog, errorLog, getLogFiles, readLogFile, cleanOldLogs, writeLog } = require('./logger');
+
 // ============ RAG 向量存储 ============
 const {
   addDocumentChunks, semanticSearch, rebuildVectorStore, getStats: getVectorStats,
@@ -460,6 +463,8 @@ ${faqContext}`;
 const app = express();
 app.use(cors());
 app.use(express.json());
+// 性能监控中间件（记录所有API响应时间）
+app.use(performanceMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
 // 静态文件服务：uploads 目录（图片/附件）
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -475,7 +480,8 @@ const uploadMedia = multer({
   }
 });
 
-// 管理后台 API
+// ============ 管理后台 API（已迁移到 rag-admin.js）============
+/*
 app.get('/api/admin/stats', (req, res) => {
   try {
     const db = readDB();
@@ -494,6 +500,7 @@ app.get('/api/admin/stats', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+*/
 
 
 
@@ -685,8 +692,10 @@ app.post('/api/admin/knowledge-bases', (req, res) => {
     const id = 'kb_' + Date.now();
     list.push({ id, name: name.trim(), description: description || '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDefault: false, isActive: true });
     saveKnowledgeBases(list);
+    auditLog('kb_create', 'admin', { id, name: name.trim() });
     res.json({ success: true, id });
   } catch (err) {
+    errorLog('新增知识库失败', err, req.body);
     res.status(500).json({ error: err.message });
   }
 });
@@ -697,13 +706,16 @@ app.put('/api/admin/knowledge-bases/:id', (req, res) => {
     const list = getKnowledgeBases();
     const idx = list.findIndex(k => k.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    const { name, description } = req.body;
+    const { name, description, isActive } = req.body;
     if (name !== undefined) list[idx].name = name.trim();
     if (description !== undefined) list[idx].description = description;
+    if (isActive !== undefined) list[idx].isActive = isActive;
     list[idx].updatedAt = new Date().toISOString();
     saveKnowledgeBases(list);
+    auditLog('kb_update', 'admin', { id: req.params.id, name: list[idx].name });
     res.json({ success: true });
   } catch (err) {
+    errorLog('修改知识库失败', err, req.body);
     res.status(500).json({ error: err.message });
   }
 });
@@ -728,8 +740,10 @@ app.delete('/api/admin/knowledge-bases/:id', (req, res) => {
     // 标记删除（不真正删除，设为 inactive）
     list.find(k => k.id === req.params.id).isActive = false;
     saveKnowledgeBases(list);
+    auditLog('kb_delete', 'admin', { id: req.params.id, name: target.name });
     res.json({ success: true });
   } catch (err) {
+    errorLog('删除知识库失败', err, { id: req.params.id });
     res.status(500).json({ error: err.message });
   }
 });
@@ -781,8 +795,10 @@ app.post('/api/admin/categories', (req, res) => {
       isDefault: false
     });
     saveCategories(list);
+    auditLog('category_create', 'admin', { id, name: name.trim() });
     res.json({ success: true, id });
   } catch (err) {
+    errorLog('新增分类失败', err, req.body);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1422,7 +1438,8 @@ function extractFAQFromText(text, uploadCategory = null) {
   return results;
 }
 
-// ============ 对话记录 API ============
+// ============ 对话记录 API（已迁移到 rag-admin.js）============
+/*
 app.get('/api/admin/conversations', (req, res) => {
   try {
     const db = readDB();
@@ -1492,6 +1509,7 @@ app.post('/api/admin/satisfaction', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+*/
 
 // ============ WebSocket 服务 ============
 const server = http.createServer(app);
