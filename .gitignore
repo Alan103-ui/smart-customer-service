@@ -1,0 +1,51 @@
+# ============ 依赖 ============
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ============ 构建产物 ============
+dist/
+build/
+client/dist/
+server/public/assets/
+server/public/index.html
+server/public/*.js
+server/public/*.css
+
+# ============ 环境配置 ============
+.env
+.<EMAIL>
+*.local
+
+# ============ 日志 ============
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ============ 系统文件 ============
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============ IDE ============
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ============ 项目特定 ============
+server/uploads/
+*.bak
+*.backup
+*.tmp
+
+# ============ 测试覆盖率 ============
+coverage/
+.nyc_output/
+
+# ============ Jest ============
+<EMAIL>/

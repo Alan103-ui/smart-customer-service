@@ -1,0 +1,166 @@
+/**
+ * 广康集团 AI 智能知识助手 - 现代化管理后台组件样式
+ * 组件：AdminDashboard.modern.tsx
+ */
+
+/* Admin Navigation Container */
+.admin-nav-container {
+  position: sticky;
+  top: var(--header-height);
+  z-index: calc(var(--z-sticky) - 10);
+}
+
+/* FAQ Manager 微调 */
+.faq-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.faq-list__header h3 {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.faq-list__items {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-secondary-300) transparent;
+}
+
+.faq-list__items::-webkit-scrollbar {
+  width: 6px;
+}
+
+.faq-list__items::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.faq-list__items::-webkit-scrollbar-thumb {
+  background-color: var(--color-secondary-300);
+  border-radius: var(--radius-full);
+}
+
+/* FAQ Editor 微调 */
+.faq-editor__header h3 {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.faq-form__input:focus {
+  outline: none;
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1);
+}
+
+/* Data Table 微调 */
+.data-table-wrapper {
+  overflow-x: auto;
+}
+
+.data-table th:first-child,
+.data-table td:first-child {
+  position: sticky;
+  left: 0;
+  background-color: inherit;
+  z-index: 1;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  background-color: var(--color-bg-tertiary);
+  z-index: 2;
+}
+
+/* Search Box 微调 */
+.search-box__input:focus {
+  outline: none;
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1);
+  background-color: var(--color-bg-secondary);
+}
+
+/* Stats Card 动画增强 */
+.stat-card {
+  cursor: pointer;
+}
+
+.stat-card__icon {
+  transition: transform var(--transition-normal);
+}
+
+.stat-card:hover .stat-card__icon {
+  transform: scale(1.1);
+}
+
+/* Chart Card 占位符 */
+.chart-card__body p {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-base);
+}
+
+/* Responsive 优化 */
+@media (max-width: 768px) {
+  .admin-header__left a span:last-child {
+    display: none;
+  }
+  
+  .admin-content__header {
+    margin-bottom: var(--space-4);
+  }
+  
+  .faq-manager {
+    gap: var(--space-4);
+  }
+  
+  .stats-grid {
+    gap: var(--space-4);
+  }
+}
+
+/* 打印优化 */
+@media print {
+  .admin-header,
+  .admin-nav-container,
+  .faq-editor__footer,
+  .data-table__actions {
+    display: none;
+  }
+  
+  .admin-content {
+    padding: 0;
+  }
+  
+  .stat-card,
+  .chart-card,
+  .data-table-wrapper {
+    break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #ccc;
+  }
+}
+
+/* 高对比度模式 */
+@media (prefers-contrast: high) {
+  .stat-card,
+  .chart-card,
+  .faq-list,
+  .faq-editor,
+  .data-table-wrapper {
+    border-width: 2px;
+  }
+}
+
+/* 减少动画 */
+@media (prefers-reduced-motion: reduce) {
+  .stat-card:hover,
+  .chart-card:hover {
+    transform: none;
+  }
+  
+  .stat-card__icon {
+    transition: none;
+  }
+}

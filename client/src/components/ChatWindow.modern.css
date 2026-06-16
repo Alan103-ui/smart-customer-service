@@ -1,0 +1,131 @@
+/**
+ * 广康集团 AI 智能知识助手 - 现代化聊天界面组件样式
+ * 组件：ChatWindow.modern.tsx
+ */
+
+/* 组件特定的微调样式 */
+.chat-header__menu:hover {
+  background-color: var(--color-bg-tertiary) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* 消息气泡中的代码块优化 */
+.message__bubble pre {
+  margin: var(--space-3) calc(-1 * var(--chat-bubble-padding));
+  border-radius: 0;
+}
+
+.message--bot .message__bubble pre {
+  border-bottom-left-radius: var(--chat-bubble-radius);
+  border-bottom-right-radius: var(--chat-bubble-radius);
+}
+
+.message--user .message__bubble pre {
+  border-bottom-left-radius: var(--chat-bubble-radius);
+  border-bottom-right-radius: var(--chat-bubble-radius);
+}
+
+/* 文本区域自动调整高度 */
+.chat-input {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-secondary-300) transparent;
+}
+
+.chat-input::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-input::-webkit-scrollbar-thumb {
+  background-color: var(--color-secondary-300);
+  border-radius: var(--radius-full);
+}
+
+/* 消息动画优化 */
+.message {
+  animation-fill-mode: both;
+}
+
+.message--user {
+  animation-name: messageSlideInRight;
+}
+
+@keyframes messageSlideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 快捷操作按钮优化 */
+.quick-action-btn::before {
+  content: '⚡';
+  margin-right: var(--space-1);
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+  .chat-header__subtitle {
+    display: none;
+  }
+  
+  .welcome-features {
+    grid-template-columns: 1fr;
+  }
+  
+  .conversation-item__meta span:last-child {
+    display: none;
+  }
+}
+
+/* 打印样式 */
+@media print {
+  .chat-header,
+  .chat-sidebar,
+  .chat-input-area {
+    display: none;
+  }
+  
+  .chat-area {
+    width: 100%;
+  }
+  
+  .message__bubble {
+    box-shadow: none;
+    border: 1px solid #ccc;
+  }
+}
+
+/* 高对比度模式支持 */
+@media (prefers-contrast: high) {
+  :root {
+    --color-border: #000000;
+    --color-text-secondary: #000000;
+  }
+  
+  .message--bot .message__bubble {
+    border-width: 2px;
+  }
+}
+
+/* 减少动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .message,
+  .message--user,
+  .welcome-icon,
+  .typing-indicator__dot {
+    animation: none;
+  }
+  
+  .stat-card:hover,
+  .welcome-feature:hover {
+    transform: none;
+  }
+}

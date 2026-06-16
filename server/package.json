@@ -1,0 +1,29 @@
+{
+  "name": "smart-customer-service-server",
+  "version": "1.0.0",
+  "description": "智能客服 Agent 后端服务 - CodeBuddy SDK",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "mammoth": "^1.12.0",
+    "multer": "^2.1.1",
+    "nodejieba": "^3.5.8",
+    "pdf-parse": "^2.4.5",
+    "sql.js": "^1.10.2",
+    "uuid": "^9.0.0",
+    "ws": "^8.16.0",
+    "xlsx": "^0.18.5"
+  },
+  "optionalDependencies": {
+    "@tencent-ai/agent-sdk": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2"
+  }
+}
