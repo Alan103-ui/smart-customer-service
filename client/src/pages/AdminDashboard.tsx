@@ -59,6 +59,7 @@ interface FAQItem {
   intent: string;
   category: string;
   knowledgeBaseId?: string;
+  attachments?: any[];
 }
 
 interface CategoryItem {
@@ -96,7 +97,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const [faqLoading, setFaqLoading] = useState(false);
   const [showFaqModal, setShowFaqModal] = useState(false);
   const [editingFaq, setEditingFaq] = useState<FAQItem | null>(null);
-  const [faqForm, setFaqForm] = useState({ question: '', keywords: '', answer: '', intent: '', category: '', knowledgeBaseId: '' });
+  const [faqForm, setFaqForm] = useState({ id: '', question: '', keywords: '', answer: '', intent: '', category: '', knowledgeBaseId: '', attachments: [] as any[] });
   const [faqFormLevel1Cat, setFaqFormLevel1Cat] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadCategory, setUploadCategory] = useState<string>('');
@@ -232,7 +233,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   };
 
   // ==================== FAQ 操作 ====================
-  const openAddFaq = () => { setEditingFaq(null); setFaqForm({ question: '', keywords: '', answer: '', intent: '', category: '', knowledgeBaseId: '' }); setFaqFormLevel1Cat(''); setShowFaqModal(true); };
+  const openAddFaq = () => { setEditingFaq(null); setFaqForm({ id: '', question: '', keywords: '', answer: '', intent: '', category: '', knowledgeBaseId: '', attachments: [] }); setFaqFormLevel1Cat(''); setShowFaqModal(true); };
   const openEditFaq = (faq: FAQItem) => {
     setEditingFaq(faq);
     // 查找分类，判断是一级还是二级
@@ -257,6 +258,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     }
     
     setFaqForm({
+      id: faq.id || '',
       question: faq.question,
       keywords: (faq.keywords || []).join(', '),
       answer: answerHtml,
@@ -813,7 +815,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                       setFaqForm(f => ({ ...f, attachments: data.attachments }));
                       alert(`成功上传${data.attachments.length}个附件`);
                     }
-                  } catch (err) { alert('上传失败：' + err.message); }
+                  } catch (err: any) { alert('上传失败：' + err.message); }
                 }}
                 style={{ marginTop: 8 }}
               />
@@ -830,7 +832,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                           if ((await res.json()).success) {
                             setFaqForm(f => ({ ...f, attachments: f.attachments.filter((a: any) => a.id !== att.id) }));
                           }
-                        } catch (err) { alert('删除失败：' + err.message); }
+                        } catch (err: any) { alert('删除失败：' + err.message); }
                       }}>删除</button>
                     </div>
                   ))}

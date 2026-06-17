@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
-import type { StatsData } from '../types';
 
 // ==================== 类型定义 ====================
 interface DataStatisticsProps {
