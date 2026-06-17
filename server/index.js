@@ -405,7 +405,8 @@ async function generateAgentReply(sessionId, userMessage, conversationHistory, i
   // RAG 语义搜索：获取相关文档片段（使用 FAQ 缓存，避免重复调用 Ollama）
   let ragContext = '';
   try {
-    const searchResults = await searchByFAQCacheAsync(userMessage, 3, 0.12);
+    const intentName = intentResult?.intent || null;
+    const searchResults = await searchByFAQCacheAsync(userMessage, intentName, 3, 0.12);
     if (searchResults && searchResults.length > 0) {
       ragContext = '\n\n===== 相关资料（语义搜索结果）=====\n';
       // 通过 parentDocId 找到完整 FAQ 内容

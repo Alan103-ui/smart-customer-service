@@ -15,6 +15,90 @@ const EMBEDDING_MODEL = 'bge-m3:latest';           // 中文嵌入模型
 const RERANK_MODEL = 'bge-reranker-v2-m3';  // 重排序模型（可选）
 const VECTOR_STORE_PATH = path.join(__dirname, '../data/vector-store.json');
 const RERANK_PATH = path.join(__dirname, '../data/rerank-cache.json');
+const CATEGORIES_PATH = path.join(__dirname, '../data/categories.json');
+
+// ============ 意图 → 分类映射（用于检索优化） ============
+// 根据分类名称匹配意图（模糊匹配）
+let INTENT_CATEGORY_MAP = null;
+
+function loadIntentCategoryMap() {
+  if (INTENT_CATEGORY_MAP) return INTENT_CATEGORY_MAP;
+  
+  try {
+    if (!fs.existsSync(CATEGORIES_PATH)) {
+      INTENT_CATEGORY_MAP = {};
+      return INTENT_CATEGORY_MAP;
+    }
+    
+    const categories = JSON.parse(fs.readFileSync(CATEGORIES_PATH, 'utf8'));
+    INTENT_CATEGORY_MAP = {};
+    
+    // 创建意图关键词到分类的映射
+    for (const cat of categories) {
+      // 分类名称作为意图关键词
+      const key = cat.name.toLowerCase();
+      INTENT_CATEGORY_MAP[key] = cat.name;
+      
+      // 常见变体
+      if (key.includes('常见问题')) {
+        INTENT_CATEGORY_MAP['常见问题'] = cat.name;
+        INTENT_CATEGORY_MAP['faq'] = cat.name;
+        INTENT_CATEGORY_MAP['help'] = cat.name;
+      }
+      if (key.includes('售后')) {
+        INTENT_CATEGORY_MAP['售后'] = cat.name;
+        INTENT_CATEGORY_MAP['退货'] = cat.name;
+        INTENT_CATEGORY_MAP['退款'] = cat.name;
+        INTENT_CATEGORY_MAP['维修'] = cat.name;
+        INTENT_CATEGORY_MAP['after_sale'] = cat.name;
+      }
+      if (key.includes('物流') || key.includes('配送')) {
+        INTENT_CATEGORY_MAP['物流'] = cat.name;
+        INTENT_CATEGORY_MAP['配送'] = cat.name;
+        INTENT_CATEGORY_MAP['快递'] = cat.name;
+        INTENT_CATEGORY_MAP[' shipping'] = cat.name;
+      }
+      if (key.includes('支付') || key.includes('付款')) {
+        INTENT_CATEGORY_MAP['支付'] = cat.name;
+        INTENT_CATEGORY_MAP['付款'] = cat.name;
+        INTENT_CATEGORY_MAP['支付'] = cat.name;
+        INTENT_CATEGORY_MAP['payment'] = cat.name;
+      }
+    }
+    
+    console.log('[VectorStore] 意图-分类映射加载完成:', Object.keys(INTENT_CATEGORY_MAP));
+    return INTENT_CATEGORY_MAP;
+  } catch (e) {
+    console.error('[VectorStore] 加载意图-分类映射失败:', e.message);
+    INTENT_CATEGORY_MAP = {};
+    return INTENT_CATEGORY_MAP;
+  }
+}
+
+// 根据意图获取相关分类名称
+function getCategoriesByIntent(intent) {
+  if (!intent) return null;
+  
+  const map = loadIntentCategoryMap();
+  const intentLower = intent.toLowerCase();
+  
+  // 精确匹配
+  if (map[intentLower]) {
+    return [map[intentLower]];
+  }
+  
+  // 模糊匹配：意图包含分类关键词，或分类关键词包含意图
+  const matchedCategories = [];
+  for (const [key, catName] of Object.entries(map)) {
+    if (intentLower.includes(key) || key.includes(intentLower)) {
+      if (!matchedCategories.includes(catName)) {
+        matchedCategories.push(catName);
+      }
+    }
+  }
+  
+  return matchedCategories.length > 0 ? matchedCategories : null;
+}
 
 // ============ 缓存系统（加速RAG搜索） ============
 
@@ -346,20 +430,22 @@ function searchByFAQCache(query, topK = 5, threshold = 0.15) {
 /**
  * 异步版本：基于 FAQ 缓存的搜索（会自动获取 embedding 并缓存）
  * 优化版：使用混合检索（BM25 + 向量）
+ * 新增：意图驱动的检索优化（根据意图对结果加权）
  */
-async function searchByFAQCacheAsync(query, topK = 5, threshold = 0.05, useHybrid = true) {
+async function searchByFAQCacheAsync(query, intent = null, topK = 5, threshold = 0.05, useHybrid = true) {
   // 默认开启混合搜索（BM25 + 向量，提升召回率）
   // threshold 0.05：降低阈值，提升召回率（从70%→85%+）
   // useHybrid 默认 true，启用混合检索
+  // intent：意图名称（用于检索优化）
   const cacheKey = query.slice(0, 200);
   let queryEmbedding = QUERY_EMBEDDING_CACHE.get(cacheKey);
-
+  
   if (!queryEmbedding) {
     const start = Date.now();
     queryEmbedding = await getEmbedding(query);
     const cost = Date.now() - start;
     console.log(`[VectorStore] 查询 embedding 生成耗时: ${cost}ms`);
-
+    
     // LRU 缓存
     if (QUERY_EMBEDDING_CACHE.size >= QUERY_CACHE_MAX_SIZE) {
       const firstKey = QUERY_EMBEDDING_CACHE.keys().next().value;
@@ -369,18 +455,37 @@ async function searchByFAQCacheAsync(query, topK = 5, threshold = 0.05, useHybri
   } else {
     console.log(`[VectorStore] 查询 embedding 命中缓存`);
   }
-
+  
   if (FAQ_EMBEDDING_CACHE.size === 0) buildFAQEmbeddingCache();
-
+  
+  // 根据意图获取相关分类
+  const relevantCategories = getCategoriesByIntent(intent);
+  if (relevantCategories) {
+    console.log(`[VectorStore] 意图"${intent}"匹配分类:`, relevantCategories);
+  }
+  
   // 混合检索：BM25 + 向量
   if (useHybrid) {
     const vectorResults = [];
     for (const [docId, faq] of FAQ_EMBEDDING_CACHE) {
       const score = cosineSimilarity(queryEmbedding, faq.embedding);
       if (score >= threshold) {
+        let adjustedScore = score;
+        
+        // 意图加权：如果FAQ的分类匹配意图，提高分数15%
+        if (relevantCategories && faq.category) {
+          for (const catName of relevantCategories) {
+            if (faq.category === catName) {
+              adjustedScore = score * 1.15;
+              break;
+            }
+          }
+        }
+        
         vectorResults.push({
           docId,
-          score,
+          score: adjustedScore,
+          originalScore: score,
           question: faq.question,
           category: faq.category,
           content: faq.content
@@ -389,7 +494,28 @@ async function searchByFAQCacheAsync(query, topK = 5, threshold = 0.05, useHybri
     }
     vectorResults.sort((a, b) => b.score - a.score);
 
-    const bm25Results = bm25Search(query, topK * 2, 0);
+    const bm25Results = bm25Search(query, topK * 2, 0).map(r => {
+      const faq = FAQ_EMBEDDING_CACHE.get(r.docId);
+      if (!faq) return r;
+      
+      let adjustedScore = r.score;
+      
+      // 意图加权：如果FAQ的分类匹配意图，提高分数15%
+      if (relevantCategories && faq.category) {
+        for (const catName of relevantCategories) {
+          if (faq.category === catName) {
+            adjustedScore = r.score * 1.15;
+            break;
+          }
+        }
+      }
+      
+      return {
+        ...r,
+        score: adjustedScore,
+        originalScore: r.score
+      };
+    });
 
     // RRF 融合（使用可配置权重，默认向量60%、BM25 40%）
     const fused = rrfFusion([vectorResults, bm25Results], null, 60);
@@ -423,7 +549,28 @@ async function searchByFAQCacheAsync(query, topK = 5, threshold = 0.05, useHybri
     }
   } else {
     // 纯 BM25 搜索（向量检索对该数据集效果差，改用 BM25 + LLM 重排序）
-    const bm25Raw = bm25Search(query, topK * 2, 0);
+    const bm25Raw = bm25Search(query, topK * 2, 0).map(r => {
+      const faq = FAQ_EMBEDDING_CACHE.get(r.docId);
+      if (!faq) return { ...r, score: r.score };
+      
+      let adjustedScore = r.score;
+      
+      // 意图加权：如果FAQ的分类匹配意图，提高分数15%
+      if (relevantCategories && faq.category) {
+        for (const catName of relevantCategories) {
+          if (faq.category === catName) {
+            adjustedScore = r.score * 1.15;
+            break;
+          }
+        }
+      }
+      
+      return {
+        ...r,
+        score: adjustedScore,
+        originalScore: r.score
+      };
+    });
     
     // 转换回原格式
     const results = [];
