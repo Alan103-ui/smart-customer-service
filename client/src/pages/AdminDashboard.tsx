@@ -369,6 +369,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
         </div>
       </div>
 
+      <div className="tab-scroll">
       {tab === 'stats' && <DataStatistics />}
 
       {tab === 'categories' && (
@@ -762,6 +763,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

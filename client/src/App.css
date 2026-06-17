@@ -975,10 +975,38 @@ body {
 .admin-content {
   flex: 1;
   padding: 24px;
-  overflow: hidden;
+  overflow-y: auto;
   background: var(--bg);
   display: flex;
   flex-direction: column;
+  min-height: 0; /* 防止flex子元素溢出 */
+}
+
+/* 自定义滚动条样式 */
+.admin-content::-webkit-scrollbar,
+.tab-content-wrapper::-webkit-scrollbar,
+.data-statistics::-webkit-scrollbar {
+  width: 6px;
+}
+
+.admin-content::-webkit-scrollbar-track,
+.tab-content-wrapper::-webkit-scrollbar-track,
+.data-statistics::-webkit-scrollbar-track {
+  background: var(--gray-2);
+  border-radius: 3px;
+}
+
+.admin-content::-webkit-scrollbar-thumb,
+.tab-content-wrapper::-webkit-scrollbar-thumb,
+.data-statistics::-webkit-scrollbar-thumb {
+  background: var(--gray-4);
+  border-radius: 3px;
+}
+
+.admin-content::-webkit-scrollbar-thumb:hover,
+.tab-content-wrapper::-webkit-scrollbar-thumb:hover,
+.data-statistics::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-5);
 }
 
 /* ��ҳǩ�������򣺶������� */
