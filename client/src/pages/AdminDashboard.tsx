@@ -49,7 +49,7 @@ interface CategoryItem {
 
 // ==================== 主组件 ====================
 export default function AdminDashboard({ onBack }: AdminDashboardProps) {
-  const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag' | 'intent' | 'rewrite' | 'statistics'>('stats');
+  const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag' | 'intent' | 'rewrite'>('stats');
   const [stats, setStats] = useState<Stats | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
@@ -366,134 +366,10 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           <button className={`tab-btn ${tab === 'rag' ? 'active' : ''}`} onClick={() => setTab('rag')}>🤖 RAG 管理</button>
           <button className={`tab-btn ${tab === 'intent' ? 'active' : ''}`} onClick={() => setTab('intent')}>🧠 意图理解</button>
           <button className={`tab-btn ${tab === 'rewrite' ? 'active' : ''}`} onClick={() => setTab('rewrite')}>✍️ 答案改写</button>
-          <button className={`tab-btn ${tab === 'statistics' ? 'active' : ''}`} onClick={() => setTab('statistics')}>📊 专业统计</button>
         </div>
       </div>
 
-      {tab === 'stats' && (
-        <div className="admin-content">
-          {/* 统计卡片 */}
-          <div className="stats-grid">
-            <div className="stat-card blue">
-              <div className="stat-number">{stats?.totalConversations ?? '--'}</div>
-              <div className="stat-label">总会话数</div>
-            </div>
-            <div className="stat-card green">
-              <div className="stat-number">{stats ? Math.round(stats.resolvedCount / stats.totalConversations * 100) || 0 : '--'}<small>%</small></div>
-              <div className="stat-label">解决率</div>
-            </div>
-          </div>
-
-          <div className="admin-content" style={{ marginTop: 20 }}>
-            {/* 对话列表 */}
-            <div className="conversation-list">
-              <div className="conv-list-header">
-                <h3>对话记录 ({conversations.length})</h3>
-                {selectedSessionIds.size > 0 && (
-                  <button className="btn-danger" style={{ marginLeft: 8 }}
-                    onClick={async () => {
-                      if (!confirm(`确定删除选中的 ${selectedSessionIds.size} 条对话记录？`)) return;
-                      try {
-                        const res = await fetch(`${API_BASE}/conversations/batch-delete`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ ids: [...selectedSessionIds] })
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                          alert(`成功删除 ${data.deleted} 条对话记录`);
-                          setSelectedSessionIds(new Set());
-                          setSelectedSession(null);
-                          fetchConversations();
-                        } else alert('删除失败：' + (data.error || '未知错误'));
-                      } catch (err: any) { alert('删除失败：' + err.message); }
-                    }}
-                  >🗑️ 删除选中（{selectedSessionIds.size}）</button>
-                )}
-              </div>
-              <div className="conv-list-scroll">
-                {conversations.map(conv => (
-                  <div key={conv.session_id}
-                    className={`conv-item ${selectedSession === conv.session_id ? 'active' : ''} ${selectedSessionIds.has(conv.session_id) ? 'conv-selected' : ''}`}
-                    style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 12px' }}
-                  >
-                    <input
-                        type="checkbox"
-                        checked={selectedSessionIds.has(conv.session_id)}
-                        onChange={e => {
-                          const next = new Set(selectedSessionIds);
-                          if (e.target.checked) next.add(conv.session_id);
-                          else next.delete(conv.session_id);
-                          setSelectedSessionIds(next);
-                        }}
-                        style={{ marginTop: 2, flexShrink: 0 }}
-                        onClick={e => e.stopPropagation()}
-                      />
-                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => {
-                      setSelectedSession(conv.session_id);
-                      setSelectedSessionIds(new Set());
-                    }}>
-                      <div className="conv-header">
-                        <span className="conv-id">{conv.session_id.slice(0, 12)}...</span>
-                        <span className="conv-time">{new Date(conv.created_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                      <div className="conv-meta">
-                        {conv.intent && <span className="meta-tag">{conv.intent}</span>}
-                      </div>
-                      <div className="conv-preview">{conv.messages[conv.messages.length - 1]?.content?.slice(0, 40) || '（无消息）'}...</div>
-                    </div>
-                    <button
-                        className="btn-sm btn-danger"
-                        style={{ flexShrink: 0, marginTop: 2 }}
-                        onClick={async e => {
-                          e.stopPropagation();
-                          if (!confirm('确定删除该对话记录？')) return;
-                          try {
-                            const res = await fetch(`${API_BASE}/conversations/${conv.session_id}`, { method: 'DELETE' });
-                            if ((await res.json()).success) {
-                              fetchConversations();
-                              if (selectedSession === conv.session_id) setSelectedSession(null);
-                            }
-                          } catch (err) { alert('删除失败'); }
-                        }}
-                    >删除</button>
-                  </div>
-                ))}
-                {conversations.length === 0 && !loading && <div className="empty-state">暂无对话记录</div>}
-              </div>
-            </div>
-
-            {/* 对话详情 */}
-            <div className="conversation-detail">
-              {selectedConv ? (
-                <>
-                  <div className="detail-header">
-                    <h3>会话详情</h3>
-                    <div className="detail-meta">
-                      <span>意图：{selectedConv.intent || '未知'}</span>
-                      <span>状态：{selectedConv.resolved ? '✅ 已解决' : '⏳ 进行中'}</span>
-                    </div>
-                  </div>
-                  <div className="detail-messages">
-                    {selectedConv.messages.map((msg: Message, i: number) => (
-                      <div key={i} className={`detail-msg ${msg.role}`}>
-                        <div className="detail-role">{msg.role === 'user' ? '👤 用户' : '🤖 助手'}</div>
-                        <div className="detail-content">{msg.content}</div>
-                        <div className="detail-time">
-                          {new Date(msg.timestamp).toLocaleTimeString('zh-CN')}
-                          {msg.intent && <span className="msg-intent-badge">{msg.intent}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="empty-detail">← 请选择左侧对话查看详情</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {tab === 'stats' && <DataStatistics />}
 
       {tab === 'categories' && (
         <div className="faq-management">
@@ -598,8 +474,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           )}
         </div>
       )}
-
-      {tab === 'statistics' && <DataStatistics />}
 
       {tab === 'faq' && (
         <div className="faq-management" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, gap: '10px' }}>
