@@ -64,10 +64,10 @@ class ApiService {
     return response.json();
   }
 
-  // 获取对话列表
+  // 获取对话列表（管理后台）
   async getConversations(): Promise<Conversation[]> {
-    const response = await fetch(`${this.baseUrl}/api/conversations`);
-    
+    const response = await fetch(`${this.baseUrl}/api/admin/conversations`);
+
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
     }
@@ -75,10 +75,10 @@ class ApiService {
     return response.json();
   }
 
-  // 获取单个对话
+  // 获取单个对话（管理后台）
   async getConversation(sessionId: string): Promise<{ messages: Message[] }> {
-    const response = await fetch(`${this.baseUrl}/api/conversations/${sessionId}`);
-    
+    const response = await fetch(`${this.baseUrl}/api/admin/conversations/${sessionId}`);
+
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
     }
@@ -86,20 +86,21 @@ class ApiService {
     return response.json();
   }
 
-  // 获取 FAQ 列表
+  // 获取 FAQ 列表（管理后台）
   async getFAQ(): Promise<FAQItem[]> {
-    const response = await fetch(`${this.baseUrl}/api/faq`);
-    
+    const response = await fetch(`${this.baseUrl}/api/admin/faq`);
+
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
     }
 
-    return response.json();
+    const result = await response.json();
+    return result.data || result; // 兼容 {success, data} 格式和纯数组格式
   }
 
-  // 创建 FAQ
+  // 创建 FAQ（管理后台）
   async createFAQ(faq: FAQItem): Promise<FAQItem> {
-    const response = await fetch(`${this.baseUrl}/api/faq`, {
+    const response = await fetch(`${this.baseUrl}/api/admin/faq`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -114,9 +115,9 @@ class ApiService {
     return response.json();
   }
 
-  // 更新 FAQ
-  async updateFAQ(id: number, faq: FAQItem): Promise<FAQItem> {
-    const response = await fetch(`${this.baseUrl}/api/faq/${id}`, {
+  // 更新 FAQ（管理后台）
+  async updateFAQ(id: number | string, faq: FAQItem): Promise<FAQItem> {
+    const response = await fetch(`${this.baseUrl}/api/admin/faq/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -131,9 +132,9 @@ class ApiService {
     return response.json();
   }
 
-  // 删除 FAQ
-  async deleteFAQ(id: number): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/api/faq/${id}`, {
+  // 删除 FAQ（管理后台）
+  async deleteFAQ(id: number | string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/admin/faq/${id}`, {
       method: 'DELETE',
     });
 
@@ -142,10 +143,10 @@ class ApiService {
     }
   }
 
-  // 获取统计信息
+  // 获取统计信息（管理后台）
   async getStats(): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/api/stats`);
-    
+    const response = await fetch(`${this.baseUrl}/api/admin/stats`);
+
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
     }
