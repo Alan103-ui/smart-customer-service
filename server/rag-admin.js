@@ -43,6 +43,10 @@ const KNOWLEDGE_BASES_PATH = path.join(__dirname, '../data/knowledge_bases.json'
 const UPLOAD_DIR = path.join(__dirname, '../data/uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+// FAQ 附件上传目录
+const FAQ_ATTACHMENTS_DIR = path.join(__dirname, 'uploads/faq_attachments');
+if (!fs.existsSync(FAQ_ATTACHMENTS_DIR)) fs.mkdirSync(FAQ_ATTACHMENTS_DIR, { recursive: true });
+
 // ============ 工具函数 ============
 /**
  * 智能判定对话是否已解决（基于对话内容自动判定）
@@ -887,5 +891,7 @@ router.post('/conversations/batch-delete', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
 
 module.exports = router;

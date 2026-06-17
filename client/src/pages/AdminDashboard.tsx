@@ -5,6 +5,27 @@ import RAGManagement from './RAGManagement';
 import IntentUnderstanding from './IntentUnderstanding';
 import AnswerRewriter from './AnswerRewriter';
 import DataStatistics from './DataStatistics';
+import { Editor, Toolbar } from '@wangeditor/editor-for-react';
+import { IDomEditor, IEditorConfig } from '@wangeditor/editor';
+
+// ==================== 富文本编辑器配置 ====================
+const editorConfig: Partial<IEditorConfig> = {
+  placeholder: '请输入答案内容（支持富文本格式）...',
+  MENU_CONF: {
+    uploadImage: {
+      server: '/api/admin/upload/editor-image',
+      fieldName: 'file',
+      maxFileSize: 5 * 1024 * 1024, // 5MB
+      allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+      customInsert: (res: any, insertFn: any) => {
+        if (res.errno === 0) {
+          const url = res.data.url;
+          insertFn(url, 'image', url);
+        }
+      }
+    }
+  }
+};
 
 // ==================== 类型定义 ====================
 interface Conversation {
@@ -754,7 +775,61 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
             </div>
             <div className="form-group">
               <label>答案 *</label>
-              <textarea value={faqForm.answer} onChange={e => setFaqForm(f => ({ ...f, answer: e.target.value }))} rows={5} placeholder="AI 的回答内容" />
+              <div style={{ border: '1px solid #d9d9d9', borderRadius: 6, overflow: 'hidden' }}>
+                <Editor
+                  value={faqForm.answer}
+                  config={editorConfig}
+                  onChange={html => setFaqForm(f => ({ ...f, answer: html }))}
+                  mode="default"
+                  defaultConfig={{ height: 200 }}
+                />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>附件上传（最多5个）</label>
+              <input
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.md"
+                onChange={async e => {
+                  const files = e.target.files;
+                  if (!files || files.length === 0) return;
+                  if (files.length > 5) { alert('最多上传5个附件'); return; }
+                  const formData = new FormData();
+                  for (const file of files) formData.append('files', file);
+                  try {
+                    const res = await fetch(`${API_BASE}/faq/${editingFaq?.id || faqForm.id}/attachments`, {
+                      method: 'POST',
+                      body: formData
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setFaqForm(f => ({ ...f, attachments: data.attachments }));
+                      alert(`成功上传${data.attachments.length}个附件`);
+                    }
+                  } catch (err) { alert('上传失败：' + err.message); }
+                }}
+                style={{ marginTop: 8 }}
+              />
+              {faqForm.attachments && faqForm.attachments.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 13, color: '#666', marginBottom: 4 }}>已上传附件：</div>
+                  {faqForm.attachments.map((att: any) => (
+                    <div key={att.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px solid #f0f0f0' }}>
+                      <span style={{ flex: 1 }}>{att.originalName}（{(att.size / 1024).toFixed(1)} KB）</span>
+                      <button className="btn-sm btn-danger" onClick={async () => {
+                        if (!confirm('确定删除该附件？')) return;
+                        try {
+                          const res = await fetch(`${API_BASE}/faq/${editingFaq?.id || faqForm.id}/attachments/${att.id}`, { method: 'DELETE' });
+                          if ((await res.json()).success) {
+                            setFaqForm(f => ({ ...f, attachments: f.attachments.filter((a: any) => a.id !== att.id) }));
+                          }
+                        } catch (err) { alert('删除失败：' + err.message); }
+                      }}>删除</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="modal-actions">
               <button className="btn-primary" onClick={saveFaq}>保存</button>

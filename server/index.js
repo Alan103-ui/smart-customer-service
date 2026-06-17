@@ -36,6 +36,9 @@ const { understandIntent, batchUnderstandIntents, fallbackIntent, INTENT_TAXONOM
 const { storeConversationRound, getConversationHistory, enhanceQueryWithMemory, getMemoryStats, clearConversationHistory } = require('./dialogue-memory');
 const { rewriteToColloquial, batchRewrite, evaluateQuality, getToneList } = require('./answer-rewriter');
 
+// ============ 上传功能模块 ============
+const uploadEndpoints = require('./upload-endpoints');
+
 // ============ 知识库管理（动态加载） ============
 function loadKnowledgeBases() {
   if (!fs.existsSync(KNOWLEDGE_BASES_PATH)) {
@@ -510,6 +513,8 @@ app.get('/api/admin/stats', (req, res) => {
 // 路径保持不变（/api/admin/*），前端无需修改
 const ragAdminRouter = require('./rag-admin');
 app.use('/api/admin', ragAdminRouter);
+const uploadRouter = require('./upload-endpoints');
+app.use('/api/admin', uploadRouter);
 // ============ 以下为已迁移到 rag-admin.js 的旧路由定义（已注释，保留以备回滚）============
 /*
   try {
