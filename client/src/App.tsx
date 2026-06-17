@@ -13,7 +13,9 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [currentIntent, setCurrentIntent] = useState<string | null>(null);
-  const [showAdmin, setShowAdmin] = useState(false);
+  const [showAdmin, setShowAdmin] = useState<boolean>(() => {
+    return window.location.pathname === '/admin';
+  });
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('全部');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -33,6 +35,25 @@ function App() {
     localStorage.setItem('cs_theme', theme);
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // 同步 showAdmin 状态到 URL
+  useEffect(() => {
+    const currentPath = window.location.pathname;
+    if (showAdmin && currentPath !== '/admin') {
+      window.history.pushState(null, '', '/admin');
+    } else if (!showAdmin && currentPath === '/admin') {
+      window.history.pushState(null, '', '/');
+    }
+  }, [showAdmin]);
+
+  // 监听浏览器前进/后退按钮
+  useEffect(() => {
+    const handlePopState = () => {
+      setShowAdmin(window.location.pathname === '/admin');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');

@@ -80,6 +80,15 @@
       "resolved": false,
       "created_at": "2026-06-17T07:32:01.550Z",
       "updated_at": "2026-06-17T07:32:01.550Z"
+    },
+    {
+      "id": "0b409783-973c-4d50-97af-fb0097094cd6",
+      "session_id": "e9b33fa7-f46b-44b0-88e6-8873c3f848ce",
+      "messages": "[]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-17T07:37:47.284Z",
+      "updated_at": "2026-06-17T07:37:47.284Z"
     }
   ],
   "faq_logs": [

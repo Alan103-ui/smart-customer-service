@@ -1786,6 +1786,11 @@ wss.on('connection', (ws) => {
   });
 });
 
+// SPA 回退：所有未匹配的路由返回前端 index.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, '0.0.0.0', async () => {
   console.log(`🤖 广康集团AI助手后端服务启动成功！`);
