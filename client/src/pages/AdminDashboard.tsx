@@ -9,7 +9,7 @@ import { Editor, Toolbar } from '@wangeditor/editor-for-react';
 import { IDomEditor, IEditorConfig } from '@wangeditor/editor';
 
 // ==================== 富文本编辑器配置 ====================
-const editorConfig: Partial<IEditorConfig> = {
+const createEditorConfig = (onChangeHtml: (html: string) => void): Partial<IEditorConfig> => ({
   placeholder: '请输入答案内容（支持富文本格式）...',
   MENU_CONF: {
     uploadImage: {
@@ -24,8 +24,13 @@ const editorConfig: Partial<IEditorConfig> = {
         }
       }
     }
+  },
+  // 正确的 onChange 用法：参数是 editor 对象
+  onChange(editor: IDomEditor) {
+    const html = editor.getHtml();
+    onChangeHtml(html);
   }
-};
+});
 
 // ==================== 类型定义 ====================
 interface Conversation {
@@ -245,13 +250,22 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       }
     }
     setFaqFormLevel1Cat(level1Id);
+    
+    // 修复：确保 answer 是字符串，如果是纯文本则转为 HTML
+    let answerHtml = faq.answer || '';
+    // 如果答案不是 HTML（不包含 < 标签），则包裹 <p> 标签
+    if (answerHtml && !answerHtml.includes('<p>') && !answerHtml.includes('<div>')) {
+      answerHtml = `<p>${answerHtml}</p>`;
+    }
+    
     setFaqForm({
       question: faq.question,
-      keywords: faq.keywords.join(', '),
-      answer: faq.answer,
+      keywords: (faq.keywords || []).join(', '),
+      answer: answerHtml,
       intent: faq.intent || '',
       category: faq.category || '',
       knowledgeBaseId: faq.knowledgeBaseId || '',
+      attachments: faq.attachments || [],
     });
     setShowFaqModal(true);
   };
@@ -778,10 +792,10 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
               <div style={{ border: '1px solid #d9d9d9', borderRadius: 6, overflow: 'hidden' }}>
                 <Editor
                   value={faqForm.answer}
-                  config={editorConfig}
-                  onChange={html => setFaqForm(f => ({ ...f, answer: html }))}
+                  defaultConfig={createEditorConfig((html: string) => {
+                    setFaqForm(f => ({ ...f, answer: html }));
+                  })}
                   mode="default"
-                  defaultConfig={{ height: 200 }}
                 />
               </div>
             </div>
