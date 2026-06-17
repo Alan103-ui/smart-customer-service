@@ -62,6 +62,24 @@
       "resolved": false,
       "created_at": "2026-06-17T07:26:23.488Z",
       "updated_at": "2026-06-17T07:26:35.350Z"
+    },
+    {
+      "id": "31e96573-fb89-4497-ad40-ecba53ceb8aa",
+      "session_id": "242b2fa6-032a-4c46-bd2c-674853004fa7",
+      "messages": "[]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-17T07:29:38.460Z",
+      "updated_at": "2026-06-17T07:29:38.460Z"
+    },
+    {
+      "id": "69e576c6-2a95-444f-b67a-15bf05374f5d",
+      "session_id": "f5f65a01-c605-4ad2-bded-32f0bdfaa755",
+      "messages": "[]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-17T07:32:01.550Z",
+      "updated_at": "2026-06-17T07:32:01.550Z"
     }
   ],
   "faq_logs": [

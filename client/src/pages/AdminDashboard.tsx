@@ -2,8 +2,6 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Message } from '../types';
 import BasicInfoManagement from './BasicInfoManagement';
 import RAGManagement from './RAGManagement';
-import IntentUnderstanding from './IntentUnderstanding';
-import AnswerRewriter from './AnswerRewriter';
 import DataStatistics from './DataStatistics';
 import { Editor, Toolbar } from '@wangeditor/editor-for-react';
 import { IDomEditor, IEditorConfig } from '@wangeditor/editor';
@@ -75,7 +73,7 @@ interface CategoryItem {
 
 // ==================== 主组件 ====================
 export default function AdminDashboard({ onBack }: AdminDashboardProps) {
-  const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag' | 'intent' | 'rewrite'>('stats');
+  const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag'>('stats');
   const [stats, setStats] = useState<Stats | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
@@ -399,8 +397,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           <button className={`tab-btn ${tab === 'categories' ? 'active' : ''}`} onClick={() => setTab('categories')}>🏷️ 分类管理</button>
           <button className={`tab-btn ${tab === 'basicInfo' ? 'active' : ''}`} onClick={() => setTab('basicInfo')}>🏢 基础信息</button>
           <button className={`tab-btn ${tab === 'rag' ? 'active' : ''}`} onClick={() => setTab('rag')}>🤖 RAG 管理</button>
-          <button className={`tab-btn ${tab === 'intent' ? 'active' : ''}`} onClick={() => setTab('intent')}>🧠 意图理解</button>
-          <button className={`tab-btn ${tab === 'rewrite' ? 'active' : ''}`} onClick={() => setTab('rewrite')}>✍️ 答案改写</button>
         </div>
       </div>
 
@@ -639,10 +635,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       {tab === 'basicInfo' && <BasicInfoManagement />}
 
       {tab === 'rag' && <RAGManagement />}
-
-      {tab === 'intent' && <IntentUnderstanding />}
-
-      {tab === 'rewrite' && <AnswerRewriter />}
 
       {/* 分类新增/编辑弹窗 */}
       {showCatModal && (
