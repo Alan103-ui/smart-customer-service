@@ -53,6 +53,15 @@
       "resolved": false,
       "created_at": "2026-06-16T01:09:01.007Z",
       "updated_at": "2026-06-16T01:09:16.572Z"
+    },
+    {
+      "id": "d661588a-ab8d-42e9-b540-5c67b9ea31b4",
+      "session_id": "305ab52e-810f-4e10-b9a7-0934d5a0d2d1",
+      "messages": "[{\"role\":\"user\",\"content\":\"财务管理\",\"timestamp\":\"2026-06-17T07:26:35.343Z\"},{\"role\":\"assistant\",\"content\":\"按部门统一归口，分级授权审批相结合的原则，实行预算管理。\\n\\n📎 **相关附件**：\\n![设备购买时间.png](/uploads/faq_attachments/1781679862757-687561374.png)\\n\",\"timestamp\":\"2026-06-17T07:26:35.350Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-17T07:26:23.488Z",
+      "updated_at": "2026-06-17T07:26:35.350Z"
     }
   ],
   "faq_logs": [
