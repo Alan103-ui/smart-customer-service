@@ -44,6 +44,36 @@ const UPLOAD_DIR = path.join(__dirname, '../data/uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // ============ 工具函数 ============
+/**
+ * 智能判定对话是否已解决（基于对话内容自动判定）
+ * 判定条件（满足任一即视为"已解决"）：
+ * 1. 对话至少有 2 条消息（用户提问 + AI回答）
+ * 2. 最后一条消息是 AI 发送的（说明AI给出了回答）
+ * 3. 对话持续时长 ≥ 30秒（避免误触）
+ */
+function isResolved(conversation) {
+  try {
+    const messages = JSON.parse(conversation.messages || '[]');
+    
+    // 条件1：至少有 2 条消息
+    if (messages.length < 2) return false;
+    
+    // 条件2：最后一条消息是 AI 发送的
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role !== 'assistant' && lastMessage.role !== 'ai') return false;
+    
+    // 条件3：对话持续时长 ≥ 30秒
+    const createdAt = new Date(conversation.created_at).getTime();
+    const updatedAt = new Date(conversation.updated_at).getTime();
+    const duration = (updatedAt - createdAt) / 1000; // 转换为秒
+    if (duration < 30) return false;
+    
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function getFAQ() {
   if (!fs.existsSync(FAQ_PATH)) return [];
   try { return JSON.parse(fs.readFileSync(FAQ_PATH, 'utf8')); } catch (e) { return []; }
@@ -104,7 +134,7 @@ router.get('/stats', (req, res) => {
     const totalCategories = categoryList.length;
     const totalKnowledgeBases = knowledgeBaseList.length;
     const totalConversations = conversationList.length;
-    const resolvedConversations = conversationList.filter(c => c.resolved).length;
+    const resolvedConversations = conversationList.filter(c => isResolved(c)).length;
     const resolutionRate = totalConversations > 0 ? Math.round(resolvedConversations / totalConversations * 100) : 0;
 
     // 2. 对话趋势数据（按日统计，最近30天）
@@ -121,7 +151,7 @@ router.get('/stats', (req, res) => {
       dailyTrend.push({
         date: dateStr,
         count: dayConversations.length,
-        resolved: dayConversations.filter(c => c.resolved).length
+        resolved: dayConversations.filter(c => isResolved(c)).length
       });
     }
 
@@ -139,7 +169,7 @@ router.get('/stats', (req, res) => {
         startDate: weekStart.toISOString().split('T')[0],
         endDate: weekEnd.toISOString().split('T')[0],
         count: weekConversations.length,
-        resolved: weekConversations.filter(c => c.resolved).length
+        resolved: weekConversations.filter(c => isResolved(c)).length
       });
     }
 
@@ -155,7 +185,7 @@ router.get('/stats', (req, res) => {
       monthlyTrend.push({
         month: monthStr,
         count: monthConversations.length,
-        resolved: monthConversations.filter(c => c.resolved).length
+        resolved: monthConversations.filter(c => isResolved(c)).length
       });
     }
 
@@ -188,7 +218,7 @@ router.get('/stats', (req, res) => {
       .map(c => ({
         session_id: c.session_id,
         intent: c.intent,
-        resolved: c.resolved,
+        resolved: isResolved(c),
         created_at: c.created_at,
         updated_at: c.updated_at,
         messageCount: JSON.parse(c.messages || '[]').length
