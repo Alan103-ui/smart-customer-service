@@ -641,7 +641,27 @@ router.get('/intent-taxonomy', (req, res) => {
 // ==========================================
 // 六、LLM 智能改写答案 API（RAG流程核心环节）
 // ==========================================
-// 测试改写单个答案
+// 改写单个答案（答案改写tab使用）
+router.post('/rewrite-answer', async (req, res) => {
+  try {
+    const { answer, tone = '亲切友好' } = req.body;
+    if (!answer || !answer.trim()) return res.status(400).json({ error: 'answer 不能为空' });
+    const rewritten = await rewriteToColloquial(answer, {
+      tone: tone || 'friendly',
+      userMessage: '',
+      conversationHistory: [],
+      userName: '',
+      isReturnUser: false,
+      intent: null
+    });
+    res.json({ success: true, original: answer, rewritten, changed: rewritten !== answer });
+  } catch (err) {
+    console.error('[Rewrite API] 改写失败:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 测试改写单个答案（兼容旧路径）
 router.post('/rewrite-test', async (req, res) => {
   try {
     const { originalAnswer, userMessage, conversationHistory, options = {} } = req.body;

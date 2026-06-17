@@ -18,6 +18,14 @@
         "size": 37076,
         "mimeType": "image/png",
         "uploadedAt": "2026-06-17T07:04:22.759Z"
+      },
+      {
+        "id": "7507d84a-fb30-4f34-80f2-b818db7e2b0e",
+        "filename": "1781686066284-406469726.txt",
+        "originalName": "test-upload.txt",
+        "size": 19,
+        "mimeType": "text/plain",
+        "uploadedAt": "2026-06-17T08:47:46.290Z"
       }
     ]
   },

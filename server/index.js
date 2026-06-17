@@ -1844,8 +1844,13 @@ wss.on('connection', (ws) => {
   });
 });
 
-// SPA 回退：所有未匹配的路由返回前端 index.html
-app.get('*', (req, res) => {
+// SPA 回退：只回退非 /api/ 的路径（必须放在所有 API 路由之后）
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    // API 路径不存在，返回 404
+    return res.status(404).json({ error: `API 路径不存在: ${req.method} ${req.path}` });
+  }
+  // 非 API 路径，返回前端 index.html（支持 SPA 路由）
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
