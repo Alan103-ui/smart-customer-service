@@ -967,6 +967,64 @@ app.delete('/api/admin/faq/:id', (req, res) => {
   }
 });
 
+// FAQ - 附件上传
+app.post('/api/admin/faq/:id/attachments', upload.array('files', 5), async (req, res) => {
+  try {
+    const faqList = getFAQ();
+    const idx = faqList.findIndex(f => f.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'FAQ不存在' });
+    
+    const files = req.files;
+    if (!files || files.length === 0) return res.status(400).json({ error: '请上传文件' });
+    
+    const attachments = faqList[idx].attachments || [];
+    const newAttachments = files.map(file => ({
+      id: uuidv4(),
+      filename: file.filename,
+      originalName: Buffer.from(file.originalname, 'latin1').toString('utf8'),
+      size: file.size,
+      uploadTime: new Date().toISOString()
+    }));
+    
+    faqList[idx].attachments = [...attachments, ...newAttachments];
+    saveFAQ(faqList);
+    
+    res.json({ success: true, attachments: faqList[idx].attachments });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// FAQ - 删除附件
+app.delete('/api/admin/faq/:id/attachments/:attId', (req, res) => {
+  try {
+    const faqList = getFAQ();
+    const idx = faqList.findIndex(f => f.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'FAQ不存在' });
+    
+    const attachments = faqList[idx].attachments || [];
+    const attIdx = attachments.findIndex(a => a.id === req.params.attId);
+    if (attIdx === -1) return res.status(404).json({ error: '附件不存在' });
+    
+    // 删除物理文件
+    try {
+      const filePath = path.join(__dirname, 'uploads/faq_attachments', attachments[attIdx].filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (e) {
+      // 忽略文件删除错误
+    }
+    
+    faqList[idx].attachments = attachments.filter(a => a.id !== req.params.attId);
+    saveFAQ(faqList);
+    
+    res.json({ success: true, attachments: faqList[idx].attachments });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // FAQ - 文件上传 + 自动提取（同步向量化）
 app.post('/api/admin/faq/upload', upload.single('file'), async (req, res) => {
   console.log('[UPLOAD] body=', JSON.stringify(req.body), 'query.category=', req.query.category);
