@@ -4,6 +4,7 @@ import BasicInfoManagement from './BasicInfoManagement';
 import RAGManagement from './RAGManagement';
 import IntentUnderstanding from './IntentUnderstanding';
 import AnswerRewriter from './AnswerRewriter';
+import DataStatistics from './DataStatistics';
 
 // ==================== 类型定义 ====================
 interface Conversation {
@@ -48,7 +49,7 @@ interface CategoryItem {
 
 // ==================== 主组件 ====================
 export default function AdminDashboard({ onBack }: AdminDashboardProps) {
-  const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag' | 'intent' | 'rewrite'>('stats');
+  const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag' | 'intent' | 'rewrite' | 'statistics'>('stats');
   const [stats, setStats] = useState<Stats | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
@@ -365,6 +366,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           <button className={`tab-btn ${tab === 'rag' ? 'active' : ''}`} onClick={() => setTab('rag')}>🤖 RAG 管理</button>
           <button className={`tab-btn ${tab === 'intent' ? 'active' : ''}`} onClick={() => setTab('intent')}>🧠 意图理解</button>
           <button className={`tab-btn ${tab === 'rewrite' ? 'active' : ''}`} onClick={() => setTab('rewrite')}>✍️ 答案改写</button>
+          <button className={`tab-btn ${tab === 'statistics' ? 'active' : ''}`} onClick={() => setTab('statistics')}>📊 专业统计</button>
         </div>
       </div>
 
@@ -596,6 +598,8 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           )}
         </div>
       )}
+
+      {tab === 'statistics' && <DataStatistics />}
 
       {tab === 'faq' && (
         <div className="faq-management" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, gap: '10px' }}>

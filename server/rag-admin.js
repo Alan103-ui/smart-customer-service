@@ -95,16 +95,145 @@ const uploadMedia = multer({ storage: mediaStorage });
 router.get('/stats', (req, res) => {
   try {
     const faqList = getFAQ();
+    const categoryList = loadCategories();
+    const knowledgeBaseList = loadKnowledgeBases().filter(k => k.isActive);
+    const conversationList = loadConversations();
+
+    // 1. 基础统计
+    const totalFAQ = faqList.length;
+    const totalCategories = categoryList.length;
+    const totalKnowledgeBases = knowledgeBaseList.length;
+    const totalConversations = conversationList.length;
+    const resolvedConversations = conversationList.filter(c => c.resolved).length;
+    const resolutionRate = totalConversations > 0 ? Math.round(resolvedConversations / totalConversations * 100) : 0;
+
+    // 2. 对话趋势数据（按日统计，最近30天）
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const dailyTrend = [];
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = date.toISOString().split('T')[0];
+      const dayConversations = conversationList.filter(c => {
+        const createdDate = new Date(c.created_at).toISOString().split('T')[0];
+        return createdDate === dateStr;
+      });
+      dailyTrend.push({
+        date: dateStr,
+        count: dayConversations.length,
+        resolved: dayConversations.filter(c => c.resolved).length
+      });
+    }
+
+    // 3. 按周统计（最近12周）
+    const weeklyTrend = [];
+    for (let i = 11; i >= 0; i--) {
+      const weekStart = new Date(now.getTime() - (i + 1) * 7 * 24 * 60 * 60 * 1000);
+      const weekEnd = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+      const weekConversations = conversationList.filter(c => {
+        const created = new Date(c.created_at);
+        return created >= weekStart && created < weekEnd;
+      });
+      weeklyTrend.push({
+        week: `第${12 - i}周`,
+        startDate: weekStart.toISOString().split('T')[0],
+        endDate: weekEnd.toISOString().split('T')[0],
+        count: weekConversations.length,
+        resolved: weekConversations.filter(c => c.resolved).length
+      });
+    }
+
+    // 4. 按月统计（最近6个月）
+    const monthlyTrend = [];
+    for (let i = 5; i >= 0; i--) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthStr = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
+      const monthConversations = conversationList.filter(c => {
+        const createdMonth = new Date(c.created_at).toISOString().slice(0, 7);
+        return createdMonth === monthStr;
+      });
+      monthlyTrend.push({
+        month: monthStr,
+        count: monthConversations.length,
+        resolved: monthConversations.filter(c => c.resolved).length
+      });
+    }
+
+    // 5. 分类统计
+    const categoryStats = categoryList.map(cat => {
+      const catFAQs = faqList.filter(f => f.category === cat.name);
+      const catConversations = conversationList.filter(c => c.intent === cat.name);
+      return {
+        id: cat.id,
+        name: cat.name,
+        faqCount: catFAQs.length,
+        conversationCount: catConversations.length
+      };
+    }).sort((a, b) => b.conversationCount - a.conversationCount);
+
+    // 6. 知识库统计
+    const knowledgeBaseStats = knowledgeBaseList.map(kb => {
+      const kbFAQs = faqList.filter(f => f.knowledgeBaseId === kb.id);
+      return {
+        id: kb.id,
+        name: kb.name,
+        faqCount: kbFAQs.length
+      };
+    });
+
+    // 7. 最近对话列表（最近20条）
+    const recentConversations = conversationList
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 20)
+      .map(c => ({
+        session_id: c.session_id,
+        intent: c.intent,
+        resolved: c.resolved,
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        messageCount: JSON.parse(c.messages || '[]').length
+      }));
+
     res.json({
-      totalFAQ: faqList.length,
-      totalCategories: loadCategories().length,
-      totalKnowledgeBases: loadKnowledgeBases().filter(k => k.isActive).length,
-      vectorStats: getVectorStats()
+      // 概览指标
+      overview: {
+        totalFAQ,
+        totalCategories,
+        totalKnowledgeBases,
+        totalConversations,
+        resolvedConversations,
+        resolutionRate,
+        vectorStats: getVectorStats()
+      },
+      // 趋势数据
+      trends: {
+        daily: dailyTrend,
+        weekly: weeklyTrend,
+        monthly: monthlyTrend
+      },
+      // 分类统计
+      categoryStats,
+      // 知识库统计
+      knowledgeBaseStats,
+      // 最近对话
+      recentConversations
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ============ 辅助函数：加载对话数据 ============
+function loadConversations() {
+  const CONVERSATIONS_PATH = path.join(__dirname, '../data/conversations.json');
+  if (!fs.existsSync(CONVERSATIONS_PATH)) return [];
+  try {
+    const data = JSON.parse(fs.readFileSync(CONVERSATIONS_PATH, 'utf8'));
+    return data.conversations || [];
+  } catch (e) {
+    return [];
+  }
+}
 
 
 // ==========================================
