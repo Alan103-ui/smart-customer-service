@@ -659,7 +659,7 @@ const DB_PATH = path.join(__dirname, '../data/conversations.db');
 
 function readDB() {
   const fp = DB_PATH.replace('.db', '.json');
-  if (!fs.existsSync(fp)) return { conversations: [], faq_logs: [], satisfaction_stats: [] };
+  if (!fs.existsSync(fp)) return { conversations: [], faq_logs: [] };
   return JSON.parse(fs.readFileSync(fp, 'utf8'));
 }
 
@@ -725,26 +725,6 @@ router.post('/conversations/batch-delete', (req, res) => {
     res.json({ success: true, deleted });
   } catch (err) {
     errorLog('批量删除对话失败', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 提交满意度评价
-router.post('/satisfaction', (req, res) => {
-  try {
-    const { sessionId, rating, comment } = req.body;
-    const db = readDB();
-    const id = uuidv4();
-    db.satisfaction_stats.push({ id, session_id: sessionId, rating, comment: comment || '', created_at: new Date().toISOString() });
-
-    const conv = db.conversations.find(c => c.session_id === sessionId);
-    if (conv) { conv.satisfaction = rating; conv.resolved = true; conv.updated_at = new Date().toISOString(); }
-
-    writeDB(db);
-    auditLog('提交满意度评价', `session=${sessionId}, rating=${rating}`, req.user);
-    res.json({ success: true });
-  } catch (err) {
-    errorLog('提交满意度失败', err);
     res.status(500).json({ error: err.message });
   }
 });

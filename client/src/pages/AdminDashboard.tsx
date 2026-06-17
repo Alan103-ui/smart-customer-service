@@ -12,7 +12,6 @@ interface Conversation {
   messages: Message[];
   intent: string | null;
   resolved: number;
-  satisfaction: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -24,7 +23,6 @@ interface AdminDashboardProps {
 interface Stats {
   totalConversations: number;
   resolvedCount: number;
-  avgSatisfaction: number;
   recentConversations: Conversation[];
 }
 
@@ -382,10 +380,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
               <div className="stat-number">{stats ? Math.round(stats.resolvedCount / stats.totalConversations * 100) || 0 : '--'}<small>%</small></div>
               <div className="stat-label">解决率</div>
             </div>
-            <div className="stat-card purple">
-              <div className="stat-number">{stats ? (stats.avgSatisfaction || 0).toFixed(1) : '--'}<small>/5</small></div>
-              <div className="stat-label">平均满意度</div>
-            </div>
           </div>
 
           <div className="admin-content" style={{ marginTop: 20 }}>
@@ -443,7 +437,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                       </div>
                       <div className="conv-meta">
                         {conv.intent && <span className="meta-tag">{conv.intent}</span>}
-                        {conv.satisfaction && <span className="meta-tag sat">★{conv.satisfaction}</span>}
                       </div>
                       <div className="conv-preview">{conv.messages[conv.messages.length - 1]?.content?.slice(0, 40) || '（无消息）'}...</div>
                     </div>
@@ -477,7 +470,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                     <div className="detail-meta">
                       <span>意图：{selectedConv.intent || '未知'}</span>
                       <span>状态：{selectedConv.resolved ? '✅ 已解决' : '⏳ 进行中'}</span>
-                      {selectedConv.satisfaction && <span>满意度：{'★'.repeat(selectedConv.satisfaction)}</span>}
                     </div>
                   </div>
                   <div className="detail-messages">

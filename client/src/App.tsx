@@ -133,8 +133,6 @@ function App() {
         }
         setIsTyping(false);
         break;
-      case 'satisfaction_ack':
-        break;
     }
   }, []);
 

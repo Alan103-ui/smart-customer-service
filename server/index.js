@@ -135,7 +135,7 @@ if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
 function readDB() {
   const fp = DB_PATH.replace('.db', '.json');
-  if (!fs.existsSync(fp)) return { conversations: [], faq_logs: [], satisfaction_stats: [] };
+  if (!fs.existsSync(fp)) return { conversations: [], faq_logs: [] };
   return JSON.parse(fs.readFileSync(fp, 'utf8'));
 }
 
@@ -1524,7 +1524,7 @@ function getOrCreateConversation(sessionId) {
   
   const id = uuidv4();
   const now = new Date().toISOString();
-  conv = { id, session_id: sessionId, messages: JSON.stringify([]), intent: null, resolved: false, satisfaction: null, created_at: now, updated_at: now };
+  conv = { id, session_id: sessionId, messages: JSON.stringify([]), intent: null, resolved: false, created_at: now, updated_at: now };
   db.conversations.push(conv);
   writeDB(db);
   return { ...conv, messages: [] };
@@ -1705,23 +1705,6 @@ wss.on('connection', (ws) => {
           }));
         }
         return;
-      }
-      
-      if (msg.type === 'satisfaction') {
-        const { rating, comment } = msg;
-        const db = readDB();
-        db.satisfaction_stats.push({
-          id: uuidv4(), session_id: sessionId, rating, comment: comment || '',
-          created_at: new Date().toISOString()
-        });
-        const convIdx = db.conversations.findIndex(c => c.session_id === sessionId);
-        if (convIdx !== -1) {
-          db.conversations[convIdx].satisfaction = rating;
-          db.conversations[convIdx].resolved = true;
-          db.conversations[convIdx].updated_at = new Date().toISOString();
-        }
-        writeDB(db);
-        ws.send(JSON.stringify({ type: 'satisfaction_ack', success: true }));
       }
       
     } catch (err) {

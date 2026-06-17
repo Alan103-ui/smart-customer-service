@@ -15,7 +15,7 @@ export interface Message {
 }
 
 export interface WebSocketMessage {
-  type: 'init' | 'message' | 'history' | 'typing' | 'intent' | 'error' | 'satisfaction_ack' | 'candidates';
+  type: 'init' | 'message' | 'history' | 'typing' | 'intent' | 'error' | 'candidates';
   sessionId?: string;
   content?: string;
   messages?: Message[];
