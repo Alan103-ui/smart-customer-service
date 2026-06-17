@@ -113,7 +113,9 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     setFaqLoading(true);
     try {
       const res = await fetch(`${API_BASE}/faq`);
-      setFaqList(await res.json());
+      const json = await res.json();
+      // API 返回 {success, data} 格式，需要解包取 data 数组
+      setFaqList(Array.isArray(json) ? json : (json.data || []));
     } catch (err) { console.error('获取 FAQ 失败', err); }
     setFaqLoading(false);
   };
