@@ -1,0 +1,16 @@
+[
+  {
+    "id": "user_001",
+    "name": "管理员",
+    "username": "admin",
+    "password": "admin123",
+    "orgId": "org_001",
+    "orgName": "广康集团",
+    "roleId": "perm_001",
+    "roleName": "管理员",
+    "isActive": true,
+    "createdAt": "2026-06-10T00:00:00.000Z",
+    "updatedAt": "2026-06-10T00:00:00.000Z",
+    "lastLoginAt": null
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {
+    "id": "kb_default",
+    "name": "广康集团知识库",
+    "description": "默认知识库，包含公司产品、服务、政策等相关知识",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-06-01T15:00:00.000Z",
+    "isDefault": true,
+    "isActive": true
+  }
+]

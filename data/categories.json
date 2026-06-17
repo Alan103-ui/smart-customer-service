@@ -1,0 +1,56 @@
+[
+  {
+    "id": "cat_default",
+    "name": "常见问题",
+    "description": "默认分类",
+    "parentId": null,
+    "sortOrder": 0,
+    "isDefault": true,
+    "knowledgeBaseId": "kb_default"
+  },
+  {
+    "id": "cat_after_sale",
+    "name": "售后服务",
+    "description": "退货退款等售后问题",
+    "parentId": null,
+    "sortOrder": 1,
+    "isDefault": false,
+    "knowledgeBaseId": "kb_default"
+  },
+  {
+    "id": "cat_shipping",
+    "name": "配送物流",
+    "description": "配送、物流、快递相关问题",
+    "parentId": null,
+    "sortOrder": 2,
+    "isDefault": false,
+    "knowledgeBaseId": "kb_default"
+  },
+  {
+    "id": "cat_payment",
+    "name": "支付相关",
+    "description": "支付、付款、发票相关问题",
+    "parentId": null,
+    "sortOrder": 3,
+    "isDefault": false,
+    "knowledgeBaseId": "kb_default"
+  },
+  {
+    "id": "cat_1780044306153",
+    "name": "内控咨询",
+    "description": "公司管理规定",
+    "parentId": null,
+    "sortOrder": 4,
+    "isDefault": false,
+    "knowledgeBaseId": "kb_default"
+  },
+  {
+    "id": "cat_1780389966212",
+    "name": "财务类",
+    "description": "",
+    "parentId": "cat_1780044306153",
+    "knowledgeBaseId": "kb_default",
+    "sortOrder": 5,
+    "isDefault": false
+  }
+]

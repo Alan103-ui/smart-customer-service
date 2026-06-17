@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "orgApiUrl": "http://localhost:8080/seeyon/rest/org",
+  "personnelApiUrl": "http://localhost:8080/seeyon/rest/personnel",
+  "syncInterval": 3600,
+  "lastSyncTime": null,
+  "auth": {
+    "type": "basic",
+    "username": "",
+    "password": ""
+  }
+}

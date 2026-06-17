@@ -1,0 +1,64 @@
+========== 开始测试意图理解模块 ==========
+
+
+[测试] 规则1：问候语
+  查询: "你好"
+[Intent] Rule engine matched: { level1: 'greeting', level2: 'hello', confidence: 0.98 }
+  ✅ 规则引擎命中: greeting/hello (置信度: 0.98)
+
+[测试] 规则1：英文问候
+  查询: "hi"
+[Intent] Rule engine matched: { level1: 'greeting', level2: 'hello', confidence: 0.98 }
+  ✅ 规则引擎命中: greeting/hello (置信度: 0.98)
+
+[测试] 规则2：投诉
+  查询: "我要投诉"
+[Intent] Rule engine matched: { level1: 'complaint', level2: 'service', confidence: 0.95 }
+  ✅ 规则引擎命中: complaint/service (置信度: 0.95)
+
+[测试] 规则3：查询进度
+  查询: "申请进度怎么样"
+[Intent] Rule engine matched: { level1: 'process', level2: 'query_status', confidence: 0.9 }
+  ✅ 规则引擎命中: process/query_status (置信度: 0.9)
+
+[测试] LLM测试1：报销申请
+  查询: "如何申请报销"
+[Intent] Rule engine matched: { level1: 'process', level2: 'apply', confidence: 0.95 }
+  ✅ 意图正确: process/apply (置信度: 0.95)
+  实体: process:申请
+
+[测试] LLM测试2：政策查询
+  查询: "报销政策是什么"
+  ✅ 意图正确: query/policy (置信度: 0.9)
+  实体: policy:报销
+
+[测试] LLM测试3：联系方式查询
+  查询: "客服电话是多少"
+  ✅ 意图正确: query/contact (置信度: 0.95)
+  实体: contact:客服电话
+
+[测试] LLM测试4：功能建议
+  查询: "建议增加微信支付"
+  ⚠️ 意图不匹配: 期望=suggestion/feature, 实际=suggestion/new_feature (置信度: 0.95)
+  实体: feature:微信支付
+
+
+[批量测试] 批量意图理解...
+[Intent] Rule engine matched: { level1: 'greeting', level2: 'hello', confidence: 0.98 }
+[Intent] Rule engine matched: { level1: 'greeting', level2: 'hello', confidence: 0.98 }
+[Intent] Rule engine matched: { level1: 'complaint', level2: 'service', confidence: 0.95 }
+  ✅ 批量理解完成: 3 条
+    1. "你好" → greeting/hello
+    2. "hi" → greeting/hello
+    3. "我要投诉" → complaint/service
+
+
+[降级测试] 降级处理...
+  ✅ 降级处理成功: query/null
+
+
+========== 测试统计 ==========
+规则引擎测试: 4/4 通过
+LLM意图理解测试: 3/4 完全匹配
+总测试用例: 8
+========== 测试完成 ==========

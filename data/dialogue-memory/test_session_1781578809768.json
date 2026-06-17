@@ -1,0 +1,82 @@
+[
+  {
+    "roundId": "test_session_1781578809768_1",
+    "timestamp": 1781578809771,
+    "userQuery": "如何申请报销",
+    "aiResponse": "您可以通过在线报销系统提交报销申请，具体步骤是...",
+    "intent": {
+      "primaryIntent": {
+        "level1": "process",
+        "level2": "apply"
+      }
+    },
+    "entities": [
+      {
+        "type": "process",
+        "value": "报销"
+      }
+    ],
+    "topics": []
+  },
+  {
+    "roundId": "test_session_1781578809768_2",
+    "timestamp": 1781578809772,
+    "userQuery": "报销需要哪些材料",
+    "aiResponse": "报销需要以下材料：1. 发票原件 2. 报销单 3. 相关审批文件",
+    "intent": {
+      "primaryIntent": {
+        "level1": "query",
+        "level2": "policy"
+      }
+    },
+    "entities": [
+      {
+        "type": "process",
+        "value": "报销"
+      },
+      {
+        "type": "document",
+        "value": "材料"
+      }
+    ],
+    "topics": []
+  },
+  {
+    "roundId": "test_session_1781578809768_3",
+    "timestamp": 1781578809773,
+    "userQuery": "审批需要多长时间",
+    "aiResponse": "一般情况下，审批需要3-5个工作日",
+    "intent": {
+      "primaryIntent": {
+        "level1": "query",
+        "level2": "policy"
+      }
+    },
+    "entities": [
+      {
+        "type": "process",
+        "value": "审批"
+      }
+    ],
+    "topics": []
+  },
+  {
+    "roundId": "test_session_1781578809768_4",
+    "timestamp": 1781578809774,
+    "userQuery": "它支持哪些银行",
+    "aiResponse": "在线报销系统支持以下银行：中国工商银行、中国建设银行...",
+    "intent": {
+      "primaryIntent": {
+        "level1": "query",
+        "level2": "policy"
+      }
+    },
+    "entities": [
+      {
+        "type": "system",
+        "value": "在线报销系统"
+      }
+    ],
+    "topics": []
+  }
+]

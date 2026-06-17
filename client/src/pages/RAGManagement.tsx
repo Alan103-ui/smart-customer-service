@@ -11,7 +11,7 @@ let toastIdCounter = 0;
 
 // ==================== RAG 管理组件 ====================
 export default function RAGManagement() {
-  const [activeTab, setActiveTab] = useState<'stats' | 'test' | 'eval'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'test' | 'eval' | 'intent' | 'rewrite'>('stats');
   const [loading, setLoading] = useState(false);
   
   // Toast 通知
@@ -34,6 +34,18 @@ export default function RAGManagement() {
   const [evalRunning, setEvalRunning] = useState(false);
   const [evalReport, setEvalReport] = useState<any>(null);
   const [evalReportPath, setEvalReportPath] = useState<string>('');
+  
+  // 意图理解
+  const [intentInput, setIntentInput] = useState('');
+  const [intentBatchInput, setIntentBatchInput] = useState('');
+  const [intentResult, setIntentResult] = useState<any>(null);
+  const [intentLoading, setIntentLoading] = useState(false);
+  
+  // 答案改写
+  const [rewriteInput, setRewriteInput] = useState('');
+  const [rewriteTone, setRewriteTone] = useState('亲切友好');
+  const [rewriteResult, setRewriteResult] = useState('');
+  const [rewriteLoading, setRewriteLoading] = useState(false);
   
   const API_BASE = '/api/admin';
 
@@ -184,7 +196,9 @@ export default function RAGManagement() {
         {[
           { key: 'stats', label: '📊 统计信息' },
           { key: 'test', label: '🔍 测试搜索' },
-          { key: 'eval', label: '📈 效果评估' }
+          { key: 'eval', label: '📈 效果评估' },
+          { key: 'intent', label: '🧠 意图理解' },
+          { key: 'rewrite', label: '✏️ 答案改写' }
         ].map(tab => (
           <button
             key={tab.key}

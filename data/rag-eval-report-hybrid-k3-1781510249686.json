@@ -1,0 +1,147 @@
+{
+  "config": {
+    "k": 3,
+    "mode": "hybrid",
+    "totalQueries": 14,
+    "weights": [
+      0.1,
+      0.9
+    ]
+  },
+  "metrics": {
+    "avgPrecision": 0.2619047619047619,
+    "avgRecall": 0.7857142857142857,
+    "avgMrr": 0.7857142857142857,
+    "avgNdcg": 0.7857142857142857,
+    "foundRate": 0.7857142857142857
+  },
+  "details": [
+    {
+      "query": "3.5. 管理原则？",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.01639344262295082
+    },
+    {
+      "query": "4.1.4.按权责发生制原则要求进行会计确认？",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.01639344262295082
+    },
+    {
+      "query": "4.1.7.财务人员负责核查该项开支是否在预算内或已获书面授权审批，依据合同、协议或其他证明材料，审",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.01639344262295082
+    },
+    {
+      "query": "4.1.11.公司月结费用报销审批？",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.01639344262295082
+    },
+    {
+      "query": "4.1.12公司专职司机、零星采购负责人、安全管理负责人可申请备用金，备用金专人借支专人负责，不得转",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.01639344262295082
+    },
+    {
+      "query": "4.2.1.业务借款。？",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.01639344262295082
+    },
+    {
+      "query": "4.2.2.费用报销。？",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.015925058548009366
+    },
+    {
+      "query": "4.3.1.付款单据适用于原辅材料、固定资产、五金配件、办公用品、工程、广告、研发等业务的采购款、预",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.01639344262295082
+    },
+    {
+      "query": "申请人应持合法、有效的原始凭据并将原始凭据平整呈阶梯状粘贴在“粘贴单”上，并附在所填申请单后。？",
+      "precision": 0,
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "found": false,
+      "topScore": 0.016103430619559652
+    },
+    {
+      "query": "一类城市？",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.016155473294553146
+    },
+    {
+      "query": "二类城市？",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.016155473294553146
+    },
+    {
+      "query": "三类城市？",
+      "precision": 0.3333333333333333,
+      "recall": 1,
+      "mrr": 1,
+      "ndcg": 1,
+      "found": true,
+      "topScore": 0.01639344262295082
+    },
+    {
+      "query": "营业执照怎么办理？",
+      "precision": 0,
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "found": false,
+      "topScore": 0.015848214285714285
+    },
+    {
+      "query": "营业执照办理需要多长时间？",
+      "precision": 0,
+      "recall": 0,
+      "mrr": 0,
+      "ndcg": 0,
+      "found": false,
+      "topScore": 0.015925058548009366
+    }
+  ],
+  "errors": []
+}

@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
@@ -7,45 +7,15 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const multer = require('multer');
 
-// ============ 工具函数 ============
-// 去除HTML标签（FAQ answer字段可能包含<p>等标签）
-function stripHtmlTags(html) {
-  if (!html) return '';
-  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
-}
-
-// FAQ关键词精确匹配（不依赖向量搜索）
-function matchFAQByKeywords(query, faqList, threshold = 0.5) {
-  const queryWords = query.replace(/[？?。.，,、；;：:！!（）()\s]/g, '|').split('|').filter(w => w.length >= 2);
-  for (const faq of faqList) {
-    if (!faq.keywords || !Array.isArray(faq.keywords)) continue;
-    const matchCount = faq.keywords.filter(kw => query.includes(kw)).length;
-    if (matchCount > 0) {
-      const confidence = Math.min(0.95, 0.5 + matchCount * 0.1);
-      if (confidence >= threshold) {
-        return { faq, confidence };
-      }
-    }
-  }
-  return null;
-}
-
-// ============ 日志系统 ============
-const { performanceMiddleware, auditLog, errorLog, getLogFiles, readLogFile, cleanOldLogs, writeLog } = require('./logger');
-
 // ============ RAG 向量存储 ============
 const {
   addDocumentChunks, semanticSearch, rebuildVectorStore, getStats: getVectorStats,
   buildFAQEmbeddingCache, searchByFAQCacheAsync
 } = require('./vector-store');
 
-// 共享 LLM 调用模块（消除各模块中的重复 HTTP 调用代码）
-const { callOllamaChat, callOllamaGenerate } = require('./ollama-client');
 
 // ============ 配置 ============
-const OLLAMA_BASE_URL = 'http://172.17.6.18:11434';
-const OLLAMA_CHAT_PATH = '/v1/chat/completions';
-const OLLAMA_URL = OLLAMA_BASE_URL + OLLAMA_CHAT_PATH;  // 完整URL（兼容旧代码）
+const OLLAMA_URL = 'http://172.17.6.18:11434/v1/chat/completions';
 const MODEL_NAME = 'qwen2.5:14b';
 const DB_PATH = path.join(__dirname, '../data/conversations.db');
 const FAQ_PATH = path.join(__dirname, '../data/faq.json');
@@ -53,14 +23,6 @@ const CATEGORIES_PATH = path.join(__dirname, '../data/categories.json');
 const KNOWLEDGE_BASES_PATH = path.join(__dirname, '../data/knowledge_bases.json');
 const UPLOAD_DIR = path.join(__dirname, '../data/uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-// ============ 核心AI模块（智能意图理解、多轮对话记忆、LLM智能改写答案）============
-const { understandIntent, batchUnderstandIntents, fallbackIntent, INTENT_TAXONOMY } = require('./intent-understanding');
-const { storeConversationRound, getConversationHistory, enhanceQueryWithMemory, getMemoryStats, clearConversationHistory } = require('./dialogue-memory');
-const { rewriteToColloquial, batchRewrite, evaluateQuality, getToneList } = require('./answer-rewriter');
-
-// ============ 上传功能模块 ============
-const uploadEndpoints = require('./upload-endpoints');
 
 // ============ 知识库管理（动态加载） ============
 function loadKnowledgeBases() {
@@ -161,7 +123,7 @@ if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
 function readDB() {
   const fp = DB_PATH.replace('.db', '.json');
-  if (!fs.existsSync(fp)) return { conversations: [], faq_logs: [] };
+  if (!fs.existsSync(fp)) return { conversations: [], faq_logs: [], satisfaction_stats: [] };
   return JSON.parse(fs.readFileSync(fp, 'utf8'));
 }
 
@@ -425,21 +387,20 @@ async function searchFAQCandidates(userMessage, threshold = 0.12, category = nul
 async function generateAgentReply(sessionId, userMessage, conversationHistory, intentResult) {
   // FAQ 精确匹配优先
   if (intentResult.matchedFAQ) {
-    return stripHtmlTags(intentResult.matchedFAQ.answer);
+    return intentResult.matchedFAQ.answer;
   }
   
   // RAG 语义搜索：获取相关文档片段（使用 FAQ 缓存，避免重复调用 Ollama）
   let ragContext = '';
   try {
-    const intentName = intentResult?.intent || null;
-    const searchResults = await searchByFAQCacheAsync(userMessage, intentName, 3, 0.12);
+    const searchResults = await searchByFAQCacheAsync(userMessage, 3, 0.12);
     if (searchResults && searchResults.length > 0) {
       ragContext = '\n\n===== 相关资料（语义搜索结果）=====\n';
       // 通过 parentDocId 找到完整 FAQ 内容
       const faqList = getFAQ();
       searchResults.forEach((r, i) => {
         const faq = faqList.find(f => f.id === r.parentDocId);
-        const content = faq ? `Q: ${faq.question}\nA: ${stripHtmlTags(faq.answer)}` : r.content;
+        const content = faq ? `Q: ${faq.question}\nA: ${faq.answer}` : r.content;
         ragContext += `\n[资料${i+1}]（相关度：${(r.score * 100).toFixed(1)}%）\n${content.slice(0, 800)}\n`;
       });
       ragContext += '\n===== 请基于以上资料回答 =====\n';
@@ -450,7 +411,7 @@ async function generateAgentReply(sessionId, userMessage, conversationHistory, i
   }
   
   // 构建 prompt
-  const faqContext = getFAQ().map(f => `Q: ${f.question}\nA: ${stripHtmlTags(f.answer)}`).join('\n\n');
+  const faqContext = getFAQ().map(f => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n');
   
   const systemPrompt = `你是「广康集团AI助手」的智能客服，名字叫「小智」。
 请用简洁、友好、专业的中文回答用户问题。
@@ -471,15 +432,59 @@ ${faqContext}`;
     ...conversationHistory.slice(-6).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content })),
     { role: 'user', content: userMessage }
   ];
-  
+
   try {
-    const reply = await callOllamaChat(messages, {
-      baseURL: OLLAMA_BASE_URL,
+    const http = require('http');
+    const url = new URL(OLLAMA_URL);
+    
+    const payload = JSON.stringify({
       model: MODEL_NAME,
+      messages: messages,
       temperature: 0.3,
-      max_tokens: 500
+      max_tokens: 500,
+      stream: false
     });
-    return reply || '抱歉，我暂时无法回答您的问题，正在为您转接人工客服...';
+
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        },
+        timeout: 30000
+      };
+
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            const reply = parsed.choices?.[0]?.message?.content || '';
+            resolve(reply || '抱歉，我暂时无法回答您的问题，正在为您转接人工客服...');
+          } catch (e) {
+            resolve('抱歉，系统处理异常，正在为您转接人工客服...');
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        console.error('Ollama 请求失败：', err.message);
+        resolve('抱歉，AI 服务暂时不可用，正在为您转接人工客服...');
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        resolve('抱歉，AI 服务响应超时，正在为您转接人工客服...');
+      });
+
+      req.write(payload);
+      req.end();
+    });
   } catch (err) {
     console.error('生成回复失败：', err);
     return '抱歉，系统暂时繁忙，正在为您转接人工客服，请稍候...';
@@ -490,8 +495,6 @@ ${faqContext}`;
 const app = express();
 app.use(cors());
 app.use(express.json());
-// 性能监控中间件（记录所有API响应时间）
-app.use(performanceMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
 // 静态文件服务：uploads 目录（图片/附件）
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -507,8 +510,7 @@ const uploadMedia = multer({
   }
 });
 
-// ============ 管理后台 API（已迁移到 rag-admin.js）============
-/*
+// 管理后台 API
 app.get('/api/admin/stats', (req, res) => {
   try {
     const db = readDB();
@@ -527,182 +529,9 @@ app.get('/api/admin/stats', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-*/
 
-
-
-// ============ RAG 管理统一路由（整合意图理解、答案改写、FAQ、知识库）============
-// 说明：以下路由已迁移到 rag-admin.js，通过统一 Router 管理
-// 路径保持不变（/api/admin/*），前端无需修改
-const ragAdminRouter = require('./rag-admin');
-app.use('/api/admin', ragAdminRouter);
-const uploadRouter = require('./upload-endpoints');
-app.use('/api/admin', uploadRouter);
-// ============ 以下为已迁移到 rag-admin.js 的旧路由定义（已注释，保留以备回滚）============
-/*
-  try {
-    const { query, context = {} } = req.body;
-    if (!query || !query.trim()) return res.status(400).json({ error: 'query 不能为空' });
-    console.log('[API] Received query:', JSON.stringify(query));
-    const result = await understandIntent(query.trim(), context);
-    console.log('[API] understandIntent result:', JSON.stringify(result));
-    res.json({ success: true, ...result });
-  } catch (err) {
-    console.error('[Intent API] 解析失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 批量问题意图解析
-app.post('/api/admin/intent-batch', async (req, res) => {
-  try {
-    const { queries } = req.body;
-    if (!Array.isArray(queries) || queries.length === 0) return res.status(400).json({ error: 'queries 必须是非空数组' });
-    const results = await batchUnderstandIntents(queries);
-    res.json({ success: true, results, total: results.length });
-  } catch (err) {
-    console.error('[Intent API] 批量解析失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 获取意图分类体系
-app.get('/api/admin/intent-taxonomy', (req, res) => {
-  try {
-    const taxonomy = INTENT_TAXONOMY;
-    res.json({ success: true, taxonomy });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-*/
-// ============ 多轮对话记忆 API ============
-// 存储对话轮次
-app.post('/api/chat/store', (req, res) => {
-  try {
-    const { sessionId, userQuery, aiResponse, intent, entities } = req.body;
-    if (!sessionId) return res.status(400).json({ error: 'sessionId 不能为空' });
-    const result = storeConversationRound(sessionId, {
-      userQuery: userQuery || '',
-      aiResponse: aiResponse || '',
-      intent: intent || null,
-      entities: entities || [],
-      timestamp: Date.now()
-    });
-    res.json({ success: true, roundId: result.roundId, totalRounds: result.totalRounds });
-  } catch (err) {
-    console.error('[Memory API] 存储失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 获取对话历史
-app.post('/api/chat/history', (req, res) => {
-  try {
-    const { sessionId, limit = 10, includeContext = false } = req.body;
-    if (!sessionId) return res.status(400).json({ error: 'sessionId 不能为空' });
-    const history = getConversationHistory(sessionId, limit, includeContext);
-    res.json({ success: true, history, total: history.length });
-  } catch (err) {
-    console.error('[Memory API] 获取历史失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 增强查询（指代消解 + 上下文补全）
-app.post('/api/chat/enhance', async (req, res) => {
-  try {
-    const { query, sessionId } = req.body;
-    if (!query || !sessionId) return res.status(400).json({ error: 'query 和 sessionId 必填' });
-    const enhanced = await enhanceQueryWithMemory(query, sessionId);
-    res.json({ success: true, original: query, enhanced });
-  } catch (err) {
-    console.error('[Memory API] 增强查询失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 获取记忆统计
-app.get('/api/chat/memory-stats', (req, res) => {
-  try {
-    const stats = getMemoryStats();
-    res.json({ success: true, ...stats });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 清空会话历史
-app.post('/api/chat/clear', (req, res) => {
-  try {
-    const { sessionId } = req.body;
-    clearConversationHistory(sessionId || null);
-    res.json({ success: true, message: sessionId ? '会话已清空' : '所有会话已清空' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ============ LLM 智能改写答案 API（已迁移到 rag-admin.js）============
-/*
-// 测试改写单个答案
-app.post('/api/admin/rewrite-test', async (req, res) => {
-  try {
-    const { originalAnswer, userMessage, conversationHistory, options = {} } = req.body;
-    if (!originalAnswer || !originalAnswer.trim()) return res.status(400).json({ error: 'originalAnswer 不能为空' });
-    const rewritten = await rewriteToColloquial(originalAnswer, {
-      userMessage: userMessage || '',
-      conversationHistory: conversationHistory || [],
-      tone: options.tone || 'friendly',
-      userName: options.userName || '',
-      isReturnUser: options.isReturnUser || false,
-      intent: options.intent || null
-    });
-    res.json({ success: true, original: originalAnswer, rewritten, changed: rewritten !== originalAnswer });
-  } catch (err) {
-    console.error('[Rewrite API] 改写失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 批量改写答案
-app.post('/api/admin/rewrite-batch', async (req, res) => {
-  try {
-    const { answers, options = {} } = req.body;
-    if (!Array.isArray(answers) || answers.length === 0) return res.status(400).json({ error: 'answers 必须是非空数组' });
-    const results = await batchRewrite(answers, options);
-    res.json({ success: true, results, total: results.length });
-  } catch (err) {
-    console.error('[Rewrite API] 批量改写失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 获取可用语气列表
-app.get('/api/admin/rewrite-tones', (req, res) => {
-  try {
-    const tones = getToneList();
-    res.json({ success: true, tones });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 评估改写质量
-app.post('/api/admin/rewrite-evaluate', (req, res) => {
-  try {
-    const { original, rewritten } = req.body;
-    if (!original || !rewritten) return res.status(400).json({ error: 'original 和 rewritten 必填' });
-    const evaluation = evaluateQuality(original, rewritten);
-    res.json({ success: true, evaluation });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-*/
-
-// ============ 知识库管理 API（已迁移到 rag-admin.js）============
-/*
+// ============ 知识库管理 API ============
+// 获取知识库列表
 app.get('/api/admin/knowledge-bases', (req, res) => {
   try {
     res.json(getKnowledgeBases().filter(k => k.isActive));
@@ -721,10 +550,8 @@ app.post('/api/admin/knowledge-bases', (req, res) => {
     const id = 'kb_' + Date.now();
     list.push({ id, name: name.trim(), description: description || '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDefault: false, isActive: true });
     saveKnowledgeBases(list);
-    auditLog('kb_create', 'admin', { id, name: name.trim() });
     res.json({ success: true, id });
   } catch (err) {
-    errorLog('新增知识库失败', err, req.body);
     res.status(500).json({ error: err.message });
   }
 });
@@ -735,16 +562,13 @@ app.put('/api/admin/knowledge-bases/:id', (req, res) => {
     const list = getKnowledgeBases();
     const idx = list.findIndex(k => k.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    const { name, description, isActive } = req.body;
+    const { name, description } = req.body;
     if (name !== undefined) list[idx].name = name.trim();
     if (description !== undefined) list[idx].description = description;
-    if (isActive !== undefined) list[idx].isActive = isActive;
     list[idx].updatedAt = new Date().toISOString();
     saveKnowledgeBases(list);
-    auditLog('kb_update', 'admin', { id: req.params.id, name: list[idx].name });
     res.json({ success: true });
   } catch (err) {
-    errorLog('修改知识库失败', err, req.body);
     res.status(500).json({ error: err.message });
   }
 });
@@ -769,17 +593,13 @@ app.delete('/api/admin/knowledge-bases/:id', (req, res) => {
     // 标记删除（不真正删除，设为 inactive）
     list.find(k => k.id === req.params.id).isActive = false;
     saveKnowledgeBases(list);
-    auditLog('kb_delete', 'admin', { id: req.params.id, name: target.name });
     res.json({ success: true });
   } catch (err) {
-    errorLog('删除知识库失败', err, { id: req.params.id });
     res.status(500).json({ error: err.message });
   }
 });
-*/ // 知识库管理API注释结束
 
-// ============ 分类管理 API（支持二级分类）（已迁移到 rag-admin.js）============
-/*
+// ============ 分类管理 API（支持二级分类） ============
 // 获取分类列表（支持按 knowledgeBaseId 过滤）
 app.get('/api/admin/categories', (req, res) => {
   try {
@@ -824,10 +644,8 @@ app.post('/api/admin/categories', (req, res) => {
       isDefault: false
     });
     saveCategories(list);
-    auditLog('category_create', 'admin', { id, name: name.trim() });
     res.json({ success: true, id });
   } catch (err) {
-    errorLog('新增分类失败', err, req.body);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1377,7 +1195,6 @@ app.post('/api/admin/a8-sync', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-*/ // 分类管理、FAQ管理、上传管理、向量管理等API已迁移到 rag-admin.js
 
 // 从文本自动提取 FAQ，uploadCategory 为上传时选择的分类（优先级最高）
 function extractFAQFromText(text, uploadCategory = null) {
@@ -1421,9 +1238,7 @@ function extractFAQFromText(text, uploadCategory = null) {
   
   for (const para of paragraphs.slice(0, 50)) {  // 最多处理50段
     // 尝试按句子分割：第一句作为问题，其余作为答案
-    // 修复：避免使用正向后行断言（某些Node.js版本不支持）
-    const sentences = para.match(/[^。！？!?]+[。！？!?]?/g);
-    if (!sentences) continue;
+    const sentences = para.split(/(?<=[。！？!?])\s*/).map(s => s.trim()).filter(s => s.length > 3);
     if (sentences.length >= 2) {
       // 如果段落有多个句子，第一句作为问题（加问号），其余作为答案
       let question = sentences[0];
@@ -1436,7 +1251,7 @@ function extractFAQFromText(text, uploadCategory = null) {
       }
     } else if (sentences.length === 1 && para.length > 10) {
       // 只有一句话，尝试从标点和关键词判断是否是问答
-      const splitIdx = para.search(/[：:]/);
+      const splitIdx = para.search(/[：:]\s*/);
       if (splitIdx > 0 && splitIdx < para.length - 2) {
         const question = para.slice(0, splitIdx).trim() + '？';
         const answer = para.slice(splitIdx + 1).trim();
@@ -1467,8 +1282,7 @@ function extractFAQFromText(text, uploadCategory = null) {
   return results;
 }
 
-// ============ 对话记录 API（已迁移到 rag-admin.js）============
-/*
+// ============ 对话记录 API ============
 app.get('/api/admin/conversations', (req, res) => {
   try {
     const db = readDB();
@@ -1538,7 +1352,6 @@ app.post('/api/admin/satisfaction', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-*/
 
 // ============ WebSocket 服务 ============
 const server = http.createServer(app);
@@ -1553,7 +1366,7 @@ function getOrCreateConversation(sessionId) {
   
   const id = uuidv4();
   const now = new Date().toISOString();
-  conv = { id, session_id: sessionId, messages: JSON.stringify([]), intent: null, resolved: false, created_at: now, updated_at: now };
+  conv = { id, session_id: sessionId, messages: JSON.stringify([]), intent: null, resolved: false, satisfaction: null, created_at: now, updated_at: now };
   db.conversations.push(conv);
   writeDB(db);
   return { ...conv, messages: [] };
@@ -1627,26 +1440,7 @@ wss.on('connection', (ws) => {
           // 高置信度（≥0.6）：直接返回最佳答案，不等待用户点击，不调LLM
           if (candidates[0].confidence >= 0.6) {
             const best = candidates[0];
-            let reply = stripHtmlTags(best.faq.answer);
-            
-            // 添加附件信息（区分图片和文件）
-            if (best.faq.attachments && best.faq.attachments.length > 0) {
-              reply += '\n\n📎 **相关附件**：\n';
-              best.faq.attachments.forEach(att => {
-                const downloadUrl = `/uploads/faq_attachments/${att.filename}`;
-                const ext = att.originalName.split('.').pop().toLowerCase();
-                const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
-                
-                if (imageExts.includes(ext)) {
-                  // 图片：使用 Markdown 图片语法
-                  reply += `![${att.originalName}](${downloadUrl})\n`;
-                } else {
-                  // 文件：使用 Markdown 链接
-                  reply += `- 📎 [${att.originalName}](${downloadUrl})（点击下载）\n`;
-                }
-              });
-            }
-            
+            const reply = best.faq.answer;
             saveMessage(sessionId, 'assistant', reply, best.intent);
             ws.send(JSON.stringify({
               type: 'message',
@@ -1671,7 +1465,7 @@ wss.on('connection', (ws) => {
           const candidateList = candidates.map(c => ({
             id: c.faq.id,
             question: c.faq.question,
-            answer: stripHtmlTags(c.faq.answer),
+            answer: c.faq.answer,
             confidence: Math.round(c.confidence * 100) / 100
           }));
 
@@ -1683,96 +1477,53 @@ wss.on('connection', (ws) => {
           return;
         }
         
-        // 没有匹配，走原有逻辑（AI 生成或转人工）
-        ws.send(JSON.stringify({
-          type: 'intent',
-          intent: intentResult.intent,
-          confidence: intentResult.confidence,
-          intent: intentResult.intent,
-          confidence: intentResult.confidence,
-        }));
-        
-        // 记录 FAQ 日志
-        const db = readDB();
-        db.faq_logs.push({
-          id: uuidv4(), session_id: sessionId, question: userMessage,
-          matched_question: intentResult.matchedFAQ?.question || null,
-          intent: intentResult.intent, confidence: intentResult.confidence,
-          transferred: 0, created_at: new Date().toISOString()
-        });
-        writeDB(db);
-        
-        if (intentResult.confidence < 0.4) {
-          const reply = '正在为您转接人工客服，请稍候...我们的工作时间是 9:00-21:00，请您耐心等待。';
-          saveMessage(sessionId, 'assistant', reply, intentResult.intent);
-          ws.send(JSON.stringify({
-            type: 'message', content: reply,
-            timestamp: new Date().toISOString()
-          }));
-          return;
-        }
-        
-        const conv = (() => {
-          const db = readDB();
-          const c = db.conversations.find(c => c.session_id === sessionId);
-          return c ? { ...c, messages: JSON.parse(c.messages) } : null;
-        })();
-        const history = conv ? conv.messages : [];
-        
-        ws.send(JSON.stringify({ type: 'typing', status: true }));
-        
-        try {
-          const reply = await generateAgentReply(sessionId, userMessage, history, intentResult);
-          saveMessage(sessionId, 'assistant', reply, intentResult.intent);
-          
-          ws.send(JSON.stringify({
-            type: 'message', content: reply,
-            timestamp: new Date().toISOString(),
-            intent: intentResult.intent, confidence: intentResult.confidence
-          }));
-        } catch (err) {
-          console.error('生成回复失败：', err);
-          const fallback = '抱歉，我暂时无法处理您的问题，正在为您转接人工客服...';
-          saveMessage(sessionId, 'assistant', fallback, intentResult.intent);
-          ws.send(JSON.stringify({ type: 'message', content: fallback, timestamp: new Date().toISOString(), fallback: true }));
-        } finally {
-          ws.send(JSON.stringify({ type: 'typing', status: false }));
-        }
+
+        // 低置信度：发送候选列表让用户选择
+        console.log('[WS] 低置信度，发送候选列表: ' + userMessage + ' (top1 confidence: ' + candidates[0].confidence.toFixed(2) + ')');
+        return;
       }
       
+      // 没有匹配，直接转人工
+      console.log('[WS] 无匹配，转人工: ' + userMessage);
+      const reply = '抱歉，我没有找到相关的信息。正在为您转接人工客服，请稍候...';
+      saveMessage(sessionId, 'assistant', reply, 'unknown');
+      ws.send(JSON.stringify({
+        type: 'message',
+        content: reply,
+        timestamp: new Date().toISOString(),
+        fallback: true
+      }));
+      return;
       if (msg.type === 'candidate_select' && sessionId) {
         const { candidateId } = msg;
         const faqList = getFAQ();
         const faq = faqList.find(f => f.id === candidateId);
         if (faq) {
-          let reply = stripHtmlTags(faq.answer);
-          
-          // 添加附件信息（区分图片和文件）
-          if (faq.attachments && faq.attachments.length > 0) {
-            reply += '\n\n📎 **相关附件**：\n';
-            faq.attachments.forEach(att => {
-              const downloadUrl = `/uploads/faq_attachments/${att.filename}`;
-              const ext = att.originalName.split('.').pop().toLowerCase();
-              const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
-              
-              if (imageExts.includes(ext)) {
-                // 图片：使用 Markdown 图片语法
-                reply += `![${att.originalName}](${downloadUrl})\n`;
-              } else {
-                // 文件：使用 Markdown 链接
-                reply += `- 📎 [${att.originalName}](${downloadUrl})（点击下载）\n`;
-              }
-            });
-          }
-          
-          saveMessage(sessionId, 'assistant', reply, faq.intent);
+          saveMessage(sessionId, 'assistant', faq.answer, faq.intent);
           ws.send(JSON.stringify({
-            type: 'message', content: reply,
+            type: 'message', content: faq.answer,
             timestamp: new Date().toISOString(),
             intent: faq.intent, confidence: 1.0, fallback: true
           }));
         }
         return;
+      }
+      
+      if (msg.type === 'satisfaction') {
+        const { rating, comment } = msg;
+        const db = readDB();
+        db.satisfaction_stats.push({
+          id: uuidv4(), session_id: sessionId, rating, comment: comment || '',
+          created_at: new Date().toISOString()
+        });
+        const convIdx = db.conversations.findIndex(c => c.session_id === sessionId);
+        if (convIdx !== -1) {
+          db.conversations[convIdx].satisfaction = rating;
+          db.conversations[convIdx].resolved = true;
+          db.conversations[convIdx].updated_at = new Date().toISOString();
+        }
+        writeDB(db);
+        ws.send(JSON.stringify({ type: 'satisfaction_ack', success: true }));
       }
       
     } catch (err) {

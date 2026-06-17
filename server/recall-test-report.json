@@ -1,0 +1,29 @@
+{
+  "testTime": "2026-06-16T06:47:42.582Z",
+  "totalTests": 14,
+  "recallRate": "92.9",
+  "categoryStats": {
+    "原始问题": {
+      "total": 3,
+      "recalled": 3
+    },
+    "同义改写": {
+      "total": 3,
+      "recalled": 3
+    },
+    "关键词匹配": {
+      "total": 3,
+      "recalled": 3
+    },
+    "口语化表达": {
+      "total": 3,
+      "recalled": 2
+    },
+    "混合查询": {
+      "total": 2,
+      "recalled": 2
+    }
+  },
+  "target": 85,
+  "passed": true
+}

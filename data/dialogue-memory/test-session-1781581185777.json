@@ -1,0 +1,20 @@
+[
+  {
+    "roundId": "test-session-1781581185777_1",
+    "timestamp": "2026-06-16T03:39:45.777Z",
+    "userQuery": "如何申请报销",
+    "aiResponse": "您可以通过在线报销系统提交申请...",
+    "intent": null,
+    "entities": [],
+    "topics": []
+  },
+  {
+    "roundId": "test-session-1781581185777_2",
+    "timestamp": "2026-06-16T03:39:45.782Z",
+    "userQuery": "报销需要哪些材料",
+    "aiResponse": "需要提供发票、收据、报销单...",
+    "intent": null,
+    "entities": [],
+    "topics": []
+  }
+]
