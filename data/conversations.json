@@ -98,6 +98,420 @@
       "resolved": false,
       "created_at": "2026-06-22T02:22:59.729Z",
       "updated_at": "2026-06-22T02:22:59.732Z"
+    },
+    {
+      "id": "22351999-065f-4841-a027-479e05106cec",
+      "session_id": "test-1782105963314",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T05:26:03.327Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T05:26:03.329Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T05:26:03.327Z",
+      "updated_at": "2026-06-22T05:26:03.329Z"
+    },
+    {
+      "id": "2a0ba5ec-57b6-4b33-a8d4-5fc0d12936c8",
+      "session_id": "test-1782106024335",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T05:27:04.340Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:27:04.339Z",
+      "updated_at": "2026-06-22T05:27:04.340Z"
+    },
+    {
+      "id": "981ef335-c247-4b91-b531-8ebcd4e7ee83",
+      "session_id": "test-1782106085355",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T05:28:05.359Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:28:05.358Z",
+      "updated_at": "2026-06-22T05:28:05.359Z"
+    },
+    {
+      "id": "a72b980a-a4ae-48ce-adb7-b1bbb1b9e77c",
+      "session_id": "test-1782106140693",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T05:29:00.705Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T05:29:00.707Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T05:29:00.704Z",
+      "updated_at": "2026-06-22T05:29:00.707Z"
+    },
+    {
+      "id": "30bba08a-7f40-4d03-9bf9-51bef3365186",
+      "session_id": "test-1782106232714",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T05:30:32.718Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:30:32.718Z",
+      "updated_at": "2026-06-22T05:30:32.718Z"
+    },
+    {
+      "id": "ff4a7875-6cdc-4721-a0a1-6784e8f0017a",
+      "session_id": "test-1782106324730",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T05:32:04.734Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:32:04.733Z",
+      "updated_at": "2026-06-22T05:32:04.734Z"
+    },
+    {
+      "id": "4ddf61be-ff49-4c54-b2c6-7c5c57e59b0b",
+      "session_id": "test-1782106357190",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T05:32:37.201Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T05:32:37.203Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T05:32:37.200Z",
+      "updated_at": "2026-06-22T05:32:37.203Z"
+    },
+    {
+      "id": "67751ecc-d0fc-4876-9b6c-a9f83d432171",
+      "session_id": "test-1782106452714",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T05:34:12.735Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T05:34:12.745Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T05:34:12.729Z",
+      "updated_at": "2026-06-22T05:34:12.745Z"
+    },
+    {
+      "id": "6d364724-39f5-4edf-bad3-d6b5a0b2e307",
+      "session_id": "test-1782106544724",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T05:35:44.730Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:35:44.729Z",
+      "updated_at": "2026-06-22T05:35:44.730Z"
+    },
+    {
+      "id": "5181fb51-b0cc-4091-9034-8c85ad512759",
+      "session_id": "test-1782106588636",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T05:36:28.656Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T05:36:28.662Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T05:36:28.651Z",
+      "updated_at": "2026-06-22T05:36:28.662Z"
+    },
+    {
+      "id": "4759e89c-3b95-4594-b5f7-21cfa5e8e415",
+      "session_id": "test-1782106680664",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T05:38:00.668Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:38:00.667Z",
+      "updated_at": "2026-06-22T05:38:00.668Z"
+    },
+    {
+      "id": "a3ca247c-7ec8-4e6f-a2b6-0328333e77fe",
+      "session_id": "test-1782106772680",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T05:39:32.685Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:39:32.684Z",
+      "updated_at": "2026-06-22T05:39:32.686Z"
+    },
+    {
+      "id": "ca1a352f-42c7-42c5-ae87-af375538f78a",
+      "session_id": "test-1782106829458",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T05:40:29.482Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T05:40:29.486Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T05:40:29.476Z",
+      "updated_at": "2026-06-22T05:40:29.486Z"
+    },
+    {
+      "id": "2614f7b6-f208-4ba2-9424-f65ea19e5f79",
+      "session_id": "test-1782106888370",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T05:41:28.384Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T05:41:28.388Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T05:41:28.382Z",
+      "updated_at": "2026-06-22T05:41:28.388Z"
+    },
+    {
+      "id": "663388d8-b286-4898-8598-b6fe939fa967",
+      "session_id": "test-1782106890401",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T05:41:30.408Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:41:30.404Z",
+      "updated_at": "2026-06-22T05:41:30.408Z"
+    },
+    {
+      "id": "2809a0f1-97d6-4c39-870a-8590bd429f48",
+      "session_id": "test-1782106921465",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T05:42:01.470Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:42:01.469Z",
+      "updated_at": "2026-06-22T05:42:01.470Z"
+    },
+    {
+      "id": "33b2c90e-e032-4f94-901c-e26a5a5e7348",
+      "session_id": "test-1782106982425",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T05:43:02.431Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:43:02.429Z",
+      "updated_at": "2026-06-22T05:43:02.431Z"
+    },
+    {
+      "id": "5cbf2551-eb7a-4eff-9422-e040cf289b50",
+      "session_id": "test-1782107013471",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T05:43:33.478Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:43:33.476Z",
+      "updated_at": "2026-06-22T05:43:33.478Z"
+    },
+    {
+      "id": "f058449a-6421-4d56-8fe0-3b4ba3b63fcc",
+      "session_id": "test-1782107179394",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T05:46:19.419Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T05:46:19.424Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T05:46:19.413Z",
+      "updated_at": "2026-06-22T05:46:19.424Z"
+    },
+    {
+      "id": "e39a925a-3fcd-45eb-99d3-7ac00bfc6a6b",
+      "session_id": "test-1782107181435",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T05:46:21.441Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:46:21.439Z",
+      "updated_at": "2026-06-22T05:46:21.441Z"
+    },
+    {
+      "id": "7d49c8e1-b383-4767-8a00-092b4798041c",
+      "session_id": "test-1782107246171",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T05:47:26.186Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T05:47:26.195Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T05:47:26.183Z",
+      "updated_at": "2026-06-22T05:47:26.196Z"
+    },
+    {
+      "id": "e3ce09fe-25ff-4e0c-80cf-68fbc3ba00f3",
+      "session_id": "test-1782107248212",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T05:47:28.217Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:47:28.215Z",
+      "updated_at": "2026-06-22T05:47:28.217Z"
+    },
+    {
+      "id": "d779b2bb-9006-45ed-a04a-b9987dc44b1a",
+      "session_id": "test-1782107273464",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T05:47:53.469Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:47:53.467Z",
+      "updated_at": "2026-06-22T05:47:53.469Z"
+    },
+    {
+      "id": "5d25bf68-abab-4a21-ac73-222dd9c7a0df",
+      "session_id": "test-1782107340224",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T05:49:00.230Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:49:00.228Z",
+      "updated_at": "2026-06-22T05:49:00.230Z"
+    },
+    {
+      "id": "ab263227-ce8c-4aa1-9746-2e3fadb5d793",
+      "session_id": "test-1782107435556",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T05:50:35.587Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T05:50:35.593Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T05:50:35.579Z",
+      "updated_at": "2026-06-22T05:50:35.593Z"
+    },
+    {
+      "id": "b76120ac-d0cf-4faf-9536-01a52dd10a67",
+      "session_id": "test-1782107437609",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T05:50:37.612Z\"},{\"role\":\"assistant\",\"content\":\"您需要填写费用报销单或差旅费报销单，并提供真实、合法的原始凭据，包括支付凭证详情（如超过500元的餐饮、礼品等业务支出），以及明细清单和验收人签字确认的大宗办公用品购置及其他修理费用。请确保所有材料完整无误后再提交申请。\",\"timestamp\":\"2026-06-22T05:51:02.952Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:50:37.611Z",
+      "updated_at": "2026-06-22T05:51:02.952Z"
+    },
+    {
+      "id": "4bbf34a2-98a2-4f04-b4ef-62e660940959",
+      "session_id": "test-1782107464966",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T05:51:04.970Z\"},{\"role\":\"assistant\",\"content\":\"付款审批流程通常在OA或ERP系统中完成，经办人需填写付款申请单，并附上合同、发票以及相关证明材料（如进度表或预决算表）。然后提交给上级审核直至财务部门审批。无特殊情况无需额外附件。请根据具体业务类型选择合适的付款申请类别进行操作。\",\"timestamp\":\"2026-06-22T05:51:36.458Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T05:51:04.969Z",
+      "updated_at": "2026-06-22T05:51:36.458Z"
+    },
+    {
+      "id": "3cb7ef7b-a4ee-429e-8a42-6970f9d1c451",
+      "session_id": "test-1782108261262",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T06:04:21.271Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T06:04:21.274Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T06:04:21.270Z",
+      "updated_at": "2026-06-22T06:04:21.274Z"
+    },
+    {
+      "id": "4443ff93-9317-41dc-8483-210849638296",
+      "session_id": "test-1782108263292",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T06:04:23.296Z\"},{\"role\":\"assistant\",\"content\":\"您需要填写费用报销单或差旅费报销单，并附上真实、合法的原始凭据。对于涉及餐饮、礼品等且单笔金额超过500元的情况，请提供支付凭证作为附件，确保所有信息准确无误。\",\"timestamp\":\"2026-06-22T06:05:18.954Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:04:23.295Z",
+      "updated_at": "2026-06-22T06:05:18.954Z"
+    },
+    {
+      "id": "c772f928-4df1-4c41-9447-7cfdc78732d1",
+      "session_id": "test-1782108320966",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T06:05:20.969Z\"},{\"role\":\"assistant\",\"content\":\"付款单据在填写付款申请单时需要附上经审批的合同、发票及相关证明材料（如外部研发及工程付款需附进度表或预决算表）。您需要先通过OA或ERP系统提交，无特殊情况自动完成审批。如有超权限的情况，则须总经理核准。请确保所有文件齐全并符合规定要求。\",\"timestamp\":\"2026-06-22T06:05:59.652Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:05:20.968Z",
+      "updated_at": "2026-06-22T06:05:59.652Z"
+    },
+    {
+      "id": "e2b52c3f-b5e9-4c5f-a1c4-812e610d3bd7",
+      "session_id": "test-1782108888269",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T06:14:48.282Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T06:14:48.286Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T06:14:48.279Z",
+      "updated_at": "2026-06-22T06:14:48.286Z"
+    },
+    {
+      "id": "f22dd089-b55e-44eb-bcb2-f3483d2c8f7b",
+      "session_id": "test-1782108890299",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T06:14:50.302Z\"},{\"role\":\"assistant\",\"content\":\"您需要填写费用报销单或差旅费报销单，并附上真实、合法、有效的原始凭证，如发票和相关的支付凭据（如果涉及餐饮、住宿等大额支出）。请确保详细写明各项费用的用途。预支款项应注明冲抵借款。如有疑问，请咨询财务部门。\",\"timestamp\":\"2026-06-22T06:15:50.768Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:14:50.302Z",
+      "updated_at": "2026-06-22T06:15:50.768Z"
+    },
+    {
+      "id": "df94e2d9-f70d-4251-bcf3-c418354cb318",
+      "session_id": "test-1782109008303",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T06:16:48.319Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T06:16:48.321Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T06:16:48.315Z",
+      "updated_at": "2026-06-22T06:16:48.321Z"
+    },
+    {
+      "id": "2e2ebdf3-98a8-4a30-819b-2403254a1382",
+      "session_id": "test-1782109010328",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T06:16:50.332Z\"},{\"role\":\"assistant\",\"content\":\"您需要填写费用报销单或差旅费报销单，并附上真实、合法的原始凭据和必要的支付证明（如果适用）。根据具体类别分别列出并详细说明每笔费用的用途，超过500元的大额支出需提供额外的付款凭证以备核查。请确保所有信息完整且准确无误。如果您有更多详细问题或需要进一步的帮助，请随时咨询我。\",\"timestamp\":\"2026-06-22T06:16:59.145Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:16:50.331Z",
+      "updated_at": "2026-06-22T06:16:59.145Z"
+    },
+    {
+      "id": "c864f5d6-0903-4346-879d-afd1ac1c3e60",
+      "session_id": "test-1782109021154",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T06:17:01.157Z\"},{\"role\":\"assistant\",\"content\":\"付款申请单由经办人在OA或ERP系统中填写，并上传相关证明材料如合同、发票等（外部研发及工程付款需要附进度表或预决算表）。之后，经过各层级审核批准后通过ERP供应链系统自动生成并发送到财务部门进行最后的付款处理。\",\"timestamp\":\"2026-06-22T06:17:39.838Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:17:01.156Z",
+      "updated_at": "2026-06-22T06:17:39.838Z"
+    },
+    {
+      "id": "f74c5b1c-0404-47dd-ad6f-6986d43ef389",
+      "session_id": "test-1782109098511",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T06:18:18.525Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T06:18:18.529Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T06:18:18.523Z",
+      "updated_at": "2026-06-22T06:18:18.529Z"
+    },
+    {
+      "id": "3e19f2ce-18ed-4f09-9835-c687f29de7ce",
+      "session_id": "test-1782109100535",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T06:18:20.538Z\"},{\"role\":\"assistant\",\"content\":\"您需要填写相应的费用报销单或差旅费报销单，并附上真实有效的原始费用凭证。对于餐饮、住宿等大额支出需提供支付凭据证明，如无特殊情况请详细说明原因。若有借款需注明冲借款项信息，购买多品种物品要附明细清单和验收确认。\",\"timestamp\":\"2026-06-22T06:18:29.607Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:18:20.537Z",
+      "updated_at": "2026-06-22T06:18:29.607Z"
+    },
+    {
+      "id": "93847c18-4233-4b94-a0ec-7f70c03a2425",
+      "session_id": "test-1782109111621",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T06:18:31.625Z\"},{\"role\":\"assistant\",\"content\":\"付款单据的生成通常是在OA或ERP系统中填写付款申请单，并附上经过审批的合同、发票及相关证明材料。外部研发及工程付款需提供进度表或预决算表。提交后，如果没有特殊情况，则由企业资源计划系统的供应链部分自动生成付款申请，无需再添加附件。具体的审批流程可能会根据公司的规定有所不同，请参考公司内部的具体操作指南或咨询财务部门以获得更准确的信息。\",\"timestamp\":\"2026-06-22T06:18:43.514Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:18:31.624Z",
+      "updated_at": "2026-06-22T06:18:43.514Z"
+    },
+    {
+      "id": "216f1acc-8035-4b2e-bbdc-27246aff3c90",
+      "session_id": "test-1782109250887",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T06:20:50.908Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T06:20:50.912Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T06:20:50.905Z",
+      "updated_at": "2026-06-22T06:20:50.912Z"
+    },
+    {
+      "id": "f8b56a81-baf4-4913-abd8-c17a206d82e8",
+      "session_id": "test-1782109252928",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T06:20:52.933Z\"},{\"role\":\"assistant\",\"content\":\"您需要填写费用报销单或差旅费报销单，并提供真实、合法的原始凭据和附件（如支付页面截图）。请确保所有信息准确无误并附上必要证明材料，以便顺利通过审核。\",\"timestamp\":\"2026-06-22T06:21:01.219Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:20:52.932Z",
+      "updated_at": "2026-06-22T06:21:01.219Z"
+    },
+    {
+      "id": "67752ca2-2861-40c1-823a-bd493cee391a",
+      "session_id": "test-1782109263228",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T06:21:03.234Z\"},{\"role\":\"assistant\",\"content\":\"根据我们的资料，付款单据适用于多种采购和财务业务。经办人需要在OA或ERP系统中填写付款申请单，并附上已经审批的合同、发票以及相关证明材料（对于外部研发及工程付款，还需提供进度表或预决算表）。具体的审批流程可能会因公司规定而有所不同，请您参照公司的内部管理制度详细了解相关的审批步骤。\",\"timestamp\":\"2026-06-22T06:21:14.515Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:21:03.232Z",
+      "updated_at": "2026-06-22T06:21:14.515Z"
+    },
+    {
+      "id": "34d94be6-e94e-49d0-9b17-f8ad2e24a234",
+      "session_id": "test-1782109338499",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T06:22:18.510Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T06:22:18.513Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T06:22:18.508Z",
+      "updated_at": "2026-06-22T06:22:18.513Z"
+    },
+    {
+      "id": "fda26dea-2185-4900-891c-309fcf32af4e",
+      "session_id": "test-1782109340529",
+      "messages": "[]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:22:20.533Z",
+      "updated_at": "2026-06-22T06:22:20.533Z"
+    },
+    {
+      "id": "1df88046-9260-4bf5-889a-93af1d7fe4a0",
+      "session_id": "test-1782109509483",
+      "messages": "[{\"role\":\"user\",\"content\":\"报销\",\"timestamp\":\"2026-06-22T06:25:09.492Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-22T06:25:09.494Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-22T06:25:09.490Z",
+      "updated_at": "2026-06-22T06:25:09.494Z"
+    },
+    {
+      "id": "bcc10b6e-4879-4d43-8fa9-2df4683d5c9a",
+      "session_id": "test-1782109511504",
+      "messages": "[{\"role\":\"user\",\"content\":\"如何申请费用报销\",\"timestamp\":\"2026-06-22T06:25:11.507Z\"},{\"role\":\"assistant\",\"content\":\"您需要填写相应的费用报销单或差旅费报销单，并附上真实、合法且有效的原始凭据及支付证明（如涉及大额餐饮、礼品等支出），对于预算外的支出还需获得总经理审批。确保所有金额计算准确，单据附件完整后提交相关部门审核即可完成申请流程。\",\"timestamp\":\"2026-06-22T06:25:20.467Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:25:11.506Z",
+      "updated_at": "2026-06-22T06:25:20.467Z"
+    },
+    {
+      "id": "1bc18312-91f8-4880-ae8f-4d6ac6f96bc7",
+      "session_id": "test-1782109522479",
+      "messages": "[{\"role\":\"user\",\"content\":\"付款审批流程是什么\",\"timestamp\":\"2026-06-22T06:25:22.487Z\"},{\"role\":\"assistant\",\"content\":\"付款审批流程首先由经办人在OA或ERP系统中填写付款申请单，并附上合同和发票等证明材料，对于外部研发及工程付款还需提供进度表或预决算表。提交后，经过财务人员审核无误并确保符合条件，才可从ERP供应链系统自动生成付款申请，通常无需额外附件。\",\"timestamp\":\"2026-06-22T06:25:33.548Z\"}]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-22T06:25:22.485Z",
+      "updated_at": "2026-06-22T06:25:33.548Z"
     }
   ],
   "faq_logs": [
@@ -330,6 +744,110 @@
       "confidence": 0.3,
       "transferred": 0,
       "created_at": "2026-06-11T09:18:42.190Z"
+    },
+    {
+      "id": "02428111-1d22-4395-bfaf-c980e6a29fd1",
+      "session_id": "test-1782107437609",
+      "question": "如何申请费用报销",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T05:50:40.160Z"
+    },
+    {
+      "id": "6a91ed59-7c05-4d83-8f24-57e4a3c7ae31",
+      "session_id": "test-1782107464966",
+      "question": "付款审批流程是什么",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T05:51:13.269Z"
+    },
+    {
+      "id": "b7a2dfcf-8f05-494b-a03c-dd26fa470102",
+      "session_id": "test-1782108263292",
+      "question": "如何申请费用报销",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:04:53.315Z"
+    },
+    {
+      "id": "09df9f0f-dbd5-41fa-9116-b601e5e633c9",
+      "session_id": "test-1782108320966",
+      "question": "付款审批流程是什么",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:05:36.468Z"
+    },
+    {
+      "id": "ba8540b3-acb0-4ced-b62c-d0726dc9a959",
+      "session_id": "test-1782108890299",
+      "question": "如何申请费用报销",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:15:24.857Z"
+    },
+    {
+      "id": "d55ae536-9892-4b8f-98dc-b97ce37e2495",
+      "session_id": "test-1782109010328",
+      "question": "如何申请费用报销",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:16:52.991Z"
+    },
+    {
+      "id": "37de9e93-7d86-419a-b21a-4f3144be5b8e",
+      "session_id": "test-1782109021154",
+      "question": "付款审批流程是什么",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:17:16.780Z"
+    },
+    {
+      "id": "f2c0d7a5-f32e-4e53-8be5-c4484d34969e",
+      "session_id": "test-1782109100535",
+      "question": "如何申请费用报销",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:18:23.230Z"
+    },
+    {
+      "id": "0934c2a9-d927-4e3b-9cef-ecf73ccac239",
+      "session_id": "test-1782109111621",
+      "question": "付款审批流程是什么",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:18:36.105Z"
+    },
+    {
+      "id": "8bca0e5a-b8d5-4730-aa59-f7f78ed9e6b6",
+      "session_id": "test-1782109252928",
+      "question": "如何申请费用报销",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:20:55.588Z"
+    },
+    {
+      "id": "890b97e8-90a5-495c-a6ad-246bf5edb209",
+      "session_id": "test-1782109263228",
+      "question": "付款审批流程是什么",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:21:07.659Z"
+    },
+    {
+      "id": "e6086860-5349-47d7-8188-5b05ce7a5d01",
+      "session_id": "test-1782109511504",
+      "question": "如何申请费用报销",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:25:14.118Z"
+    },
+    {
+      "id": "d232c63a-5b62-4a61-b3f7-dfc80f2d0719",
+      "session_id": "test-1782109522479",
+      "question": "付款审批流程是什么",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-22T06:25:26.958Z"
     }
   ]
 }

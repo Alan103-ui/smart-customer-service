@@ -536,15 +536,16 @@ async function searchByFAQCacheAsync(query, intent = null, topK = 5, threshold =
       }
     }
 
-    console.log(`[VectorStore] 混合搜索: ${finalResults.length} 条命中, top=${(finalResults[0]?.score * 100)?.toFixed(1) || 'N/A'}%`);
-
-    // LLM 重排序（提升 Precision）
-    try {
-      const reranked = await llmRerank(query, finalResults, topK);
-      console.log(`[VectorStore] LLM 重排序后: ${reranked.length} 条`);
+    console.log('[VectorStore] 混合搜索:', finalResults.length, '条命中');
+    
+    // 使用 Rerank 服务重排序（包含 LLM 降级）
+    if (useRerank && finalResults.length > 1) {
+      const rerankCandidates = finalResults.slice(0, Math.max(topK * 3, 10));
+      const reranked = await rerankResults(query, rerankCandidates, topK);
+      console.log(`[VectorStore] Rerank 后: ${reranked.length} 条`);
       return reranked;
-    } catch (e) {
-      console.warn('[VectorStore] LLM 重排序失败，使用 RRF 结果:', e.message);
+    } else {
+      console.log(`[VectorStore] 跳过 Rerank，直接返回 top-${topK}`);
       return finalResults.slice(0, topK);
     }
   } else {
@@ -672,109 +673,80 @@ function getEmbeddingFallback(text) {
   });
 }
 
-// ============ Rerank 重排序（三级降级策略）============
-// 优先级：独立 Rerank 服务 > LLM 重排序 > 软重排序
-let rerankServiceAvailable = null; // 缓存服务可用性（避免每次都检测）
-
+// ============ Rerank 重排序（直接使用 Python 服务）============
+// 使用独立部署的 bge-reranker-v2-m3 服务
 async function rerankResults(query, candidates, topN = 5) {
   if (candidates.length <= 1) return candidates;
   
-  // 第一级：调用独立部署的 bge-reranker-v2-m3 服务
+  console.log(`[Rerank] 开始重排序，候选数: ${candidates.length}`);
+  
+  // 调用独立部署的 bge-reranker-v2-m3 服务
   try {
-    // 快速检测服务是否可用（第一次调用时检测）
-    if (rerankServiceAvailable === null) {
-      try {
-        const http = require('http');
-        await new Promise((resolve, reject) => {
-          const req = http.get('http://172.17.6.18:8000/health', (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-              try {
-                const parsed = JSON.parse(data);
-                rerankServiceAvailable = parsed.status === 'ok';
-                resolve();
-              } catch (e) {
-                rerankServiceAvailable = false;
-                resolve();
-              }
-            });
-          });
-          req.on('error', () => { rerankServiceAvailable = false; resolve(); });
-          req.on('timeout', () => { req.destroy(); rerankServiceAvailable = false; resolve(); });
+    console.log('[Rerank] 正在调用 Python Rerank 服务...');
+    const http = require('http');
+    const documents = candidates.map(c => c.content || c.title || '');
+    const payload = JSON.stringify({ query, documents });
+    const options = {
+      hostname: '172.17.6.18',
+      port: 8000,
+      path: '/rerank',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      timeout: 10000
+    };
+    
+    const result = await new Promise((resolve, reject) => {
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.results && Array.isArray(parsed.results)) {
+              // 通过 index 匹配回原始候选
+              const reranked = parsed.results
+                .map(r => {
+                  const idx = r.index;
+                  if (idx === undefined || idx >= candidates.length) return null;
+                  return { ...candidates[idx], rerankScore: r.score };
+                })
+                .filter(Boolean)
+                .sort((a, b) => (b.rerankScore || 0) - (a.rerankScore || 0));
+              
+              console.log(`[Rerank] ${candidates.length}→${reranked.length} 条（服务重排序）`);
+              resolve(reranked);
+            } else {
+              reject(new Error('rerank响应格式异常'));
+            }
+          } catch (e) {
+            reject(e);
+          }
         });
-      } catch (e) {
-        rerankServiceAvailable = false;
-      }
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
+      req.write(payload);
+      req.end();
+    });
+    
+    return result.slice(0, topN);
+  } catch (e) {
+    console.warn('[Rerank] Python 服务调用失败，降级为 LLM 重排序:', e.message);
+    
+    // 降级到 LLM 重排序
+    try {
+      const reranked = await llmRerank(query, candidates, topN);
+      console.log(`[Rerank] ${candidates.length}→${reranked.length} 条（LLM 重排序）`);
+      return reranked;
+    } catch (e2) {
+      console.warn('[Rerank] LLM 重排序失败，降级为软重排序:', e2.message);
     }
     
-    if (rerankServiceAvailable) {
-      const http = require('http');
-      const documents = candidates.map(c => c.content || c.title || '');
-      const payload = JSON.stringify({ query, documents });
-      const options = {
-        hostname: '172.17.6.18',
-        port: 8000,
-        path: '/rerank',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-        timeout: 10000
-      };
-      
-      const result = await new Promise((resolve, reject) => {
-        const req = http.request(options, (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.results && Array.isArray(parsed.results)) {
-                // 通过 index 匹配回原始候选
-                const reranked = parsed.results
-                  .map(r => {
-                    const idx = r.index;
-                    if (idx === undefined || idx >= candidates.length) return null;
-                    return { ...candidates[idx], rerankScore: r.score };
-                  })
-                  .filter(Boolean)
-                  .sort((a, b) => (b.rerankScore || 0) - (a.rerankScore || 0));
-                
-                console.log(`[Rerank] ${candidates.length}→${reranked.length} 条（服务重排序）`);
-                resolve(reranked);
-              } else {
-                reject(new Error('rerank响应格式异常'));
-              }
-            } catch (e) {
-              reject(e);
-            }
-          });
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
-        req.write(payload);
-        req.end();
-      });
-      
-      return result.slice(0, topN);
-    }
-  } catch (e) {
-    console.warn('[Rerank] 服务重排序失败，降级为 LLM 重排序:', e.message);
-    rerankServiceAvailable = false; // 标记服务不可用
+    // 最后降级到软重排序
+    const result = softRerank(query, candidates, topN);
+    console.log(`[Rerank] ${candidates.length}→${result.length} 条（软重排序）`);
+    return result;
   }
-  
-  // 第二级：LLM 重排序（qwen2.5:14b，准确但慢）
-  try {
-    const reranked = await llmRerank(query, candidates, topN);
-    console.log(`[Rerank] ${candidates.length}→${reranked.length} 条（LLM 重排序）`);
-    return reranked;
-  } catch (e) {
-    console.warn('[Rerank] LLM 重排序失败，降级为软重排序:', e.message);
-  }
-  
-  // 第三级：软重排序（关键词重叠，快但不那么准确）
-  const result = softRerank(query, candidates, topN);
-  console.log(`[Rerank] ${candidates.length}→${result.length} 条（软重排序）`);
-  return result;
 }
 
 // 软重排序：结合语义相似度 + 关键词重叠 + 答案质量
