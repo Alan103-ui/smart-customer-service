@@ -432,10 +432,11 @@ function searchByFAQCache(query, topK = 5, threshold = 0.15) {
  * 优化版：使用混合检索（BM25 + 向量）
  * 新增：意图驱动的检索优化（根据意图对结果加权）
  */
-async function searchByFAQCacheAsync(query, intent = null, topK = 5, threshold = 0.05, useHybrid = true) {
+async function searchByFAQCacheAsync(query, intent = null, topK = 5, threshold = 0.05, useHybrid = true, useRerank = true) {
   // 默认开启混合搜索（BM25 + 向量，提升召回率）
   // threshold 0.05：降低阈值，提升召回率（从70%→85%+）
   // useHybrid 默认 true，启用混合检索
+  // useRerank 默认 true，启用 Rerank 重排序
   // intent：意图名称（用于检索优化）
   const cacheKey = query.slice(0, 200);
   let queryEmbedding = QUERY_EMBEDDING_CACHE.get(cacheKey);
@@ -1209,8 +1210,18 @@ async function semanticSearch(query, topK = 8, threshold = 0.10, useRerank = tru
       if (bestChunk) results.push(bestChunk);
     }
 
-    console.log(`[VectorStore] 混合搜索最终结果: ${results.length} 条`);
-    return results.slice(0, topK);
+    console.log(`[VectorStore] 混合搜索: ${results.length} 条命中`);
+    
+    // 使用 Rerank 服务重排序（包含 LLM 降级）
+    if (useRerank && results.length > 1) {
+      const rerankCandidates = results.slice(0, Math.max(topK * 3, 10));
+      const reranked = await rerankResults(query, rerankCandidates, topK);
+      console.log(`[VectorStore] Rerank 后: ${reranked.length} 条`);
+      return reranked;
+    } else {
+      console.log(`[VectorStore] 跳过 Rerank，直接返回 top-${topK}`);
+      return results.slice(0, topK);
+    }
   } else {
     // 仅向量搜索（原逻辑）
     const queryEmbedding = await getEmbedding(query);
