@@ -56,6 +56,7 @@ def rerank():
         return jsonify({'error': 'Rerank 模型未加载，请检查服务端日志'}), 500
     
     try:
+        start = time.time()  # 记录开始时间
         data = request.get_json()
         query = data.get('query', '')
         documents = data.get('documents', [])
