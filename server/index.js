@@ -1796,10 +1796,11 @@ wss.on('connection', (ws) => {
         }
         
         // 没有匹配，走原有逻辑（AI 生成或转人工）
+        // 先获取意图 understanding
+        const intentResult = await understandIntent(userMessage);
+        
         ws.send(JSON.stringify({
           type: 'intent',
-          intent: intentResult.intent,
-          confidence: intentResult.confidence,
           intent: intentResult.intent,
           confidence: intentResult.confidence,
         }));
