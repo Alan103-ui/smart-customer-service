@@ -372,7 +372,8 @@ async function searchFAQCandidates(userMessage, threshold = 0.12, category = nul
   }
 
   // 快速路径：使用 FAQ embedding 缓存（纯内存计算，无需调用 Rerank）
-  if (userMessage.length >= 4) {
+  // 短查询（如"报销"）也走此路径，长度阈值降为 >= 2
+  if (userMessage.length >= 2) {
     try {
       const start = Date.now();
       const searchResults = await searchByFAQCacheAsync(userMessage, 5, 0.10);
