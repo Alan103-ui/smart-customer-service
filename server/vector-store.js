@@ -80,7 +80,7 @@ function getCategoriesByIntent(intent) {
   if (!intent) return null;
   
   const map = loadIntentCategoryMap();
-  const intentLower = intent.toLowerCase();
+  const intentLower = intent ? intent.toLowerCase() : '';
   
   // 精确匹配
   if (map[intentLower]) {

@@ -376,7 +376,7 @@ async function searchFAQCandidates(userMessage, threshold = 0.12, category = nul
   if (userMessage.length >= 2) {
     try {
       const start = Date.now();
-      const searchResults = await searchByFAQCacheAsync(userMessage, 5, 0.10);
+      const searchResults = await searchByFAQCacheAsync(userMessage, category, 5, 0.10);
       const cost = Date.now() - start;
       console.log(`[searchFAQCandidates] FAQ缓存搜索耗时: ${cost}ms, 结果: ${searchResults.length}条`);
 
