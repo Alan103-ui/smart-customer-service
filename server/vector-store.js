@@ -672,65 +672,109 @@ function getEmbeddingFallback(text) {
   });
 }
 
-// ============ Rerank 重排序 ============
-// 调用独立部署的 bge-reranker-v2-m3 服务 (172.17.6.18:8000)，失败则降级为软重排序
+// ============ Rerank 重排序（三级降级策略）============
+// 优先级：独立 Rerank 服务 > LLM 重排序 > 软重排序
+let rerankServiceAvailable = null; // 缓存服务可用性（避免每次都检测）
+
 async function rerankResults(query, candidates, topN = 5) {
   if (candidates.length <= 1) return candidates;
-
-  // 方案A：调用独立 rerank API 服务
+  
+  // 第一级：调用独立部署的 bge-reranker-v2-m3 服务
   try {
-    const http = require('http');
-    const documents = candidates.map(c => c.content || c.title || '');
-    const payload = JSON.stringify({ query, documents });
-    const options = {
-      hostname: '172.17.6.18',
-      port: 8000,
-      path: '/rerank',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-      timeout: 30000
-    };
-    return new Promise((resolve) => {
-      const req = http.request(options, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.results && Array.isArray(parsed.results)) {
-              // 通过 document 内容匹配回原始候选（独立服务返回格式：{document, score}）
-              const docMap = new Map();
-              candidates.forEach((c, idx) => docMap.set(c.content || c.title || '', idx));
-              const reranked = parsed.results
-                .map(r => {
-                  const idx = docMap.get(r.document);
-                  if (idx === undefined) return null;
-                  // 用 sigmoid 将原始分数映射到 0-1 范围
-                  const rawScore = r.score || 0;
-                  const normScore = 1 / (1 + Math.exp(-rawScore));
-                  return { ...candidates[idx], rerankScore: normScore };
-                })
-                .filter(Boolean)
-                .sort((a, b) => (b.rerankScore || 0) - (a.rerankScore || 0));
-              console.log(`[Rerank] ${candidates.length}→${reranked.length} 条（模型重排序）`);
-              resolve(reranked);
-            } else {
-              throw new Error('rerank响应格式异常');
-            }
-          } catch (e) {
-            console.warn('[Rerank] 模型重排序失败，改用软重排序:', e.message);
-            resolve(softRerank(query, candidates, topN));
-          }
+    // 快速检测服务是否可用（第一次调用时检测）
+    if (rerankServiceAvailable === null) {
+      try {
+        const http = require('http');
+        await new Promise((resolve, reject) => {
+          const req = http.get('http://172.17.6.18:8000/health', (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              try {
+                const parsed = JSON.parse(data);
+                rerankServiceAvailable = parsed.status === 'ok';
+                resolve();
+              } catch (e) {
+                rerankServiceAvailable = false;
+                resolve();
+              }
+            });
+          });
+          req.on('error', () => { rerankServiceAvailable = false; resolve(); });
+          req.on('timeout', () => { req.destroy(); rerankServiceAvailable = false; resolve(); });
         });
+      } catch (e) {
+        rerankServiceAvailable = false;
+      }
+    }
+    
+    if (rerankServiceAvailable) {
+      const http = require('http');
+      const documents = candidates.map(c => c.content || c.title || '');
+      const payload = JSON.stringify({ query, documents });
+      const options = {
+        hostname: '172.17.6.18',
+        port: 8000,
+        path: '/rerank',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+        timeout: 10000
+      };
+      
+      const result = await new Promise((resolve, reject) => {
+        const req = http.request(options, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.results && Array.isArray(parsed.results)) {
+                // 通过 index 匹配回原始候选
+                const reranked = parsed.results
+                  .map(r => {
+                    const idx = r.index;
+                    if (idx === undefined || idx >= candidates.length) return null;
+                    return { ...candidates[idx], rerankScore: r.score };
+                  })
+                  .filter(Boolean)
+                  .sort((a, b) => (b.rerankScore || 0) - (a.rerankScore || 0));
+                
+                console.log(`[Rerank] ${candidates.length}→${reranked.length} 条（服务重排序）`);
+                resolve(reranked);
+              } else {
+                reject(new Error('rerank响应格式异常'));
+              }
+            } catch (e) {
+              reject(e);
+            }
+          });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
+        req.write(payload);
+        req.end();
       });
-      req.on('error', (err) => { console.warn('[Rerank] 连接失败:', err.message); resolve(softRerank(query, candidates, topN)); });
-      req.on('timeout', () => { req.destroy(); console.warn('[Rerank] 请求超时，改用软重排序'); resolve(softRerank(query, candidates, topN)); });
-      req.write(payload);
-      req.end();
-    });
+      
+      return result.slice(0, topN);
+    }
   } catch (e) {
-    return softRerank(query, candidates, topN);
+    console.warn('[Rerank] 服务重排序失败，降级为 LLM 重排序:', e.message);
+    rerankServiceAvailable = false; // 标记服务不可用
   }
+  
+  // 第二级：LLM 重排序（qwen2.5:14b，准确但慢）
+  try {
+    const reranked = await llmRerank(query, candidates, topN);
+    console.log(`[Rerank] ${candidates.length}→${reranked.length} 条（LLM 重排序）`);
+    return reranked;
+  } catch (e) {
+    console.warn('[Rerank] LLM 重排序失败，降级为软重排序:', e.message);
+  }
+  
+  // 第三级：软重排序（关键词重叠，快但不那么准确）
+  const result = softRerank(query, candidates, topN);
+  console.log(`[Rerank] ${candidates.length}→${result.length} 条（软重排序）`);
+  return result;
 }
 
 // 软重排序：结合语义相似度 + 关键词重叠 + 答案质量
@@ -754,6 +798,150 @@ function softRerank(query, candidates, topN = 5) {
   const result = scored.sort((a, b) => b.rerankScore - a.rerankScore).slice(0, topN);
   console.log(`[Rerank] 软重排序完成，${candidates.length}→${result.length} 条`);
   return result;
+}
+
+// ============ HyDE 搜索（假设文档生成）============
+// 论文：Precise Zero-Shot Dense Retrieval without Relevance Labels (NeurIPS 2022)
+let lastHypoAnswer = null; // 缓存最近一次假设答案（用于调试）
+
+/**
+ * HyDE 搜索：生成假设答案，再用假设答案的向量去检索
+ * 原理：
+ * 1. 用LLM根据查询生成一个假设的答案（即使不准确，但语义相近）
+ * 2. 用这个假设答案的向量去检索（而不是用原查询的向量）
+ * 3. 因为假设答案和真实文档的风格更相近，检索效果更好
+ * 
+ * @param {string} query - 用户查询
+ * @param {number} topK - 返回数量
+ * @param {number} threshold - 相似度阈值
+ * @param {boolean} useHybrid - 是否使用混合检索
+ * @returns {Promise<Array>} - 检索结果
+ */
+async function hydeSearch(query, topK = 5, threshold = 0.05, useHybrid = true) {
+  console.log(`[HyDE] 开始HyDE搜索: "${query.slice(0, 30)}..."`);
+  
+  // 步骤1：生成假设答案
+  const hypoPrompt = `请简要回答以下问题（${topK >= 5 ? '100-150' : '50-100'}字以内）：
+
+${query}
+
+要求：
+1. 直接给出答案，不要解释问题
+2. 使用专业、详细的语言
+3. 包含相关关键词
+4. 只返回答案内容，不要有任何开场白或结尾`;
+
+  let hypoAnswer = null;
+  try {
+    hypoAnswer = await callOllamaGenerate(hypoPrompt, 200);
+    hypoAnswer = hypoAnswer.trim();
+    lastHypoAnswer = hypoAnswer; // 缓存
+    
+    if (!hypoAnswer) {
+      console.warn('[HyDE] 假设答案为空，降级为常规搜索');
+      return await searchByFAQCacheAsync(query, null, topK, threshold, useHybrid);
+    }
+    
+    console.log(`[HyDE] 假设答案: "${hypoAnswer.slice(0, 80)}..."`);
+  } catch (e) {
+    console.warn('[HyDE] 假设答案生成失败，降级为常规搜索:', e.message);
+    return await searchByFAQCacheAsync(query, null, topK, threshold, useHybrid);
+  }
+  
+  // 步骤2：获取假设答案的向量
+  let hypoEmbedding = null;
+  try {
+    hypoEmbedding = await getEmbedding(hypoAnswer);
+    console.log(`[HyDE] 假设答案向量生成完成 (${hypoAnswer.length}字)`);
+  } catch (e) {
+    console.warn('[HyDE] 假设答案向量生成失败，降级为常规搜索:', e.message);
+    return await searchByFAQCacheAsync(query, null, topK, threshold, useHybrid);
+  }
+  
+  // 步骤3：用假设答案的向量去检索（而不是用原查询的向量）
+  if (FAQ_EMBEDDING_CACHE.size === 0) buildFAQEmbeddingCache();
+  
+  const results = [];
+  for (const [docId, faq] of FAQ_EMBEDDING_CACHE) {
+    const score = cosineSimilarity(hypoEmbedding, faq.embedding);
+    if (score >= threshold) {
+      results.push({
+        parentDocId: docId,
+        score,
+        question: faq.question,
+        category: faq.category,
+        content: faq.content
+      });
+    }
+  }
+  
+  results.sort((a, b) => b.score - a.score);
+  
+  console.log(`[HyDE] 向量搜索完成: ${results.length}条命中, top=${(results[0]?.score * 100)?.toFixed(1) || 'N/A'}%`);
+  
+  // 步骤4：如果启用了混合检索，也用BM25搜索，然后RRF融合
+  if (useHybrid) {
+    const bm25Results = bm25Search(query, topK * 2, 0).map(r => {
+      const faq = FAQ_EMBEDDING_CACHE.get(r.docId);
+      if (!faq) return r;
+      return {
+        ...r,
+        question: faq.question,
+        category: faq.category,
+        content: faq.content
+      };
+    });
+    
+    // 将向量搜索结果转换为RRF格式
+    const vectorRankList = results.slice(0, topK * 3).map((r, idx) => ({ docId: r.parentDocId, score: r.score }));
+    const bm25RankList = bm25Results.map((r, idx) => ({ docId: r.docId || r.parentDocId, score: r.score }));
+    
+    const fused = rrfFusion([vectorRankList, bm25RankList], null, 60);
+    
+    // 转换回原格式
+    const finalResults = [];
+    for (const r of fused) {
+      const faq = FAQ_EMBEDDING_CACHE.get(r.docId);
+      if (faq) {
+        finalResults.push({
+          parentDocId: r.docId,
+          score: r.score,
+          question: faq.question,
+          category: faq.category,
+          content: faq.content,
+          rrScores: r.rrScores
+        });
+      }
+    }
+    
+    console.log(`[HyDE] 混合搜索完成: ${finalResults.length}条`);
+    
+    // LLM 重排序
+    try {
+      const reranked = await llmRerank(query, finalResults, topK);
+      console.log(`[HyDE] LLM重排序后: ${reranked.length}条`);
+      return reranked;
+    } catch (e) {
+      console.warn('[HyDE] LLM重排序失败，使用RRF结果:', e.message);
+      return finalResults.slice(0, topK);
+    }
+  } else {
+    // 不用混合检索，直接返回向量搜索结果
+    try {
+      const reranked = await llmRerank(query, results.slice(0, topK * 2), topK);
+      return reranked;
+    } catch (e) {
+      console.warn('[HyDE] LLM重排序失败，使用向量搜索结果:', e.message);
+      return results.slice(0, topK);
+    }
+  }
+}
+
+/**
+ * 获取最近的假设答案（用于调试）
+ */
+function getLastHypoAnswer() {
+  return lastHypoAnswer;
 }
 
 // ============ LLM 重排序（qwen2.5:14b） ============
@@ -1239,5 +1427,8 @@ module.exports = {
   rrfFusion,
   // 新增：RRF权重管理
   setRRFWeights,
-  getRRFWeights
+  getRRFWeights,
+  // 新增：HyDE搜索
+  hydeSearch,
+  getLastHypoAnswer
 };

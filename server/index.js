@@ -7,6 +7,13 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const multer = require('multer');
 
+// ============ 环境配置 ============
+// HyDE（假设文档生成）：默认关闭，因为会增加延迟
+// 启用方法：启动时设置环境变量 ENABLE_HYDE=1
+// 例如：ENABLE_HYDE=1 node index.js
+const ENABLE_HYDE = process.env.ENABLE_HYDE === '1';
+console.log(`[Config] HyDE: ${ENABLE_HYDE ? '已启用' : '已禁用'} (ENABLE_HYDE=${process.env.ENABLE_HYDE || '0'})`);
+
 // ============ 工具函数 ============
 // 去除HTML标签（FAQ answer字段可能包含<p>等标签）
 function stripHtmlTags(html) {
@@ -54,10 +61,11 @@ const KNOWLEDGE_BASES_PATH = path.join(__dirname, '../data/knowledge_bases.json'
 const UPLOAD_DIR = path.join(__dirname, '../data/uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-// ============ 核心AI模块（智能意图理解、多轮对话记忆、LLM智能改写答案）============
+// ============ 核心AI模块（智能意图理解、多轮对话记忆、LLM智能改写答案、查询改写）============
 const { understandIntent, batchUnderstandIntents, fallbackIntent, INTENT_TAXONOMY } = require('./intent-understanding');
 const { storeConversationRound, getConversationHistory, enhanceQueryWithMemory, getMemoryStats, clearConversationHistory } = require('./dialogue-memory');
 const { rewriteToColloquial, batchRewrite, evaluateQuality, getToneList } = require('./answer-rewriter');
+const { rewriteQuery, generateHypotheticalAnswer, hydeSearch: hydeSearchFromWriter, optimizeQuery } = require('./query-rewriter');
 
 // ============ 上传功能模块 ============
 const uploadEndpoints = require('./upload-endpoints');
@@ -421,29 +429,74 @@ async function searchFAQCandidates(userMessage, threshold = 0.12, category = nul
   return candidates.slice(0, 5);
 }
 
-// ============ 调用 Ollama 生成回复（RAG 增强） ============
+// ============ 调用 Ollama 生成回复（RAG 增强 + 查询改写 + HyDE） ============
 async function generateAgentReply(sessionId, userMessage, conversationHistory, intentResult) {
-  // FAQ 精确匹配优先
+  // 步骤0：查询改写（短查询扩展 + 代词消解）
+  let optimizedQuery = userMessage;
+  let queryInfo = { original: userMessage, rewritten: userMessage, isRewritten: false };
+  
+  try {
+    // 如果查询较短（<10个字），尝试改写
+    if (userMessage.length < 10) {
+      queryInfo = await rewriteQuery(userMessage, conversationHistory);
+      if (queryInfo.isRewritten) {
+        optimizedQuery = queryInfo.rewritten;
+        console.log(`[QueryRewrite] 查询改写: "${userMessage}" → "${optimizedQuery}"`);
+      }
+    }
+  } catch (e) {
+    console.warn('[QueryRewrite] 改写失败，使用原查询:', e.message);
+    optimizedQuery = userMessage;
+  }
+  
+  // 步骤0.5：可选 - HyDE搜索（通过环境变量控制，默认关闭，因为会增加延迟）
+  const useHyDE = process.env.ENABLE_HYDE === '1';
+  let hydeResults = null;
+  
+  if (useHyDE) {
+    try {
+      console.log(`[RAG] 使用HyDE搜索`);
+      hydeResults = await hydeSearch(optimizedQuery, 3, 0.05, true);
+    } catch (e) {
+      console.warn('[RAG] HyDE搜索失败，降级为常规搜索:', e.message);
+    }
+  }
+  
+  // FAQ 精确匹配优先（使用原查询）
   if (intentResult.matchedFAQ) {
     return stripHtmlTags(intentResult.matchedFAQ.answer);
   }
   
-  // RAG 语义搜索：获取相关文档片段（使用 FAQ 缓存，避免重复调用 Ollama）
+  // RAG 语义搜索：获取相关文档片段（使用改写后的查询）
   let ragContext = '';
   try {
-    const intentName = intentResult?.intent || null;
-    const searchResults = await searchByFAQCacheAsync(userMessage, intentName, 3, 0.12);
-    if (searchResults && searchResults.length > 0) {
-      ragContext = '\n\n===== 相关资料（语义搜索结果）=====\n';
-      // 通过 parentDocId 找到完整 FAQ 内容
+    // 如果使用HyDE且成功，用HyDE结果
+    if (hydeResults && hydeResults.length > 0) {
+      ragContext = '\n\n===== 相关资料（HyDE搜索结果）=====\n';
       const faqList = getFAQ();
-      searchResults.forEach((r, i) => {
+      hydeResults.forEach((r, i) => {
         const faq = faqList.find(f => f.id === r.parentDocId);
         const content = faq ? `Q: ${faq.question}\nA: ${stripHtmlTags(faq.answer)}` : r.content;
         ragContext += `\n[资料${i+1}]（相关度：${(r.score * 100).toFixed(1)}%）\n${content.slice(0, 800)}\n`;
       });
       ragContext += '\n===== 请基于以上资料回答 =====\n';
-      console.log(`[RAG] 注入 ${searchResults.length} 条相关文档，top score=${(searchResults[0].score * 100).toFixed(1)}%`);
+      console.log(`[RAG] HyDE注入 ${hydeResults.length} 条相关文档`);
+    } else {
+      // 常规搜索（使用改写后的查询）
+      const intentName = intentResult?.intent || null;
+      const searchResults = await searchByFAQCacheAsync(optimizedQuery, intentName, 3, 0.12);
+      if (searchResults && searchResults.length > 0) {
+        ragContext = '\n\n===== 相关资料（语义搜索结果）=====\n';
+        // 通过 parentDocId 找到完整 FAQ 内容
+        const faqList = getFAQ();
+        searchResults.forEach((r, i) => {
+          const faq = faqList.find(f => f.id === r.parentDocId);
+          const content = faq ? `Q: ${faq.question}\nA: ${stripHtmlTags(faq.answer)}` : r.content;
+          ragContext += `\n[资料${i+1}]（相关度：${(r.score * 100).toFixed(1)}%）\n${content.slice(0, 800)}\n`;
+        });
+        ragContext += '\n===== 请基于以上资料回答 =====\n';
+        console.log(`[RAG] 注入 ${searchResults.length} 条相关文档，top score=${(searchResults[0].score * 100).toFixed(1)}%`);
+      }
     }
   } catch (e) {
     console.error('[RAG] 语义搜索失败，降级到普通模式：', e.message);
@@ -465,7 +518,7 @@ async function generateAgentReply(sessionId, userMessage, conversationHistory, i
 ${ragContext}
 FAQ 知识库：
 ${faqContext}`;
-
+  
   const messages = [
     { role: 'system', content: systemPrompt },
     ...conversationHistory.slice(-6).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content })),

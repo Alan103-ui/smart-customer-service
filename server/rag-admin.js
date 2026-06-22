@@ -913,5 +913,51 @@ router.post('/conversations/batch-delete', (req, res) => {
 });
 
 
+// ==========================================
+// 九、对话记忆管理 API
+// ==========================================
+// 获取对话历史
+router.get('/memory/:sessionId', (req, res) => {
+  try {
+    const history = getConversationHistory(req.params.sessionId);
+    res.json({ success: true, history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 增强查询（带记忆上下文）
+router.post('/memory/enhance-query', (req, res) => {
+  try {
+    const { sessionId, query } = req.body;
+    if (!sessionId || !query) return res.status(400).json({ error: 'sessionId 和 query 必填' });
+    const enhanced = enhanceQueryWithMemory(sessionId, query);
+    res.json({ success: true, original: query, enhanced });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 获取记忆统计
+router.get('/memory/stats', (req, res) => {
+  try {
+    const stats = getMemoryStats();
+    res.json({ success: true, stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 清除对话历史
+router.delete('/memory/:sessionId', (req, res) => {
+  try {
+    const result = clearConversationHistory(req.params.sessionId);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 module.exports = router;
