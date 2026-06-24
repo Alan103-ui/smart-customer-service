@@ -6,6 +6,7 @@ const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const multer = require('multer');
+const auth = require('./auth');  // 用户认证模块
 
 // ============ 环境配置 ============
 // HyDE（假设文档生成）：默认关闭，因为会增加延迟
@@ -549,6 +550,12 @@ app.use(performanceMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
 // 静态文件服务：uploads 目录（图片/附件）
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// ============ 用户认证系统 ============
+auth.setupAuthRoutes(app);
+// 保护所有 /api/* 路由（认证相关路由已在 authMiddleware 内跳过）
+app.use('/api', auth.authMiddleware);
+
 // 上传专用：支持图片和附件
 const uploadMedia = multer({
   dest: path.join(__dirname, 'uploads'),
@@ -1657,25 +1664,25 @@ const wss = new WebSocket.Server({ server, path: '/ws' });
 
 const sessions = new Map();
 
-function getOrCreateConversation(sessionId) {
+function getOrCreateConversation(sessionId, userId = null) {
   const db = readDB();
   let conv = db.conversations.find(c => c.session_id === sessionId);
   if (conv) return conv;
   
   const id = uuidv4();
   const now = new Date().toISOString();
-  conv = { id, session_id: sessionId, messages: JSON.stringify([]), intent: null, resolved: false, created_at: now, updated_at: now };
+  conv = { id, session_id: sessionId, user_id: userId, messages: JSON.stringify([]), intent: null, resolved: false, created_at: now, updated_at: now };
   db.conversations.push(conv);
   writeDB(db);
   return { ...conv, messages: [] };
 }
 
-function saveMessage(sessionId, role, content, intent = null) {
+function saveMessage(sessionId, role, content, intent = null, userId = null) {
   const db = readDB();
   let convIdx = db.conversations.findIndex(c => c.session_id === sessionId);
   if (convIdx === -1) {
-    // session 不存在，自动创建
-    const conv = getOrCreateConversation(sessionId);
+    // session 不存在，自动创建（含 userId）
+    const conv = getOrCreateConversation(sessionId, userId);
     const db2 = readDB(); // 重新读取（getOrCreateConversation 已写入）
     convIdx = db2.conversations.findIndex(c => c.session_id === sessionId);
     if (convIdx === -1) return;
@@ -1713,10 +1720,25 @@ wss.on('connection', (ws) => {
       if (msg.type === 'init') {
         sessionId = msg.sessionId || uuidv4();
         const category = msg.category || null; // 前端可选传入分类
-        sessions.set(sessionId, { ws, history: [], category });
-        ws.send(JSON.stringify({ type: 'init', sessionId }));
         
-        const conv = getOrCreateConversation(sessionId);
+        // 认证：如果携带 token，验证并关联用户
+        let userId = null;
+        if (msg.token) {
+          const decoded = auth.verifyToken(msg.token);
+          if (decoded) {
+            const user = auth.findUserById(decoded.userId);
+            if (user && user.isActive) {
+              userId = user.id;
+              console.log(`[WS] 用户认证成功: ${user.username} (${user.name})`);
+            }
+          }
+        }
+        
+        sessions.set(sessionId, { ws, history: [], category, userId });
+        ws.send(JSON.stringify({ type: 'init', sessionId, userId: userId || null }));
+        
+        // 加载对话：已登录用户按 userId 查找，否则按 sessionId
+        const conv = getOrCreateConversation(sessionId, userId);
         const messages = typeof conv.messages === 'string' ? JSON.parse(conv.messages) : conv.messages;
         if (messages.length > 0) {
           ws.send(JSON.stringify({ type: 'history', messages }));

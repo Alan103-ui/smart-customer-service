@@ -39,6 +39,16 @@ export interface SendMessageResponse {
   intent?: string;
 }
 
+// 获取认证请求头
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const token = localStorage.getItem('cs_token');
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
 // API 服务类
 class ApiService {
   private baseUrl: string;
@@ -47,13 +57,11 @@ class ApiService {
     this.baseUrl = baseUrl;
   }
 
-  // 发送消息
+  // 发送消息（通过 WebSocket，此方法保留兼容）
   async sendMessage(request: SendMessageRequest): Promise<SendMessageResponse> {
     const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(request),
     });
 
@@ -66,7 +74,9 @@ class ApiService {
 
   // 获取对话列表（管理后台）
   async getConversations(): Promise<Conversation[]> {
-    const response = await fetch(`${this.baseUrl}/api/admin/conversations`);
+    const response = await fetch(`${this.baseUrl}/api/admin/conversations`, {
+      headers: getAuthHeaders(),
+    });
 
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
@@ -77,7 +87,9 @@ class ApiService {
 
   // 获取单个对话（管理后台）
   async getConversation(sessionId: string): Promise<{ messages: Message[] }> {
-    const response = await fetch(`${this.baseUrl}/api/admin/conversations/${sessionId}`);
+    const response = await fetch(`${this.baseUrl}/api/admin/conversations/${sessionId}`, {
+      headers: getAuthHeaders(),
+    });
 
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
@@ -88,7 +100,9 @@ class ApiService {
 
   // 获取 FAQ 列表（管理后台）
   async getFAQ(): Promise<FAQItem[]> {
-    const response = await fetch(`${this.baseUrl}/api/admin/faq`);
+    const response = await fetch(`${this.baseUrl}/api/admin/faq`, {
+      headers: getAuthHeaders(),
+    });
 
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
@@ -102,9 +116,7 @@ class ApiService {
   async createFAQ(faq: FAQItem): Promise<FAQItem> {
     const response = await fetch(`${this.baseUrl}/api/admin/faq`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(faq),
     });
 
@@ -119,9 +131,7 @@ class ApiService {
   async updateFAQ(id: number | string, faq: FAQItem): Promise<FAQItem> {
     const response = await fetch(`${this.baseUrl}/api/admin/faq/${id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(faq),
     });
 
@@ -136,6 +146,7 @@ class ApiService {
   async deleteFAQ(id: number | string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/api/admin/faq/${id}`, {
       method: 'DELETE',
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -145,7 +156,9 @@ class ApiService {
 
   // 获取统计信息（管理后台）
   async getStats(): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/api/admin/stats`);
+    const response = await fetch(`${this.baseUrl}/api/admin/stats`, {
+      headers: getAuthHeaders(),
+    });
 
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);

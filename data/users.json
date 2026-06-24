@@ -1,0 +1,12 @@
+[
+  {
+    "id": "user_1782280352928",
+    "username": "admin",
+    "passwordHash": "9d251f62c24c40a4e416e842b4941753:3e49cfd5c5446a18782de38c841fa9be98528d832c8a2f8ae4a8a9289f9bfcdb14037c3a60a39c96b68677bf25340afbcf1235e640112914cd5d7c45cf80ee11",
+    "name": "系统管理员",
+    "role": "admin",
+    "isActive": true,
+    "createdAt": "2026-06-24T05:52:32.956Z",
+    "lastLoginAt": "2026-06-24T05:57:07.993Z"
+  }
+]

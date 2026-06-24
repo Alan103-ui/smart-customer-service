@@ -2,10 +2,19 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import ChatWindow from './components/ChatWindow';
 import AdminDashboard from './pages/AdminDashboard';
+import LoginPage from './pages/LoginPage';
 import type { Message, WebSocketMessage, Candidate } from './types';
 import './App.css';
 
 function App() {
+  // =========== 认证状态 ===========
+  const [user, setUser] = useState<null | { id: string; username: string; name: string; role: string }>(() => {
+    const saved = localStorage.getItem('cs_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // =========== 原有状态 ===========
   const [sessionId, setSessionId] = useState<string>(() => {
     return localStorage.getItem('cs_session_id') || uuidv4();
   });
@@ -27,10 +36,25 @@ function App() {
 
   const wsRef = useRef<WebSocket | null>(null);
 
+  // =========== 启动时验证 token ===========
   useEffect(() => {
-    localStorage.setItem('cs_session_id', sessionId);
-  }, [sessionId]);
+    const token = localStorage.getItem('cs_token');
+    if (!token) { setAuthLoading(false); return; }
+    fetch('http://localhost:3001/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(u => { setUser(u); localStorage.setItem('cs_user', JSON.stringify(u)); })
+      .catch(() => { localStorage.removeItem('cs_token'); localStorage.removeItem('cs_user'); })
+      .finally(() => setAuthLoading(false));
+  }, []);
 
+  // =========== 未登录：显示登录页 ===========
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center">加载中...</div>;
+  if (!user) return <LoginPage onLogin={(u) => { setUser(u); localStorage.setItem('cs_user', JSON.stringify(u)); }} />;
+
+  // =========== 工具函数 ===========
+  useEffect(() => { localStorage.setItem('cs_session_id', sessionId); }, [sessionId]);
   useEffect(() => {
     localStorage.setItem('cs_theme', theme);
     document.documentElement.setAttribute('data-theme', theme);
@@ -48,9 +72,7 @@ function App() {
 
   // 监听浏览器前进/后退按钮
   useEffect(() => {
-    const handlePopState = () => {
-      setShowAdmin(window.location.pathname === '/admin');
-    };
+    const handlePopState = () => { setShowAdmin(window.location.pathname === '/admin'); };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
@@ -59,22 +81,18 @@ function App() {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   }, []);
 
+  // 获取分类列表
   useEffect(() => {
-    localStorage.setItem('cs_session_id', sessionId);
-  }, [sessionId]);
-
-  // 获取分类列表（聊天页面只显示一级分类）
-  useEffect(() => {
-    fetch('http://localhost:3001/api/admin/categories')
+    fetch('http://localhost:3001/api/categories')
       .then(res => res.json())
       .then(data => {
-        // 只保留一级分类（parentId 为 null 的）
         const primaryCategories = data.filter((c: any) => !c.parentId);
         setCategories(primaryCategories.map((c: any) => c.name));
       })
       .catch(err => console.error('获取分类失败', err));
   }, []);
 
+  // =========== WebSocket 连接（带 Token 认证）============
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -86,37 +104,32 @@ function App() {
     socket.onopen = () => {
       console.log('[WS] 连接成功');
       setConnected(true);
-      socket.send(JSON.stringify({ type: 'init', sessionId, category: selectedCategory === '全部' ? null : selectedCategory }));
+      const token = localStorage.getItem('cs_token');
+      socket.send(JSON.stringify({
+        type: 'init',
+        sessionId,
+        category: selectedCategory === '全部' ? null : selectedCategory,
+        token  // 携带 Token 认证
+      }));
     };
 
     socket.onmessage = (event) => {
-      console.log('[WS] 收到消息:', event.data);
       try {
         const msg: WebSocketMessage = JSON.parse(event.data);
         handleWebSocketMessage(msg);
-      } catch (e) {
-        console.error('[WS] 消息解析失败:', e);
-      }
+      } catch (e) { console.error('[WS] 消息解析失败:', e); }
     };
 
     socket.onclose = () => {
       console.log('[WS] 连接关闭');
       setConnected(false);
-      if (wsRef.current === socket) {
-        wsRef.current = null;
-      }
+      if (wsRef.current === socket) wsRef.current = null;
     };
 
-    socket.onerror = (e) => {
-      console.error('[WS] 连接错误:', e);
-    };
+    socket.onerror = (e) => { console.error('[WS] 连接错误:', e); };
 
-    return () => {
-      console.log('[WS] 关闭连接');
-      socket.close();
-      wsRef.current = null;
-    };
-  }, [sessionId]);
+    return () => { socket.close(); wsRef.current = null; };
+  }, [sessionId, selectedCategory]);
 
   const handleWebSocketMessage = useCallback((msg: WebSocketMessage) => {
     switch (msg.type) {
@@ -149,7 +162,6 @@ function App() {
             fallback: msg.fallback
           };
           setMessages(prev => [...prev, newMsg]);
-          // 收到正式回复后清除候选列表
           setCandidates([]);
         }
         setIsTyping(false);
@@ -159,20 +171,10 @@ function App() {
 
   const sendMessage = useCallback((content: string) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      console.warn('[WS] 连接未就绪，无法发送消息');
-      return;
-    }
-
-    const userMsg: Message = {
-      role: 'user',
-      content,
-      timestamp: new Date().toISOString()
-    };
+    if (!ws || ws.readyState !== WebSocket.OPEN) { console.warn('[WS] 连接未就绪'); return; }
+    const userMsg: Message = { role: 'user', content, timestamp: new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
-    setCandidates([]); // 发送新消息时清除候选
-
-    console.log('[WS] 发送消息:', content);
+    setCandidates([]);
     ws.send(JSON.stringify({ type: 'message', content }));
   }, []);
 
@@ -184,10 +186,30 @@ function App() {
     setIsTyping(true);
   }, []);
 
+  // =========== 登出 ===========
+  const handleLogout = () => {
+    localStorage.removeItem('cs_token');
+    localStorage.removeItem('cs_user');
+    setUser(null);
+  };
+
+  // =========== 渲染 ===========
   if (showAdmin) {
-    return (
-      <AdminDashboard onBack={() => setShowAdmin(false)} />
-    );
+    if (user.role !== 'admin') {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-6xl mb-4">🔒</div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">无权限访问</h2>
+            <p className="text-gray-500 mb-4">仅管理员可访问管理后台</p>
+            <button onClick={() => setShowAdmin(false)} className="px-4 py-2 bg-blue-600 text-white rounded-lg">
+              返回聊天
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return <AdminDashboard onBack={() => setShowAdmin(false)} user={user} onLogout={handleLogout} />;
   }
 
   return (
@@ -203,12 +225,24 @@ function App() {
           </div>
         </div>
         <div className="header-right">
-          <button className="theme-toggle-btn" onClick={toggleTheme} title={theme === 'light' ? '切换到深色模式' : '切换到浅色模式'}>
+          {/* 用户信息 */}
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+              {user.name?.charAt(0) || user.username.charAt(0)}
+            </span>
+            <span>{user.name || user.username}</span>
+          </div>
+          <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-red-500 transition" title="退出登录">
+            退出
+          </button>
+          <button className="theme-toggle-btn" onClick={toggleTheme} title={theme === 'light' ? '深色模式' : '浅色模式'}>
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
-          <button className="admin-btn" onClick={() => setShowAdmin(true)}>
-            📊 管理后台
-          </button>
+          {user.role === 'admin' && (
+            <button className="admin-btn" onClick={() => setShowAdmin(true)}>
+              📊 管理后台
+            </button>
+          )}
         </div>
       </div>
 
