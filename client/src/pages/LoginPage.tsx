@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 interface LoginPageProps {
   onLogin: (user: { id: string; username: string; name: string; role: string }) => void;
@@ -12,19 +11,18 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const navigate = useNavigate();
 
-  // 如果已登录，跳转首页
+  // 如果已登录，自动回调 onLogin（由 App.tsx 处理跳转）
   React.useEffect(() => {
     const token = localStorage.getItem('cs_token');
-    if (token) {
-      fetch(`${API_BASE}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(r => r.ok ? navigate('/') : localStorage.removeItem('cs_token'))
-        .catch(() => localStorage.removeItem('cs_token'));
-    }
-  }, []);
+    if (!token) return;
+    fetch(`${API_BASE}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(u => { if (u.id) onLogin(u); })
+      .catch(() => localStorage.removeItem('cs_token'));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,7 +57,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   // SSO 登录（跳转 OA 系统）
   const handleSSOLogin = () => {
     // TODO: 跳转到 A8/OA 的 SSO 登录地址
-    // window.location.href = 'http://oa.company.com/sso/login?redirect=' + encodeURIComponent(window.location.href);
     alert('SSO 登录待配置 A8/OA 系统地址后启用');
   };
 
