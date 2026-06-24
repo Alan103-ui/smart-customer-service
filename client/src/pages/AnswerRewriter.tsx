@@ -53,9 +53,10 @@ function AnswerRewriter() {
     setResult(null);
 
     try {
+      const token = localStorage.getItem('cs_token');
       const res = await fetch('/api/admin/rewrite-test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           originalAnswer: originalAnswer.trim(),
           userMessage: userMessage.trim(),

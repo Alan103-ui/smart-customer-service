@@ -116,10 +116,18 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   // ==================== 数据获取 ====================
   const API_BASE = '/api/admin';
 
+  // 获取认证头
+  function getAuthHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    const headers = { 'Content-Type': 'application/json', ...extra };
+    const token = localStorage.getItem('cs_token');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return headers;
+  }
+
   // 知识库数据获取
   const fetchKnowledgeBases = async () => {
     try {
-      const res = await fetch(`${API_BASE}/knowledge-bases`);
+      const res = await fetch(`${API_BASE}/knowledge-bases`, { headers: getAuthHeaders() });
       const data = await res.json();
       setKnowledgeBases(data.filter((kb: any) => kb.isActive));
     } catch (err) { console.error('获取知识库失败', err); }
@@ -129,7 +137,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const fetchCategories = async () => {
     setCatLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/categories`);
+      const res = await fetch(`${API_BASE}/categories`, { headers: getAuthHeaders() });
       setCategories(await res.json());
     } catch (err) { console.error('获取分类失败', err); }
     setCatLoading(false);
@@ -139,7 +147,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const fetchFAQ = async () => {
     setFaqLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/faq`);
+      const res = await fetch(`${API_BASE}/faq`, { headers: getAuthHeaders() });
       const json = await res.json();
       // API 返回 {success, data} 格式，需要解包取 data 数组
       setFaqList(Array.isArray(json) ? json : (json.data || []));
@@ -149,14 +157,14 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`${API_BASE}/stats`);
+      const res = await fetch(`${API_BASE}/stats`, { headers: getAuthHeaders() });
       setStats(await res.json());
     } catch (err) { console.error('获取统计数据失败', err); }
   };
 
   const fetchConversations = async () => {
     try {
-      const res = await fetch(`${API_BASE}/conversations`);
+      const res = await fetch(`${API_BASE}/conversations`, { headers: getAuthHeaders() });
       setConversations(await res.json());
       setLoading(false);
     } catch (err) { console.error('获取对话列表失败', err); setLoading(false); }
@@ -217,7 +225,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       if (!editingCat) payload.description = catForm.description;
       else if (catForm.description !== undefined) payload.description = catForm.description;
       if (catForm.parentId) payload.parentId = catForm.parentId;
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const res = await fetch(url, { method, headers: getAuthHeaders(), body: JSON.stringify(payload) });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || '保存失败'); }
       closeCatModal();
       fetchCategories();
@@ -229,7 +237,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     if (cat.isDefault) { alert('默认分类不可删除'); return; }
     if (!confirm(`确定删除分类「${cat.name}」？该分类下的 FAQ 将归入「常见问题」`)) return;
     try {
-      await fetch(`${API_BASE}/categories/${cat.id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/categories/${cat.id}`, { method: 'DELETE', headers: getAuthHeaders() });
       fetchCategories();
       fetchFAQ();
     } catch (err) { alert('删除失败'); }
@@ -288,7 +296,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     try {
       const url = editingFaq ? `${API_BASE}/faq/${editingFaq.id}` : `${API_BASE}/faq`;
       const method = editingFaq ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const res = await fetch(url, { method, headers: getAuthHeaders(), body: JSON.stringify(payload) });
       if (!res.ok) throw new Error(await res.text());
       closeFaqModal();
       fetchFAQ();
@@ -298,7 +306,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const deleteFaq = async (id: string) => {
     if (!confirm('确定删除该 FAQ 条目？')) return;
     try {
-      await fetch(`${API_BASE}/faq/${id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/faq/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
       fetchFAQ();
     } catch (err) { alert('删除失败'); }
   };
@@ -312,7 +320,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     let url = `${API_BASE}/faq/upload`;
     if (uploadCategory) url += `?category=${encodeURIComponent(uploadCategory)}`;
     try {
-      const res = await fetch(url, { method: 'POST', body: formData });
+      const res = await fetch(url, { method: 'POST', headers: getAuthHeaders({}), body: formData });
       const data = await res.json();
       if (data.success) { alert(`文件解析完成！新增 ${data.added} 条 FAQ，当前共 ${data.total} 条。`); fetchFAQ(); }
       else alert('上传失败：' + (data.error || '未知错误'));
@@ -623,7 +631,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                     try {
                       const res = await fetch(`${API_BASE}/faq/batch-delete`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders(),
                         body: JSON.stringify({ ids: [...selectedFaqIds] })
                       });
                       const data = await res.json();
@@ -813,6 +821,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                   try {
                     const res = await fetch(`${API_BASE}/faq/${editingFaq?.id || faqForm.id}/attachments`, {
                       method: 'POST',
+                      headers: getAuthHeaders({}),
                       body: formData
                     });
                     const data = await res.json();
@@ -833,7 +842,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                       <button className="btn-sm btn-danger" onClick={async () => {
                         if (!confirm('确定删除该附件？')) return;
                         try {
-                          const res = await fetch(`${API_BASE}/faq/${editingFaq?.id || faqForm.id}/attachments/${att.id}`, { method: 'DELETE' });
+                          const res = await fetch(`${API_BASE}/faq/${editingFaq?.id || faqForm.id}/attachments/${att.id}`, { method: 'DELETE', headers: getAuthHeaders() });
                           if ((await res.json()).success) {
                             setFaqForm(f => ({ ...f, attachments: f.attachments.filter((a: any) => a.id !== att.id) }));
                           }

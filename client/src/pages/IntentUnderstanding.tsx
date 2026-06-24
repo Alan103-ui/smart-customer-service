@@ -100,9 +100,10 @@ export default function IntentUnderstanding() {
 
     try {
       const contextObj = context.trim() ? JSON.parse(context) : {};
+      const token = localStorage.getItem('cs_token');
       const res = await fetch('/api/admin/intent-parse', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           query: query.trim(),
           context: contextObj
@@ -145,9 +146,10 @@ export default function IntentUnderstanding() {
     setError('');
 
     try {
+      const token = localStorage.getItem('cs_token');
       const res = await fetch('/api/admin/intent-batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ queries })
       });
 

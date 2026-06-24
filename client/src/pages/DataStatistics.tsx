@@ -75,7 +75,16 @@ export default function DataStatistics({ onBack }: DataStatisticsProps) {
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/stats`);
+      const token = localStorage.getItem('cs_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE}/stats`, { headers });
+      if (res.status === 401) {
+        localStorage.removeItem('cs_token');
+        localStorage.removeItem('cs_user');
+        window.location.reload();
+        return;
+      }
       const data = await res.json();
       setStatsData(data);
     } catch (err) {

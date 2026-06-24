@@ -16,6 +16,16 @@ interface KnowledgeBase {
   isActive: boolean;
 }
 
+const API_BASE = '/api/admin';
+
+// 获取认证头
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = localStorage.getItem('cs_token');
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
 const KnowledgeBaseManager: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [kbList, setKbList] = useState<KnowledgeBase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,10 +38,9 @@ const KnowledgeBaseManager: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const loadKnowledgeBases = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3001/api/admin/knowledge-bases');
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
-      }
+      const response = await fetch(`${API_BASE}/knowledge-bases`, { headers: getAuthHeaders() });
+      if (response.status === 401) { window.location.reload(); return; }
+      if (!response.ok) throw new Error(`API error: ${response.statusText}`);
       const data = await response.json();
       setKbList(data);
       setError(null);
@@ -45,11 +54,9 @@ const KnowledgeBaseManager: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   const handleToggleActive = async (id: string, currentStatus: boolean) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/admin/knowledge-bases/${id}`, {
+      const response = await fetch(`${API_BASE}/knowledge-bases/${id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ isActive: !currentStatus }),
       });
       
@@ -70,8 +77,9 @@ const KnowledgeBaseManager: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
     
     try {
-      const response = await fetch(`http://localhost:3001/api/admin/knowledge-bases/${id}`, {
+      const response = await fetch(`${API_BASE}/knowledge-bases/${id}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       
       if (!response.ok) {

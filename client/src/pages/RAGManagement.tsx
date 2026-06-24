@@ -155,7 +155,10 @@ export default function RAGManagement() {
       
       try {
         // 尝试获取评估报告（假设保存在 data/rag-eval-latest.json）
-        const res = await fetch('/api/admin/eval-report-latest');
+        const token = localStorage.getItem('cs_token');
+        const res = await fetch('/api/admin/eval-report-latest', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
         if (res.ok) {
           const report = await res.json();
           setEvalReport(report);
