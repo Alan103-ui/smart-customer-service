@@ -1,5 +1,21 @@
 import { useState, useEffect } from 'react';
 
+// 统一获取认证头
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem('cs_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// 安全的 API 请求：自动带 Token + 状态检查 + 数组保护
+async function safeFetch<T>(url: string): Promise<T> {
+  const res = await fetch(url, { headers: getAuthHeaders() });
+  if (!res.ok) { console.error(`[BasicInfo] ${url} 返回 ${res.status}`); return [] as unknown as T; }
+  const data = await res.json();
+  if (Array.isArray(data)) return data;
+  console.warn(`[BasicInfo] ${url} 返回非数组:`, typeof data);
+  return [] as unknown as T;
+}
+
 type SubTab = 'org' | 'personnel' | 'permissions' | 'a8';
 
 const PERM_LABELS: Record<string, string> = {
@@ -56,10 +72,10 @@ export default function BasicInfoManagement() {
   const [a8, setA8] = useState<any>({ enabled: false, orgApiUrl: '', personnelApiUrl: '', syncInterval: 3600, auth: { type: 'basic', username: '', password: '' } });
 
   // ==================== 数据获取 ====================
-  const loadOrg = () => fetch(API + '/org').then(r => r.json()).then(setOrgList).catch(console.error);
-  const loadP = () => fetch(API + '/personnel').then(r => r.json()).then(setPList).catch(console.error);
-  const loadPerm = () => Promise.all([fetch(API + '/permissions').then(r => r.json()), fetch(API + '/categories').then(r => r.json())]).then(([p, c]) => { setPermList(p); setCats(c); }).catch(console.error);
-  const loadA8 = () => fetch(API + '/a8-config').then(r => r.json()).then(setA8).catch(console.error);
+  const loadOrg = () => safeFetch<any[]>(API + '/org').then(setOrgList).catch(e => { console.error('加载组织失败:', e); setOrgList([]); });
+  const loadP = () => safeFetch<any[]>(API + '/personnel').then(setPList).catch(e => { console.error('加载人员失败:', e); setPList([]); });
+  const loadPerm = () => Promise.all([safeFetch<any[]>(API + '/permissions'), safeFetch<any[]>(API + '/categories')]).then(([p, c]) => { setPermList(p); setCats(c); }).catch(console.error);
+  const loadA8 = () => fetch(API + '/a8-config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then(setA8 || {}).catch(() => {});
 
   useEffect(() => {
     if (subTab === 'org') loadOrg();
@@ -73,47 +89,47 @@ export default function BasicInfoManagement() {
     const body = { name: orgName, parentId: orgParent || null, description: orgDesc, isActive: orgActive };
     const url = editingOrg ? (API + '/org/' + editingOrg.id) : (API + '/org');
     const method = editingOrg ? 'PUT' : 'POST';
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(body) });
     const data = await res.json();
     if (data.success) { setShowOrgModal(false); resetOrgForm(); loadOrg(); }
     else alert(data.error || '保存失败');
   };
   const resetOrgForm = () => { setOrgName(''); setOrgParent(''); setOrgDesc(''); setOrgActive(true); setEditingOrg(null); };
   const editOrg = (o: any) => { setEditingOrg(o); setOrgName(o.name); setOrgParent(o.parentId || ''); setOrgDesc(o.description || ''); setOrgActive(o.isActive); setShowOrgModal(true); };
-  const delOrg = async (id: string) => { if (!confirm('确定？')) return; const r = await fetch(API + '/org/' + id, { method: 'DELETE' }).then(r => r.json()); if (r.success) loadOrg(); else alert(r.error); };
+  const delOrg = async (id: string) => { if (!confirm('确定？')) return; const r = await fetch(API + '/org/' + id, { method: 'DELETE', headers: getAuthHeaders() }).then(r => r.json()); if (r.success) loadOrg(); else alert(r.error); };
 
   // ==================== 人员保存 ====================
   const saveP = async () => {
-    const body = { name: pName, username: pUser, password: pPass, orgId: pOrgId || null, orgName: orgList.find((o: any) => o.id === pOrgId)?.name || '', roleName: pRole, isActive: pActive };
+    const body = { name: pName, username: pUser, password: pPass, orgId: pOrgId || null, orgName: Array.isArray(orgList) ? orgList.find((o: any) => o.id === pOrgId)?.name || '' : '', roleName: pRole, isActive: pActive };
     const url = editingP ? (API + '/personnel/' + editingP.id) : (API + '/personnel');
     const method = editingP ? 'PUT' : 'POST';
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(body) });
     const data = await res.json();
     if (data.success) { setShowPModal(false); resetPForm(); loadP(); }
     else alert(data.error || '保存失败');
   };
   const resetPForm = () => { setPName(''); setPUser(''); setPPass(''); setPOrgId(''); setPRole(''); setPActive(true); setEditingP(null); };
   const editP = (p: any) => { setEditingP(p); setPName(p.name); setPUser(p.username); setPPass(''); setPOrgId(p.orgId || ''); setPRole(p.roleName || ''); setPActive(p.isActive); setShowPModal(true); };
-  const delP = async (id: string) => { if (!confirm('确定？')) return; const r = await fetch(API + '/personnel/' + id, { method: 'DELETE' }).then(r => r.json()); if (r.success) loadP(); else alert(r.error); };
+  const delP = async (id: string) => { if (!confirm('确定？')) return; const r = await fetch(API + '/personnel/' + id, { method: 'DELETE', headers: getAuthHeaders() }).then(r => r.json()); if (r.success) loadP(); else alert(r.error); };
 
   // ==================== 权限保存 ====================
   const savePerm = async () => {
     const body = { roleName: permName, categoryId: permCatId || null, categoryName: permCatName || '全部', permissions: permArr };
     const url = editingPerm ? (API + '/permissions/' + editingPerm.id) : (API + '/permissions');
     const method = editingPerm ? 'PUT' : 'POST';
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(body) });
     const data = await res.json();
     if (data.success) { setShowPermModal(false); resetPermForm(); loadPerm(); }
     else alert(data.error || '保存失败');
   };
   const resetPermForm = () => { setPermName(''); setPermCatId(''); setPermCatName(''); setPermArr([]); setEditingPerm(null); };
   const editPerm = (r: any) => { setEditingPerm(r); setPermName(r.roleName); setPermCatId(r.categoryId || ''); setPermCatName(r.categoryName || ''); setPermArr(r.permissions || []); setShowPermModal(true); };
-  const delPerm = async (id: string) => { if (!confirm('确定？')) return; const r = await fetch(API + '/permissions/' + id, { method: 'DELETE' }).then(r => r.json()); if (r.success) loadPerm(); else alert(r.error); };
+  const delPerm = async (id: string) => { if (!confirm('确定？')) return; const r = await fetch(API + '/permissions/' + id, { method: 'DELETE', headers: getAuthHeaders() }).then(r => r.json()); if (r.success) loadPerm(); else alert(r.error); };
 
   // ==================== A8 ====================
-  const saveA8 = async () => { const r = await fetch(API + '/a8-config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(a8) }).then(r => r.json()); if (r.success) alert('保存成功'); else alert(r.error); };
-  const testA8 = async () => { const r = await fetch(API + '/a8-test', { method: 'POST' }).then(r => r.json()); if (r.success) alert('连接成功'); else alert(r.error); };
-  const syncA8 = async () => { if (!confirm('确定同步？')) return; const r = await fetch(API + '/a8-sync', { method: 'POST' }).then(r => r.json()); if (r.success) { alert('同步成功'); loadOrg(); loadP(); } else alert(r.error); };
+  const saveA8 = async () => { const r = await fetch(API + '/a8-config', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(a8) }).then(r => r.json()); if (r.success) alert('保存成功'); else alert(r.error); };
+  const testA8 = async () => { const r = await fetch(API + '/a8-test', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json()); if (r.success) alert('连接成功'); else alert(r.error); };
+  const syncA8 = async () => { if (!confirm('确定同步？')) return; const r = await fetch(API + '/a8-sync', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json()); if (r.success) { alert('同步成功'); loadOrg(); loadP(); } else alert(r.error); };
 
   // ==================== 渲染 ====================
   return (

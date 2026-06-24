@@ -40,7 +40,7 @@ export interface SendMessageResponse {
 }
 
 // 获取认证请求头
-function getAuthHeaders(): Record<string, string> {
+export function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };

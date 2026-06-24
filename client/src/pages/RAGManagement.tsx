@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { getAuthHeaders } from '../services/api';
 
 // ==================== Toast 通知组件 ====================
 interface Toast {
@@ -63,12 +64,12 @@ export default function RAGManagement() {
     setLoading(true);
     try {
       // 向量库统计
-      const vectorRes = await fetch(`${API_BASE}/vector-stats`);
+      const vectorRes = await fetch(`${API_BASE}/vector-stats`, { headers: getAuthHeaders() });
       setVectorStats(await vectorRes.json());
-      
+
       // BM25 索引状态
       try {
-        const bm25Res = await fetch(`${API_BASE}/bm25-stats`);
+        const bm25Res = await fetch(`${API_BASE}/bm25-stats`, { headers: getAuthHeaders() });
         const bm25Data = await bm25Res.json();
         setBm25Enabled(bm25Data.enabled);
       } catch (e) {
@@ -96,7 +97,7 @@ export default function RAGManagement() {
     try {
       const res = await fetch(`${API_BASE}/rag-test`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ query: testQuery, mode: testMode, topK: testTopK })
       });
       const data = await res.json();
@@ -121,7 +122,7 @@ export default function RAGManagement() {
     try {
       const res = await fetch(`${API_BASE}/rag-eval`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ k: evalK, mode: evalMode })
       });
       const data = await res.json();
@@ -187,7 +188,7 @@ export default function RAGManagement() {
     try {
       const res = await fetch(`${API_BASE}/intent-parse`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ query: intentInput })
       });
       const data = await res.json();
@@ -213,7 +214,7 @@ export default function RAGManagement() {
       const queries = intentBatchInput.split('\n').filter(q => q.trim());
       const res = await fetch(`${API_BASE}/intent-batch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ queries })
       });
       const data = await res.json();
@@ -239,7 +240,7 @@ export default function RAGManagement() {
     try {
       const res = await fetch(`${API_BASE}/rewrite-answer`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ answer: rewriteInput, tone: rewriteTone })
       });
       const data = await res.json();
@@ -265,7 +266,7 @@ export default function RAGManagement() {
       const answers = rewriteInput.split('\n').filter(a => a.trim());
       const res = await fetch(`${API_BASE}/rewrite-batch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ answers, tone: rewriteTone })
       });
       const data = await res.json();
