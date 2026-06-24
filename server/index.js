@@ -833,7 +833,6 @@ app.delete('/api/admin/knowledge-bases/:id', (req, res) => {
 */ // 知识库管理API注释结束
 
 // ============ 分类管理 API（支持二级分类）（已迁移到 rag-admin.js）============
-/*
 // 获取分类列表（支持按 knowledgeBaseId 过滤）
 app.get('/api/admin/categories', (req, res) => {
   try {
@@ -1489,7 +1488,7 @@ app.post('/api/admin/a8-sync', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-*/ // 分类管理、FAQ管理、上传管理、向量管理等API已迁移到 rag-admin.js
+// 分类管理、FAQ管理、上传管理、向量管理等API（保留在 index.js 中）
 
 // 从文本自动提取 FAQ，uploadCategory 为上传时选择的分类（优先级最高）
 function extractFAQFromText(text, uploadCategory = null) {
