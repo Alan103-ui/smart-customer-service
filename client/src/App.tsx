@@ -6,15 +6,94 @@ import LoginPage from './pages/LoginPage';
 import type { Message, WebSocketMessage, Candidate } from './types';
 import './App.css';
 
-function App() {
-  // =========== 认证状态 ===========
-  const [user, setUser] = useState<null | { id: string; username: string; name: string; role: string }>(() => {
-    const saved = localStorage.getItem('cs_user');
-    return saved ? JSON.parse(saved) : null;
+// ============================================================
+// 用户信息类型
+// ============================================================
+interface UserInfo {
+  id: string;
+  username: string;
+  name: string;
+  role: string;
+}
+
+// ============================================================
+// 认证包装器 - 处理登录/登出，不包含任何业务逻辑 hooks
+// ============================================================
+function AuthWrapper() {
+  const [user, setUser] = useState<UserInfo | null>(() => {
+    try {
+      const saved = localStorage.getItem('cs_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
   const [authLoading, setAuthLoading] = useState(true);
 
-  // =========== 原有状态 ===========
+  useEffect(() => {
+    const token = localStorage.getItem('cs_token');
+    if (!token) {
+      setAuthLoading(false);
+      return;
+    }
+    fetch('http://localhost:3001/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(u => {
+        setUser(u);
+        localStorage.setItem('cs_user', JSON.stringify(u));
+      })
+      .catch(() => {
+        localStorage.removeItem('cs_token');
+        localStorage.removeItem('cs_user');
+        setUser(null);
+      })
+      .finally(() => setAuthLoading(false));
+  }, []);
+
+  const handleLogin = useCallback((u: UserInfo) => {
+    setUser(u);
+    localStorage.setItem('cs_user', JSON.stringify(u));
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('cs_token');
+    localStorage.removeItem('cs_user');
+    setUser(null);
+  }, []);
+
+  // 加载中
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin text-4xl mb-4">⏳</div>
+          <p className="text-gray-500">正在加载...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 未登录 → 显示登录页
+  if (!user) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
+  // 已登录 → 显示主界面（独立组件，避免 hooks 顺序问题）
+  return <MainApp user={user} onLogout={handleLogout} />;
+}
+
+// ============================================================
+// 主应用界面 - 所有业务逻辑都在这里，无 early return
+// ============================================================
+interface MainAppProps {
+  user: UserInfo;
+  onLogout: () => void;
+}
+
+function MainApp({ user, onLogout }: MainAppProps) {
+  // =========== 所有状态声明（必须在最顶部）============
   const [sessionId, setSessionId] = useState<string>(() => {
     return localStorage.getItem('cs_session_id') || uuidv4();
   });
@@ -36,31 +115,15 @@ function App() {
 
   const wsRef = useRef<WebSocket | null>(null);
 
-  // =========== 启动时验证 token ===========
-  useEffect(() => {
-    const token = localStorage.getItem('cs_token');
-    if (!token) { setAuthLoading(false); return; }
-    fetch('http://localhost:3001/api/auth/me', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(u => { setUser(u); localStorage.setItem('cs_user', JSON.stringify(u)); })
-      .catch(() => { localStorage.removeItem('cs_token'); localStorage.removeItem('cs_user'); })
-      .finally(() => setAuthLoading(false));
-  }, []);
-
-  // =========== 未登录：显示登录页 ===========
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center">加载中...</div>;
-  if (!user) return <LoginPage onLogin={(u) => { setUser(u); localStorage.setItem('cs_user', JSON.stringify(u)); }} />;
-
-  // =========== 工具函数 ===========
+  // =========== 所有 effects ===========
   useEffect(() => { localStorage.setItem('cs_session_id', sessionId); }, [sessionId]);
+
   useEffect(() => {
     localStorage.setItem('cs_theme', theme);
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // 同步 showAdmin 状态到 URL
+  // 同步 showAdmin 到 URL
   useEffect(() => {
     const currentPath = window.location.pathname;
     if (showAdmin && currentPath !== '/admin') {
@@ -70,20 +133,17 @@ function App() {
     }
   }, [showAdmin]);
 
-  // 监听浏览器前进/后退按钮
   useEffect(() => {
     const handlePopState = () => { setShowAdmin(window.location.pathname === '/admin'); };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const toggleTheme = useCallback(() => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
-  }, []);
-
   // 获取分类列表
   useEffect(() => {
-    fetch('http://localhost:3001/api/categories')
+    fetch('http://localhost:3001/api/categories', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('cs_token')}` },
+    })
       .then(res => res.json())
       .then(data => {
         const primaryCategories = data.filter((c: any) => !c.parentId);
@@ -92,7 +152,7 @@ function App() {
       .catch(err => console.error('获取分类失败', err));
   }, []);
 
-  // =========== WebSocket 连接（带 Token 认证）============
+  // =========== WebSocket 连接 ===========
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -109,14 +169,14 @@ function App() {
         type: 'init',
         sessionId,
         category: selectedCategory === '全部' ? null : selectedCategory,
-        token  // 携带 Token 认证
+        token,
       }));
     };
 
     socket.onmessage = (event) => {
       try {
         const msg: WebSocketMessage = JSON.parse(event.data);
-        handleWebSocketMessage(msg);
+        handleMessage(msg);
       } catch (e) { console.error('[WS] 消息解析失败:', e); }
     };
 
@@ -125,13 +185,17 @@ function App() {
       setConnected(false);
       if (wsRef.current === socket) wsRef.current = null;
     };
-
     socket.onerror = (e) => { console.error('[WS] 连接错误:', e); };
 
     return () => { socket.close(); wsRef.current = null; };
   }, [sessionId, selectedCategory]);
 
-  const handleWebSocketMessage = useCallback((msg: WebSocketMessage) => {
+  // =========== 回调函数 ===========
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  }, []);
+
+  const handleMessage = useCallback((msg: WebSocketMessage) => {
     switch (msg.type) {
       case 'init':
         if (msg.sessionId) setSessionId(msg.sessionId);
@@ -159,7 +223,7 @@ function App() {
             timestamp: msg.timestamp || new Date().toISOString(),
             intent: msg.intent,
             confidence: msg.confidence,
-            fallback: msg.fallback
+            fallback: msg.fallback,
           };
           setMessages(prev => [...prev, newMsg]);
           setCandidates([]);
@@ -171,7 +235,10 @@ function App() {
 
   const sendMessage = useCallback((content: string) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) { console.warn('[WS] 连接未就绪'); return; }
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.warn('[WS] 连接未就绪');
+      return;
+    }
     const userMsg: Message = { role: 'user', content, timestamp: new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
     setCandidates([]);
@@ -185,13 +252,6 @@ function App() {
     setCandidates([]);
     setIsTyping(true);
   }, []);
-
-  // =========== 登出 ===========
-  const handleLogout = () => {
-    localStorage.removeItem('cs_token');
-    localStorage.removeItem('cs_user');
-    setUser(null);
-  };
 
   // =========== 渲染 ===========
   if (showAdmin) {
@@ -209,7 +269,7 @@ function App() {
         </div>
       );
     }
-    return <AdminDashboard onBack={() => setShowAdmin(false)} user={user} onLogout={handleLogout} />;
+    return <AdminDashboard onBack={() => setShowAdmin(false)} user={user} onLogout={onLogout} />;
   }
 
   return (
@@ -232,7 +292,7 @@ function App() {
             </span>
             <span>{user.name || user.username}</span>
           </div>
-          <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-red-500 transition" title="退出登录">
+          <button onClick={onLogout} className="text-xs text-gray-400 hover:text-red-500 transition" title="退出登录">
             退出
           </button>
           <button className="theme-toggle-btn" onClick={toggleTheme} title={theme === 'light' ? '深色模式' : '浅色模式'}>
@@ -261,4 +321,7 @@ function App() {
   );
 }
 
-export default App;
+// ============ 导出 AuthWrapper 作为根组件 ============
+export default function App() {
+  return <AuthWrapper />;
+}
