@@ -843,7 +843,15 @@ const DB_PATH = path.join(__dirname, '../data/conversations.db');
 function readDB() {
   const fp = DB_PATH.replace('.db', '.json');
   if (!fs.existsSync(fp)) return { conversations: [], faq_logs: [] };
-  return JSON.parse(fs.readFileSync(fp, 'utf8'));
+  try {
+    const raw = fs.readFileSync(fp, 'utf8');
+    if (!raw.trim()) return { conversations: [], faq_logs: [] }; // 空文件保护
+    return JSON.parse(raw);
+  } catch (e) {
+    // JSON 解析失败时返回空数据，避免 500 崩溃
+    errorLog('读取数据文件失败（将使用空数据）', e);
+    return { conversations: [], faq_logs: [] };
+  }
 }
 
 function writeDB(data) {

@@ -171,7 +171,14 @@ if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 function readDB() {
   const fp = DB_PATH.replace('.db', '.json');
   if (!fs.existsSync(fp)) return { conversations: [], faq_logs: [] };
-  return JSON.parse(fs.readFileSync(fp, 'utf8'));
+  try {
+    const raw = fs.readFileSync(fp, 'utf8');
+    if (!raw.trim()) return { conversations: [], faq_logs: [] }; // 空文件保护
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('[DB] 读取数据文件失败（将使用空数据）:', e.message);
+    return { conversations: [], faq_logs: [] };
+  }
 }
 
 function writeDB(data) {

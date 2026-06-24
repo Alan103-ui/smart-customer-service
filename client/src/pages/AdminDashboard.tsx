@@ -165,9 +165,11 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const fetchConversations = async () => {
     try {
       const res = await fetch(`${API_BASE}/conversations`, { headers: getAuthHeaders() });
-      setConversations(await res.json());
+      if (!res.ok) { console.error('获取对话列表失败:', res.status); setConversations([]); setLoading(false); return; }
+      const data = await res.json();
+      setConversations(Array.isArray(data) ? data : []);
       setLoading(false);
-    } catch (err) { console.error('获取对话列表失败', err); setLoading(false); }
+    } catch (err) { console.error('获取对话列表失败', err); setConversations([]); setLoading(false); }
   };
 
   useEffect(() => {
@@ -329,7 +331,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const selectedConv = conversations.find(c => c.session_id === selectedSession);
+  const selectedConv = Array.isArray(conversations) ? conversations.find(c => c.session_id === selectedSession) : undefined;
 
   // ==================== 搜索关键词高亮 ====================
   const highlightKeyword = (text: string, keyword: string): React.ReactNode => {
