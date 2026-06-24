@@ -49,6 +49,27 @@ function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+// 统一请求处理（含 401 自动跳转登录）
+async function request(url: string, options: RequestInit = {}): Promise<Response> {
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...getAuthHeaders(), ...options.headers },
+  });
+
+  // Token 过期或无效 → 清除并跳转登录
+  if (response.status === 401) {
+    localStorage.removeItem('cs_token');
+    localStorage.removeItem('cs_user');
+    // 避免在登录页本身无限重定向
+    if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/admin')) {
+      window.location.href = '/login';
+    }
+    throw new Error('未登录或登录已过期');
+  }
+
+  return response;
+}
+
 // API 服务类
 class ApiService {
   private baseUrl: string;
@@ -59,9 +80,8 @@ class ApiService {
 
   // 发送消息（通过 WebSocket，此方法保留兼容）
   async sendMessage(request: SendMessageRequest): Promise<SendMessageResponse> {
-    const response = await fetch(`${this.baseUrl}/api/chat`, {
+    const response = await request(`${this.baseUrl}/api/chat`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify(request),
     });
 
@@ -74,9 +94,7 @@ class ApiService {
 
   // 获取对话列表（管理后台）
   async getConversations(): Promise<Conversation[]> {
-    const response = await fetch(`${this.baseUrl}/api/admin/conversations`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await request(`${this.baseUrl}/api/admin/conversations`);
 
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
@@ -87,9 +105,7 @@ class ApiService {
 
   // 获取单个对话（管理后台）
   async getConversation(sessionId: string): Promise<{ messages: Message[] }> {
-    const response = await fetch(`${this.baseUrl}/api/admin/conversations/${sessionId}`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await request(`${this.baseUrl}/api/admin/conversations/${sessionId}`);
 
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
@@ -100,9 +116,7 @@ class ApiService {
 
   // 获取 FAQ 列表（管理后台）
   async getFAQ(): Promise<FAQItem[]> {
-    const response = await fetch(`${this.baseUrl}/api/admin/faq`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await request(`${this.baseUrl}/api/admin/faq`);
 
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
@@ -114,9 +128,8 @@ class ApiService {
 
   // 创建 FAQ（管理后台）
   async createFAQ(faq: FAQItem): Promise<FAQItem> {
-    const response = await fetch(`${this.baseUrl}/api/admin/faq`, {
+    const response = await request(`${this.baseUrl}/api/admin/faq`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify(faq),
     });
 
@@ -129,9 +142,8 @@ class ApiService {
 
   // 更新 FAQ（管理后台）
   async updateFAQ(id: number | string, faq: FAQItem): Promise<FAQItem> {
-    const response = await fetch(`${this.baseUrl}/api/admin/faq/${id}`, {
+    const response = await request(`${this.baseUrl}/api/admin/faq/${id}`, {
       method: 'PUT',
-      headers: getAuthHeaders(),
       body: JSON.stringify(faq),
     });
 
@@ -144,9 +156,8 @@ class ApiService {
 
   // 删除 FAQ（管理后台）
   async deleteFAQ(id: number | string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/api/admin/faq/${id}`, {
+    const response = await request(`${this.baseUrl}/api/admin/faq/${id}`, {
       method: 'DELETE',
-      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -156,9 +167,7 @@ class ApiService {
 
   // 获取统计信息（管理后台）
   async getStats(): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/api/admin/stats`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await request(`${this.baseUrl}/api/admin/stats`);
 
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
