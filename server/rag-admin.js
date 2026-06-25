@@ -11,6 +11,20 @@ const fs = require('fs');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 
+// ============ 数据共享模块 ============
+const data = require('./data');
+
+// 从 data.js 导入所有数据访问函数
+const {
+  loadCategories, saveCategories,
+  getFAQ, saveFAQ,
+  loadOrg, saveOrg,
+  loadPersonnel, savePersonnel,
+  loadPermissions, savePermissions,
+  loadA8Config, saveA8Config,
+  CATEGORIES_PATH, FAQ_PATH, ORG_PATH, PERSONNEL_PATH, PERMISSIONS_PATH, A8_CONFIG_PATH, KNOWLEDGE_BASES_PATH
+} = data;
+
 // ============ 日志系统 ============
 const { auditLog, errorLog, getLogFiles, readLogFile, cleanOldLogs } = require('./logger');
 
@@ -33,46 +47,7 @@ const {
 } = require('./dialogue-memory');
 
 // ============ 基础信息数据操作 ============
-const ORG_PATH = path.join(__dirname, '../data/org.json');
-const PERSONNEL_PATH = path.join(__dirname, '../data/personnel.json');
-const PERMISSIONS_PATH = path.join(__dirname, '../data/permissions.json');
-const A8_CONFIG_PATH = path.join(__dirname, '../data/a8_config.json');
 
-function loadOrg() {
-  if (!fs.existsSync(ORG_PATH)) return [];
-  try { return JSON.parse(fs.readFileSync(ORG_PATH, 'utf8')); } catch (e) { return []; }
-}
-function saveOrg(data) { fs.writeFileSync(ORG_PATH, JSON.stringify(data, null, 2)); }
-
-function loadPersonnel() {
-  if (!fs.existsSync(PERSONNEL_PATH)) return [];
-  try { return JSON.parse(fs.readFileSync(PERSONNEL_PATH, 'utf8')); } catch (e) { return []; }
-}
-function savePersonnel(data) { fs.writeFileSync(PERSONNEL_PATH, JSON.stringify(data, null, 2)); }
-
-function loadPermissions() {
-  if (!fs.existsSync(PERMISSIONS_PATH)) {
-    // 种子数据
-    const seed = [
-      { id: 'perm_001', roleName: '管理员', roleKey: 'admin', categoryId: null, categoryName: '全部', permissions: ['faq:read','faq:write','faq:delete','category:manage','personnel:manage','org:manage','permission:manage','a8:config'], isSystem: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'perm_003', roleName: '普通用户', roleKey: 'user', categoryId: null, categoryName: '全部', permissions: ['chat:access'], isSystem: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-    ];
-    savePermissions(seed);
-    return seed;
-  }
-  try { return JSON.parse(fs.readFileSync(PERMISSIONS_PATH, 'utf8')); } catch (e) { return []; }
-}
-function savePermissions(data) { fs.writeFileSync(PERMISSIONS_PATH, JSON.stringify(data, null, 2)); }
-
-function loadA8Config() {
-  if (!fs.existsSync(A8_CONFIG_PATH)) {
-    const defaultConfig = { enabled: false, orgApiUrl: '', personnelApiUrl: '', syncInterval: 3600, lastSyncTime: null, auth: { type: 'basic', username: '', password: '' } };
-    saveA8Config(defaultConfig);
-    return defaultConfig;
-  }
-  try { return JSON.parse(fs.readFileSync(A8_CONFIG_PATH, 'utf8')); } catch (e) { return { enabled: false }; }
-}
-function saveA8Config(data) { fs.writeFileSync(A8_CONFIG_PATH, JSON.stringify(data, null, 2)); }
 
 const {
   rewriteToColloquial, batchRewrite, evaluateQuality, getToneList
@@ -80,9 +55,6 @@ const {
 
 // ============ 配置 ============
 const OLLAMA_BASE_URL = 'http://172.17.6.18:11434';
-const FAQ_PATH = path.join(__dirname, '../data/faq.json');
-const CATEGORIES_PATH = path.join(__dirname, '../data/categories.json');
-const KNOWLEDGE_BASES_PATH = path.join(__dirname, '../data/knowledge_bases.json');
 const UPLOAD_DIR = path.join(__dirname, '../data/uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -121,26 +93,6 @@ function isResolved(conversation) {
   }
 }
 
-function getFAQ() {
-  if (!fs.existsSync(FAQ_PATH)) return [];
-  try { return JSON.parse(fs.readFileSync(FAQ_PATH, 'utf8')); } catch (e) { return []; }
-}
-function saveFAQ(data) { fs.writeFileSync(FAQ_PATH, JSON.stringify(data, null, 2)); }
-
-function loadCategories() {
-  if (!fs.existsSync(CATEGORIES_PATH)) {
-    const defaultCats = [
-      { id: 'cat_default', name: '常见问题', description: '默认分类', parentId: null, sortOrder: 0, isDefault: true, knowledgeBaseId: 'kb_default' },
-      { id: 'cat_after_sale', name: '售后服务', description: '退货退款等售后问题', parentId: null, sortOrder: 1, isDefault: false, knowledgeBaseId: 'kb_default' },
-      { id: 'cat_shipping', name: '配送物流', description: '配送、物流、快递相关问题', parentId: null, sortOrder: 2, isDefault: false, knowledgeBaseId: 'kb_default' },
-      { id: 'cat_payment', name: '支付相关', description: '支付、付款、发票相关问题', parentId: null, sortOrder: 3, isDefault: false, knowledgeBaseId: 'kb_default' }
-    ];
-    saveCategories(defaultCats);
-    return defaultCats;
-  }
-  try { return JSON.parse(fs.readFileSync(CATEGORIES_PATH, 'utf8')); } catch (e) { return []; }
-}
-function saveCategories(data) { fs.writeFileSync(CATEGORIES_PATH, JSON.stringify(data, null, 2)); }
 
 function loadKnowledgeBases() {
   if (!fs.existsSync(KNOWLEDGE_BASES_PATH)) {
