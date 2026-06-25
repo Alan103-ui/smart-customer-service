@@ -93,11 +93,12 @@ function verifyToken(token) {
  */
 function authMiddleware(req, res, next) {
   // 跳过以下路径（无需认证）
+  // 注意：当使用 app.use('/api', authMiddleware) 时，req.path 已去掉 /api 前缀
   const skipPaths = [
-    '/api/auth/login',
-    '/api/auth/sso',
-    '/api/health',
-    '/api/categories'  // 普通用户获取分类列表（仅一级分类，无敏感信息）
+    '/auth/login',
+    '/auth/sso',
+    '/health',
+    '/categories'  // 普通用户获取分类列表（仅一级分类，无敏感信息）
   ];
   if (skipPaths.some(p => req.path.startsWith(p))) return next();
 
