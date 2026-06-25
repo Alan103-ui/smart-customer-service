@@ -590,8 +590,6 @@ app.post('/api/chat/clear', (req, res) => {
 
 // ============ 知识库管理 API（已迁移到 rag-admin.js）============
 
-// ============ 分类管理 API（支持二级分类）（已迁移到 rag-admin.js）============
-// 获取分类列表（支持按 knowledgeBaseId 过滤）
 
 // 前端接口：获取一级分类（parentId 为 null）
 app.get('/api/categories', (req, res) => {
@@ -607,52 +605,22 @@ app.get('/api/categories', (req, res) => {
   }
 });
 
-// 新增分类
 
-// 修改分类
 
-// 删除分类（将该分类下 FAQ 改为「常见问题」）
 
-// FAQ - 列表（支持按 category 过滤）
 
-// FAQ - 新增（同步向量化）
 
-// FAQ - 修改（同步更新向量）
 
-// FAQ - 批量删除
 
-// FAQ - 删除（同步删除向量）
 
-// FAQ - 附件上传
 
-// FAQ - 删除附件
 
-// FAQ - 文件上传 + 自动提取（同步向量化）
 
-// ============ 图片/附件上传 API（供 FAQ 答案插入图片/链接使用） ============
 
 // ============ 向量库管理 API ============
 // 获取向量库统计
-app.get('/api/admin/vector-stats', (req, res) => {
-  try {
-    res.json(getVectorStats());
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // 重建向量库（从现有FAQ重新向量化）
-app.post('/api/admin/vector-rebuild', async (req, res) => {
-  try {
-    res.json({ success: true, message: '向量库重建中，请稍候...' });
-    // 异步执行，不阻塞响应
-    rebuildVectorStore()
-      .then(r => console.log('[RAG] 向量库重建完成，共', r.count, '个文档'))
-      .catch(e => console.error('[RAG] 向量库重建失败：', e.message));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ============ 上传文件列表 ============
 
