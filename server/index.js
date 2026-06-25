@@ -1316,195 +1316,195 @@ app.delete('/api/admin/org/:id', (req, res) => {
 */
 // 上述路由已迁移到 rag-admin.js，通过 router.get('/org', ...) 注册
 
-// ============ 基础信息：人员信息管理 ============
-app.get('/api/admin/personnel', (req, res) => {
-  try {
-    const list = loadPersonnel();
-    const { orgId } = req.query;
-    const filtered = orgId ? list.filter(p => p.orgId === orgId) : list;
-    res.json(filtered);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/admin/personnel', (req, res) => {
-  try {
-    const { name, username, password, orgId, orgName, roleId, roleName } = req.body;
-    if (!name || !name.trim()) return res.status(400).json({ error: '姓名必填' });
-    if (!username || !username.trim()) return res.status(400).json({ error: '用户名必填' });
-    const list = loadPersonnel();
-    if (list.some(p => p.username === username.trim())) return res.status(400).json({ error: '用户名已存在' });
-    const newPerson = {
-      id: 'user_' + Date.now(),
-      name: name.trim(),
-      username: username.trim(),
-      password: password || '123456',
-      orgId: orgId || null,
-      orgName: orgName || '',
-      roleId: roleId || null,
-      roleName: roleName || '',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      lastLoginAt: null
-    };
-    list.push(newPerson);
-    savePersonnel(list);
-    res.json({ success: true, data: newPerson });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/admin/personnel/:id', (req, res) => {
-  try {
-    const list = loadPersonnel();
-    const idx = list.findIndex(p => p.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    const { name, username, password, orgId, orgName, roleId, roleName, isActive } = req.body;
-    if (name && name.trim()) list[idx].name = name.trim();
-    if (username && username.trim()) {
-      if (list.some(p => p.username === username.trim() && p.id !== req.params.id)) {
-        return res.status(400).json({ error: '用户名已存在' });
-      }
-      list[idx].username = username.trim();
-    }
-    if (password && password.trim()) list[idx].password = password.trim();
-    if (orgId !== undefined) { list[idx].orgId = orgId || null; list[idx].orgName = orgName || ''; }
-    if (roleId !== undefined) { list[idx].roleId = roleId || null; list[idx].roleName = roleName || ''; }
-    if (isActive !== undefined) list[idx].isActive = isActive;
-    list[idx].updatedAt = new Date().toISOString();
-    savePersonnel(list);
-    res.json({ success: true, data: list[idx] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/admin/personnel/:id', (req, res) => {
-  try {
-    const list = loadPersonnel();
-    const newList = list.filter(p => p.id !== req.params.id);
-    if (newList.length === list.length) return res.status(404).json({ error: 'Not found' });
-    savePersonnel(newList);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ============ 基础信息：权限管理 ============
-app.get('/api/admin/permissions', (req, res) => {
-  try { res.json(loadPermissions()); } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/admin/permissions', (req, res) => {
-  try {
-    const { roleName, categoryId, categoryName, permissions } = req.body;
-    if (!roleName || !roleName.trim()) return res.status(400).json({ error: '角色名称必填' });
-    const list = loadPermissions();
-    const newRole = {
-      id: 'perm_' + Date.now(),
-      roleName: roleName.trim(),
-      roleKey: roleName.trim().replace(/\s+/g, '_').toLowerCase(),
-      categoryId: categoryId || null,
-      categoryName: categoryName || '全部',
-      permissions: permissions || [],
-      isSystem: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    list.push(newRole);
-    savePermissions(list);
-    res.json({ success: true, data: newRole });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/admin/permissions/:id', (req, res) => {
-  try {
-    const list = loadPermissions();
-    const idx = list.findIndex(r => r.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    if (list[idx].isSystem) return res.status(400).json({ error: '系统内置角色不可修改' });
-    const { roleName, categoryId, categoryName, permissions } = req.body;
-    if (roleName && roleName.trim()) list[idx].roleName = roleName.trim();
-    if (categoryId !== undefined) { list[idx].categoryId = categoryId || null; list[idx].categoryName = categoryName || '全部'; }
-    if (permissions) list[idx].permissions = permissions;
-    list[idx].updatedAt = new Date().toISOString();
-    savePermissions(list);
-    res.json({ success: true, data: list[idx] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/admin/permissions/:id', (req, res) => {
-  try {
-    const list = loadPermissions();
-    const target = list.find(r => r.id === req.params.id);
-    if (!target) return res.status(404).json({ error: 'Not found' });
-    if (target.isSystem) return res.status(400).json({ error: '系统内置角色不可删除' });
-    const newList = list.filter(r => r.id !== req.params.id);
-    savePermissions(newList);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ============ 基础信息：A8配置管理 ============
-app.get('/api/admin/a8-config', (req, res) => {
-  try { res.json(loadA8Config()); } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.put('/api/admin/a8-config', (req, res) => {
-  try {
-    const config = loadA8Config();
-    const { enabled, orgApiUrl, personnelApiUrl, syncInterval, auth } = req.body;
-    if (enabled !== undefined) config.enabled = enabled;
-    if (orgApiUrl !== undefined) config.orgApiUrl = orgApiUrl;
-    if (personnelApiUrl !== undefined) config.personnelApiUrl = personnelApiUrl;
-    if (syncInterval !== undefined) config.syncInterval = syncInterval;
-    if (auth) config.auth = auth;
-    config.updatedAt = new Date().toISOString();
-    saveA8Config(config);
-    res.json({ success: true, data: config });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/admin/a8-test', async (req, res) => {
-  try {
-    const config = loadA8Config();
-    if (!config.enabled) return res.status(400).json({ error: 'A8集成未启用' });
-    if (!config.orgApiUrl) return res.status(400).json({ error: '请先配置组织架构API地址' });
-    const axios = require('axios');
-    const authHeader = config.auth.type === 'basic'
-      ? { Authorization: 'Basic ' + Buffer.from(config.auth.username + ':' + config.auth.password).toString('base64') }
-      : {};
-    const response = await axios.get(config.orgApiUrl, { headers: authHeader, timeout: 5000 });
-    res.json({ success: true, message: '连接成功', status: response.status });
-  } catch (err) {
-    res.status(500).json({ error: '连接失败：' + (err.response?.data || err.message) });
-  }
-});
-
-app.post('/api/admin/a8-sync', async (req, res) => {
-  try {
-    const config = loadA8Config();
-    if (!config.enabled) return res.status(400).json({ error: 'A8集成未启用' });
-    // TODO: 实现同步逻辑
-    config.lastSyncTime = new Date().toISOString();
-    saveA8Config(config);
-    res.json({ success: true, message: '同步完成' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// // ============ 基础信息：人员信息管理 ============
+// app.get('/api/admin/personnel', (req, res) => {
+//   try {
+//     const list = loadPersonnel();
+//     const { orgId } = req.query;
+//     const filtered = orgId ? list.filter(p => p.orgId === orgId) : list;
+//     res.json(filtered);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+// 
+// app.post('/api/admin/personnel', (req, res) => {
+//   try {
+//     const { name, username, password, orgId, orgName, roleId, roleName } = req.body;
+//     if (!name || !name.trim()) return res.status(400).json({ error: '姓名必填' });
+//     if (!username || !username.trim()) return res.status(400).json({ error: '用户名必填' });
+//     const list = loadPersonnel();
+//     if (list.some(p => p.username === username.trim())) return res.status(400).json({ error: '用户名已存在' });
+//     const newPerson = {
+//       id: 'user_' + Date.now(),
+//       name: name.trim(),
+//       username: username.trim(),
+//       password: password || '123456',
+//       orgId: orgId || null,
+//       orgName: orgName || '',
+//       roleId: roleId || null,
+//       roleName: roleName || '',
+//       isActive: true,
+//       createdAt: new Date().toISOString(),
+//       updatedAt: new Date().toISOString(),
+//       lastLoginAt: null
+//     };
+//     list.push(newPerson);
+//     savePersonnel(list);
+//     res.json({ success: true, data: newPerson });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+// 
+// app.put('/api/admin/personnel/:id', (req, res) => {
+//   try {
+//     const list = loadPersonnel();
+//     const idx = list.findIndex(p => p.id === req.params.id);
+//     if (idx === -1) return res.status(404).json({ error: 'Not found' });
+//     const { name, username, password, orgId, orgName, roleId, roleName, isActive } = req.body;
+//     if (name && name.trim()) list[idx].name = name.trim();
+//     if (username && username.trim()) {
+//       if (list.some(p => p.username === username.trim() && p.id !== req.params.id)) {
+//         return res.status(400).json({ error: '用户名已存在' });
+//       }
+//       list[idx].username = username.trim();
+//     }
+//     if (password && password.trim()) list[idx].password = password.trim();
+//     if (orgId !== undefined) { list[idx].orgId = orgId || null; list[idx].orgName = orgName || ''; }
+//     if (roleId !== undefined) { list[idx].roleId = roleId || null; list[idx].roleName = roleName || ''; }
+//     if (isActive !== undefined) list[idx].isActive = isActive;
+//     list[idx].updatedAt = new Date().toISOString();
+//     savePersonnel(list);
+//     res.json({ success: true, data: list[idx] });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+// 
+// app.delete('/api/admin/personnel/:id', (req, res) => {
+//   try {
+//     const list = loadPersonnel();
+//     const newList = list.filter(p => p.id !== req.params.id);
+//     if (newList.length === list.length) return res.status(404).json({ error: 'Not found' });
+//     savePersonnel(newList);
+//     res.json({ success: true });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+// 
+// // ============ 基础信息：权限管理 ============
+// app.get('/api/admin/permissions', (req, res) => {
+//   try { res.json(loadPermissions()); } catch (err) { res.status(500).json({ error: err.message }); }
+// });
+// 
+// app.post('/api/admin/permissions', (req, res) => {
+//   try {
+//     const { roleName, categoryId, categoryName, permissions } = req.body;
+//     if (!roleName || !roleName.trim()) return res.status(400).json({ error: '角色名称必填' });
+//     const list = loadPermissions();
+//     const newRole = {
+//       id: 'perm_' + Date.now(),
+//       roleName: roleName.trim(),
+//       roleKey: roleName.trim().replace(/\s+/g, '_').toLowerCase(),
+//       categoryId: categoryId || null,
+//       categoryName: categoryName || '全部',
+//       permissions: permissions || [],
+//       isSystem: false,
+//       createdAt: new Date().toISOString(),
+//       updatedAt: new Date().toISOString()
+//     };
+//     list.push(newRole);
+//     savePermissions(list);
+//     res.json({ success: true, data: newRole });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+// 
+// app.put('/api/admin/permissions/:id', (req, res) => {
+//   try {
+//     const list = loadPermissions();
+//     const idx = list.findIndex(r => r.id === req.params.id);
+//     if (idx === -1) return res.status(404).json({ error: 'Not found' });
+//     if (list[idx].isSystem) return res.status(400).json({ error: '系统内置角色不可修改' });
+//     const { roleName, categoryId, categoryName, permissions } = req.body;
+//     if (roleName && roleName.trim()) list[idx].roleName = roleName.trim();
+//     if (categoryId !== undefined) { list[idx].categoryId = categoryId || null; list[idx].categoryName = categoryName || '全部'; }
+//     if (permissions) list[idx].permissions = permissions;
+//     list[idx].updatedAt = new Date().toISOString();
+//     savePermissions(list);
+//     res.json({ success: true, data: list[idx] });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+// 
+// app.delete('/api/admin/permissions/:id', (req, res) => {
+//   try {
+//     const list = loadPermissions();
+//     const target = list.find(r => r.id === req.params.id);
+//     if (!target) return res.status(404).json({ error: 'Not found' });
+//     if (target.isSystem) return res.status(400).json({ error: '系统内置角色不可删除' });
+//     const newList = list.filter(r => r.id !== req.params.id);
+//     savePermissions(newList);
+//     res.json({ success: true });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+// 
+// // ============ 基础信息：A8配置管理 ============
+// app.get('/api/admin/a8-config', (req, res) => {
+//   try { res.json(loadA8Config()); } catch (err) { res.status(500).json({ error: err.message }); }
+// });
+// 
+// app.put('/api/admin/a8-config', (req, res) => {
+//   try {
+//     const config = loadA8Config();
+//     const { enabled, orgApiUrl, personnelApiUrl, syncInterval, auth } = req.body;
+//     if (enabled !== undefined) config.enabled = enabled;
+//     if (orgApiUrl !== undefined) config.orgApiUrl = orgApiUrl;
+//     if (personnelApiUrl !== undefined) config.personnelApiUrl = personnelApiUrl;
+//     if (syncInterval !== undefined) config.syncInterval = syncInterval;
+//     if (auth) config.auth = auth;
+//     config.updatedAt = new Date().toISOString();
+//     saveA8Config(config);
+//     res.json({ success: true, data: config });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+// 
+// app.post('/api/admin/a8-test', async (req, res) => {
+//   try {
+//     const config = loadA8Config();
+//     if (!config.enabled) return res.status(400).json({ error: 'A8集成未启用' });
+//     if (!config.orgApiUrl) return res.status(400).json({ error: '请先配置组织架构API地址' });
+//     const axios = require('axios');
+//     const authHeader = config.auth.type === 'basic'
+//       ? { Authorization: 'Basic ' + Buffer.from(config.auth.username + ':' + config.auth.password).toString('base64') }
+//       : {};
+//     const response = await axios.get(config.orgApiUrl, { headers: authHeader, timeout: 5000 });
+//     res.json({ success: true, message: '连接成功', status: response.status });
+//   } catch (err) {
+//     res.status(500).json({ error: '连接失败：' + (err.response?.data || err.message) });
+//   }
+// });
+// 
+// app.post('/api/admin/a8-sync', async (req, res) => {
+//   try {
+//     const config = loadA8Config();
+//     if (!config.enabled) return res.status(400).json({ error: 'A8集成未启用' });
+//     // TODO: 实现同步逻辑
+//     config.lastSyncTime = new Date().toISOString();
+//     saveA8Config(config);
+//     res.json({ success: true, message: '同步完成' });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 // 分类管理、FAQ管理、上传管理、向量管理等API（保留在 index.js 中）
 
 // 从文本自动提取 FAQ，uploadCategory 为上传时选择的分类（优先级最高）
