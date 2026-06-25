@@ -4,7 +4,7 @@ interface LoginPageProps {
   onLogin: (user: { id: string; username: string; name: string; role: string }) => void;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('');

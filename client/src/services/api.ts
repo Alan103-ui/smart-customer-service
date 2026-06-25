@@ -3,7 +3,7 @@
  * 处理所有后端 API 调用
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 // 类型定义
 export interface Message {

@@ -1388,8 +1388,19 @@ async function updateFAQVector(faqItem) {
   
   // 重建 BM25 索引
   buildBM25Index();
-  
+
   return { success: true };
+}
+
+// ============ 获取 BM25 索引统计（供 bm25-stats 路由使用） ============
+function getBM25Stats() {
+  const enabled = BM25_INDEX != null && Object.keys(BM25_INDEX).length > 0;
+  let termCount = 0;
+  let totalDocs = BM25_DOC_COUNT || 0;
+  if (BM25_INDEX) {
+    termCount = Object.keys(BM25_INDEX).length;
+  }
+  return { enabled, termCount, docCount: totalDocs };
 }
 
 module.exports = {
@@ -1413,5 +1424,7 @@ module.exports = {
   getRRFWeights,
   // 新增：HyDE搜索
   hydeSearch,
-  getLastHypoAnswer
+  getLastHypoAnswer,
+  // 新增：BM25 统计
+  getBM25Stats
 };

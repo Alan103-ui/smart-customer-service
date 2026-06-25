@@ -36,7 +36,7 @@ function AuthWrapper() {
       setAuthLoading(false);
       return;
     }
-    fetch('http://localhost:3001/api/auth/me', {
+    fetch('/api/auth/me', {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => r.ok ? r.json() : Promise.reject())
@@ -141,7 +141,7 @@ function MainApp({ user, onLogout }: MainAppProps) {
 
   // 获取分类列表
   useEffect(() => {
-    fetch('http://localhost:3001/api/categories', {
+    fetch('/api/categories', {
       headers: { Authorization: `Bearer ${localStorage.getItem('cs_token')}` },
     })
       .then(res => res.json())

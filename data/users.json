@@ -7,6 +7,26 @@
     "role": "admin",
     "isActive": true,
     "createdAt": "2026-06-24T05:52:32.956Z",
-    "lastLoginAt": "2026-06-24T05:57:07.993Z"
+    "lastLoginAt": "2026-06-25T00:50:16.771Z"
+  },
+  {
+    "id": "user_1782283118226",
+    "username": "testuser",
+    "passwordHash": "8f32af7a481f107f72a865dc8b0d9b06:915dd7f61d0a45dcb5b6c245c6afe93c9a06f8e155caffa7f877cd5051f023591774160a1fde7365b2454efc6db6e883b772e9f6a8bf80b3be347c9ff62e35f0",
+    "name": "测试用户",
+    "role": "user",
+    "isActive": true,
+    "createdAt": "2026-06-24T06:38:38.251Z",
+    "lastLoginAt": "2026-06-24T06:38:38.283Z"
+  },
+  {
+    "id": "user_1782283118289",
+    "username": "testuser2",
+    "passwordHash": "56151935e19cb4f566f6c442c0180a08:67d170edf5c8f71d3153526409e3f12281817a0686906bf5cd7752765ab174f17184d7322429c775e4f426260d82e8b8abad3d4615c4b87feb86150630d8b784",
+    "name": "普通用户",
+    "role": "user",
+    "isActive": true,
+    "createdAt": "2026-06-24T06:38:38.315Z",
+    "lastLoginAt": "2026-06-24T06:38:38.343Z"
   }
 ]

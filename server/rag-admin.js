@@ -17,7 +17,8 @@ const { auditLog, errorLog, getLogFiles, readLogFile, cleanOldLogs } = require('
 // ============ 依赖模块 ============
 const {
   addDocumentChunks, semanticSearch, rebuildVectorStore, getStats: getVectorStats,
-  buildFAQEmbeddingCache, searchByFAQCacheAsync, deleteDocument
+  buildFAQEmbeddingCache, searchByFAQCacheAsync, deleteDocument,
+  getBM25Stats
 } = require('./vector-store');
 
 const { callOllamaChat, callOllamaGenerate } = require('./ollama-client');
@@ -723,6 +724,65 @@ router.post('/rewrite-evaluate', (req, res) => {
 router.get('/vector-stats', (req, res) => {
   try {
     res.json(getVectorStats());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ BM25 索引状态 ============
+router.get('/bm25-stats', (req, res) => {
+  try {
+    res.json(getBM25Stats());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ RAG 测试搜索 ============
+router.post('/rag-test', async (req, res) => {
+  try {
+    const { query, topK = 5 } = req.body;
+    if (!query) return res.status(400).json({ error: 'query 必填' });
+    const results = semanticSearch(query, topK);
+    res.json({ success: true, query, count: results.length, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ RAG 批量评估 ============
+router.post('/rag-eval', async (req, res) => {
+  try {
+    const { samples } = req.body;
+    if (!samples || !Array.isArray(samples)) return res.status(400).json({ error: 'samples 必须是数组' });
+    res.json({ success: true, message: '评估任务已启动，请稍候...' });
+    // 异步执行评估，不阻塞响应
+    setImmediate(async () => {
+      const report = { timestamp: new Date().toISOString(), total: samples.length, results: [] };
+      for (const s of samples) {
+        try {
+          const results = semanticSearch(s.query || s.question, 3);
+          const safeResults = Array.isArray(results) ? results : [];
+          report.results.push({ query: s.query || s.question, results: safeResults.slice(0, 3) });
+        } catch (e) {
+          report.results.push({ query: s.query || s.question, error: e.message });
+        }
+      }
+      const fp = path.join(__dirname, '..', 'data', 'rag-eval-latest.json');
+      fs.writeFileSync(fp, JSON.stringify(report, null, 2), 'utf8');
+      console.log('[RAG] 评估报告已保存至', fp);
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ 获取最新评估报告 ============
+router.get('/eval-report-latest', (req, res) => {
+  try {
+    const fp = path.join(__dirname, '..', 'data', 'rag-eval-latest.json');
+    if (!fs.existsSync(fp)) return res.status(404).json({ error: '评估报告尚未生成' });
+    res.json(JSON.parse(fs.readFileSync(fp, 'utf8')));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
