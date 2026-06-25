@@ -592,16 +592,6 @@ app.post('/api/chat/clear', (req, res) => {
 
 // ============ 分类管理 API（支持二级分类）（已迁移到 rag-admin.js）============
 // 获取分类列表（支持按 knowledgeBaseId 过滤）
-app.get('/api/admin/categories', (req, res) => {
-  try {
-    const { knowledgeBaseId } = req.query;
-    let list = loadCategories();
-    if (knowledgeBaseId) list = list.filter(c => c.knowledgeBaseId === knowledgeBaseId);
-    res.json(list);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // 前端接口：获取一级分类（parentId 为 null）
 app.get('/api/categories', (req, res) => {
@@ -618,330 +608,28 @@ app.get('/api/categories', (req, res) => {
 });
 
 // 新增分类
-app.post('/api/admin/categories', (req, res) => {
-  try {
-    const { name, description, parentId, knowledgeBaseId } = req.body;
-    if (!name || !name.trim()) return res.status(400).json({ error: '分类名称必填' });
-    const list = loadCategories();
-    if (list.some(c => c.name === name.trim())) return res.status(400).json({ error: '分类名称已存在' });
-    const id = 'cat_' + Date.now();
-    list.push({
-      id,
-      name: name.trim(),
-      description: description || '',
-      parentId: parentId || null,
-      knowledgeBaseId: knowledgeBaseId || '',
-      sortOrder: list.length,
-      isDefault: false
-    });
-    saveCategories(list);
-    auditLog('category_create', 'admin', { id, name: name.trim() });
-    res.json({ success: true, id });
-  } catch (err) {
-    errorLog('新增分类失败', err, req.body);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // 修改分类
-app.put('/api/admin/categories/:id', (req, res) => {
-  try {
-    const list = loadCategories();
-    const idx = list.findIndex(c => c.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    const { name, description, sortOrder, parentId, knowledgeBaseId } = req.body;
-    if (name !== undefined) list[idx].name = name.trim();
-    if (description !== undefined) list[idx].description = description;
-    if (sortOrder !== undefined) list[idx].sortOrder = Number(sortOrder);
-    if (parentId !== undefined) list[idx].parentId = parentId || null;
-    if (knowledgeBaseId !== undefined) list[idx].knowledgeBaseId = knowledgeBaseId;
-    saveCategories(list);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // 删除分类（将该分类下 FAQ 改为「常见问题」）
-app.delete('/api/admin/categories/:id', (req, res) => {
-  try {
-    const list = loadCategories();
-    const target = list.find(c => c.id === req.params.id);
-    if (!target) return res.status(404).json({ error: 'Not found' });
-    if (target.isDefault) return res.status(400).json({ error: '默认分类不可删除' });
-    // 将该分类下的 FAQ 改到默认分类
-    const faqList = getFAQ();
-    for (const f of faqList) {
-      if (f.category === target.name) f.category = '常见问题';
-    }
-    saveFAQ(faqList);
-    saveCategories(list.filter(c => c.id !== req.params.id));
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // FAQ - 列表（支持按 category 过滤）
-app.get('/api/admin/faq', (req, res) => {
-  try {
-    const { category } = req.query;
-    let list = getFAQ();
-    if (category && category !== '全部' && category !== 'all') {
-      list = list.filter(f => f.category === category);
-    }
-    res.json(list);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // FAQ - 新增（同步向量化）
-app.post('/api/admin/faq', async (req, res) => {
-  try {
-    const { question, keywords, answer, intent, category } = req.body;
-    if (!question || !answer) return res.status(400).json({ error: 'question 和 answer 必填' });
-    const list = getFAQ();
-    const id = 'faq_' + Date.now();
-    const item = {
-      id, question,
-      keywords: Array.isArray(keywords) ? keywords : (keywords || '').split(/[,，;；\s]+/).filter(Boolean),
-      answer, intent: intent || 'custom', category: category || '其他'
-    };
-    list.push(item);
-    saveFAQ(list);
-    // 异步向量化
-    addDocumentChunks(id, question, `问题：${question}\n答案：${answer}`, { category: item.category, source: 'faq' })
-      .then(() => console.log('[RAG] 新增FAQ向量化完成:', question.slice(0,30)))
-      .catch(e => console.error('[RAG] 新增FAQ向量化失败:', e.message));
-    res.json({ success: true, id });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // FAQ - 修改（同步更新向量）
-app.put('/api/admin/faq/:id', async (req, res) => {
-  try {
-    const list = getFAQ();
-    const idx = list.findIndex(f => f.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    const { question, keywords, answer, intent, category } = req.body;
-    if (question !== undefined) list[idx].question = question;
-    if (keywords !== undefined) list[idx].keywords = Array.isArray(keywords) ? keywords : (keywords || '').split(/[,，;；\s]+/).filter(Boolean);
-    if (answer !== undefined) list[idx].answer = answer;
-    if (intent !== undefined) list[idx].intent = intent;
-    if (category !== undefined) list[idx].category = category;
-    saveFAQ(list);
-    // 异步重建该FAQ向量
-    const f = list[idx];
-    addDocumentChunks(f.id, f.question, `问题：${f.question}\n答案：${f.answer}`, { category: f.category, source: 'faq' })
-      .then(() => console.log('[RAG] FAQ更新向量化完成:', f.question.slice(0,30)))
-      .catch(e => console.error('[RAG] FAQ更新向量化失败:', e.message));
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // FAQ - 批量删除
-app.post('/api/admin/faq/batch-delete', (req, res) => {
-  try {
-    const { ids } = req.body;
-    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids 必须是非空数组' });
-    const list = getFAQ();
-    const before = list.length;
-    const newList = list.filter(f => !ids.includes(f.id));
-    if (newList.length === before) return res.status(404).json({ error: '未找到要删除的条目' });
-    saveFAQ(newList);
-    // 批量删除向量
-    const { deleteDocument } = require('./vector-store');
-    ids.forEach(id => deleteDocument(id));
-    res.json({ success: true, deleted: before - newList.length });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // FAQ - 删除（同步删除向量）
-app.delete('/api/admin/faq/:id', (req, res) => {
-  try {
-    const list = getFAQ();
-    const newList = list.filter(f => f.id !== req.params.id);
-    if (newList.length === list.length) return res.status(404).json({ error: 'Not found' });
-    saveFAQ(newList);
-    const { deleteDocument } = require('./vector-store');
-    deleteDocument(req.params.id);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // FAQ - 附件上传
-app.post('/api/admin/faq/:id/attachments', upload.array('files', 5), async (req, res) => {
-  try {
-    const faqList = getFAQ();
-    const idx = faqList.findIndex(f => f.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'FAQ不存在' });
-    
-    const files = req.files;
-    if (!files || files.length === 0) return res.status(400).json({ error: '请上传文件' });
-    
-    const attachments = faqList[idx].attachments || [];
-    const newAttachments = files.map(file => ({
-      id: uuidv4(),
-      filename: file.filename,
-      originalName: Buffer.from(file.originalname, 'latin1').toString('utf8'),
-      size: file.size,
-      uploadTime: new Date().toISOString()
-    }));
-    
-    faqList[idx].attachments = [...attachments, ...newAttachments];
-    saveFAQ(faqList);
-    
-    res.json({ success: true, attachments: faqList[idx].attachments });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // FAQ - 删除附件
-app.delete('/api/admin/faq/:id/attachments/:attId', (req, res) => {
-  try {
-    const faqList = getFAQ();
-    const idx = faqList.findIndex(f => f.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'FAQ不存在' });
-    
-    const attachments = faqList[idx].attachments || [];
-    const attIdx = attachments.findIndex(a => a.id === req.params.attId);
-    if (attIdx === -1) return res.status(404).json({ error: '附件不存在' });
-    
-    // 删除物理文件
-    try {
-      const filePath = path.join(__dirname, 'uploads/faq_attachments', attachments[attIdx].filename);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-    } catch (e) {
-      // 忽略文件删除错误
-    }
-    
-    faqList[idx].attachments = attachments.filter(a => a.id !== req.params.attId);
-    saveFAQ(faqList);
-    
-    res.json({ success: true, attachments: faqList[idx].attachments });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // FAQ - 文件上传 + 自动提取（同步向量化）
-app.post('/api/admin/faq/upload', upload.single('file'), async (req, res) => {
-  console.log('[UPLOAD] body=', JSON.stringify(req.body), 'query.category=', req.query.category);
-  try {
-    if (!req.file) return res.status(400).json({ error: '请上传文件' });
-    const filePath = req.file.path;
-    const originalName = req.file.originalname;
-    const ext = path.extname(originalName).toLowerCase();
-    let text = '';
-
-    try {
-      if (ext === '.txt' || ext === '.md') {
-        text = fs.readFileSync(filePath, 'utf8');
-      } else if (ext === '.pdf') {
-        try {
-          const pdfParse = require('pdf-parse');
-          const dataBuffer = fs.readFileSync(filePath);
-          const pdfData = await pdfParse(dataBuffer);
-          text = pdfData.text;
-        } catch (e) {
-          text = fs.readFileSync(filePath, 'utf8');
-        }
-      } else if (ext === '.docx' || ext === '.doc') {
-        try {
-          const mammoth = require('mammoth');
-          const result = await mammoth.extractRawText({ path: filePath });
-          text = result.value;
-        } catch (e) {
-          text = fs.readFileSync(filePath, 'utf8');
-        }
-      } else if (ext === '.xlsx' || ext === '.xls') {
-        try {
-          const XLSX = require('xlsx');
-          const workbook = XLSX.readFile(filePath);
-          const sheets = [];
-          for (const name of workbook.SheetNames) {
-            const sheet = workbook.Sheets[name];
-            const csv = XLSX.utils.sheet_to_csv(sheet);
-            sheets.push(`### ${name}\n` + csv.replace(/,/g, '，').replace(/\n/g, '\n'));
-          }
-          text = sheets.join('\n\n');
-        } catch (e) {
-          text = fs.readFileSync(filePath, 'utf8');
-        }
-      } else {
-        fs.unlinkSync(filePath);
-        return res.status(400).json({ error: '不支持的文件格式' });
-      }
-    } catch (e) {
-      text = fs.readFileSync(filePath, 'utf8');
-    }
-
-    const uploadCategory = (req.body.category && req.body.category.trim()) ? req.body.category.trim()
-                        : (req.query.category && req.query.category.trim()) ? req.query.category.trim()
-                        : null;
-    console.log('[UPLOAD] 最终分类 =', uploadCategory);
-    const extracted = extractFAQFromText(text, uploadCategory);
-    const list = getFAQ();
-    let added = 0;
-    for (const item of extracted) {
-      const id = 'faq_' + Date.now() + '_' + added;
-      list.push({ id, ...item, intent: item.intent || 'custom' });
-      // 异步向量化每个FAQ
-      const content = `问题：${item.question}\n答案：${item.answer}`;
-      addDocumentChunks(id, item.question, content, { category: item.category, source: 'faq_upload' })
-        .then(() => console.log('[RAG] 上传文档FAQ向量化完成:', item.question.slice(0,30)))
-        .catch(e => console.error('[RAG] 上传文档FAQ向量化失败:', e.message));
-      added++;
-    }
-    saveFAQ(list);
-    try { fs.unlinkSync(filePath); } catch (e) {}
-    res.json({ success: true, added, total: list.length });
-  } catch (err) {
-    console.error('文件上传处理失败：', err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ============ 图片/附件上传 API（供 FAQ 答案插入图片/链接使用） ============
-app.post('/api/admin/upload-media', uploadMedia.single('file'), (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: '未收到文件' });
-    const file = req.file;
-    // 前端传来的 originalName 是 UTF-8 编码的正确中文名，优先使用
-    const originalName = req.body.originalName && req.body.originalName.trim()
-      ? req.body.originalName.trim()
-      : file.originalname;
-    console.log('[媒体上传] 收到文件：', originalName);
-    const ext = path.extname(originalName).toLowerCase();
-    const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].includes(ext);
-    const url = `/uploads/${file.filename}${ext}`;
-    const newPath = path.join(__dirname, 'uploads', `${file.filename}${ext}`);
-    fs.renameSync(file.path, newPath);
-    console.log('[媒体上传] 成功：', url, '原始名：', originalName);
-    res.json({
-      success: true,
-      url,
-      originalName,
-      isImage,
-      markdown: isImage ? `![${originalName}](${url})` : `[📁 ${originalName}](${url})`
-    });
-  } catch (err) {
-    console.error('[媒体上传] 失败：', err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ============ 向量库管理 API ============
 // 获取向量库统计
@@ -967,34 +655,8 @@ app.post('/api/admin/vector-rebuild', async (req, res) => {
 });
 
 // ============ 上传文件列表 ============
-app.get('/api/admin/uploads', (req, res) => {
-  try {
-    const dir = path.join(__dirname, 'uploads');
-    if (!fs.existsSync(dir)) return res.json([]);
-    const files = fs.readdirSync(dir).map(f => {
-      const fp = path.join(dir, f);
-      const stat = fs.statSync(fp);
-      const ext = path.extname(f).toLowerCase();
-      const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].includes(ext);
-      return { name: f, url: `/uploads/${f}`, isImage, size: stat.size, uploadedAt: stat.mtime };
-    });
-    res.json(files);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ============ 删除上传文件 ============
-app.delete('/api/admin/uploads/:filename', (req, res) => {
-  try {
-    const filename = req.params.filename;
-    const fp = path.join(__dirname, 'uploads', filename);
-    if (fs.existsSync(fp)) fs.unlinkSync(fp);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ============ 基础信息：组织架构管理（已迁移到 rag-admin.js）============
 // 上述路由已迁移到 rag-admin.js，通过 router.get('/org', ...) 注册
