@@ -32,6 +32,48 @@ const {
   getMemoryStats, clearConversationHistory
 } = require('./dialogue-memory');
 
+// ============ 基础信息数据操作 ============
+const ORG_PATH = path.join(__dirname, '../data/org.json');
+const PERSONNEL_PATH = path.join(__dirname, '../data/personnel.json');
+const PERMISSIONS_PATH = path.join(__dirname, '../data/permissions.json');
+const A8_CONFIG_PATH = path.join(__dirname, '../data/a8_config.json');
+
+function loadOrg() {
+  if (!fs.existsSync(ORG_PATH)) return [];
+  try { return JSON.parse(fs.readFileSync(ORG_PATH, 'utf8')); } catch (e) { return []; }
+}
+function saveOrg(data) { fs.writeFileSync(ORG_PATH, JSON.stringify(data, null, 2)); }
+
+function loadPersonnel() {
+  if (!fs.existsSync(PERSONNEL_PATH)) return [];
+  try { return JSON.parse(fs.readFileSync(PERSONNEL_PATH, 'utf8')); } catch (e) { return []; }
+}
+function savePersonnel(data) { fs.writeFileSync(PERSONNEL_PATH, JSON.stringify(data, null, 2)); }
+
+function loadPermissions() {
+  if (!fs.existsSync(PERMISSIONS_PATH)) {
+    // 种子数据
+    const seed = [
+      { id: 'perm_001', roleName: '管理员', roleKey: 'admin', categoryId: null, categoryName: '全部', permissions: ['faq:read','faq:write','faq:delete','category:manage','personnel:manage','org:manage','permission:manage','a8:config'], isSystem: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'perm_003', roleName: '普通用户', roleKey: 'user', categoryId: null, categoryName: '全部', permissions: ['chat:access'], isSystem: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+    ];
+    savePermissions(seed);
+    return seed;
+  }
+  try { return JSON.parse(fs.readFileSync(PERMISSIONS_PATH, 'utf8')); } catch (e) { return []; }
+}
+function savePermissions(data) { fs.writeFileSync(PERMISSIONS_PATH, JSON.stringify(data, null, 2)); }
+
+function loadA8Config() {
+  if (!fs.existsSync(A8_CONFIG_PATH)) {
+    const defaultConfig = { enabled: false, orgApiUrl: '', personnelApiUrl: '', syncInterval: 3600, lastSyncTime: null, auth: { type: 'basic', username: '', password: '' } };
+    saveA8Config(defaultConfig);
+    return defaultConfig;
+  }
+  try { return JSON.parse(fs.readFileSync(A8_CONFIG_PATH, 'utf8')); } catch (e) { return { enabled: false }; }
+}
+function saveA8Config(data) { fs.writeFileSync(A8_CONFIG_PATH, JSON.stringify(data, null, 2)); }
+
 const {
   rewriteToColloquial, batchRewrite, evaluateQuality, getToneList
 } = require('./answer-rewriter');
@@ -1026,6 +1068,71 @@ router.delete('/memory/:sessionId', (req, res) => {
   }
 });
 
+// ==========================================
+// 十、基础信息管理 API
+// ==========================================
 
+// ============ 组织架构管理 ============
+router.get('/org', (req, res) => {
+  try { res.json(loadOrg()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/org', (req, res) => {
+  try {
+    const { name, parentId, description } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: '组织名称必填' });
+    const list = loadOrg();
+    const newOrg = {
+      id: 'org_' + Date.now(),
+      name: name.trim(),
+      parentId: parentId || null,
+      sortOrder: list.length,
+      description: description || '',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    list.push(newOrg);
+    saveOrg(list);
+    auditLog('org_create', req.user ? req.user.username : 'unknown', { id: newOrg.id, name: newOrg.name });
+    res.json({ success: true, data: newOrg });
+  } catch (err) {
+    errorLog('新增组织失败', err, req.body);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/org/:id', (req, res) => {
+  try {
+    const list = loadOrg();
+    const idx = list.findIndex(o => o.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Not found' });
+    const { name, parentId, description, isActive, sortOrder } = req.body;
+    if (name && name.trim()) list[idx].name = name.trim();
+    if (parentId !== undefined) list[idx].parentId = parentId || null;
+    if (description !== undefined) list[idx].description = description;
+    if (isActive !== undefined) list[idx].isActive = isActive;
+    if (sortOrder !== undefined) list[idx].sortOrder = sortOrder;
+    list[idx].updatedAt = new Date().toISOString();
+    saveOrg(list);
+    res.json({ success: true, data: list[idx] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/org/:id', (req, res) => {
+  try {
+    let list = loadOrg();
+    const hasChildren = list.some(o => o.parentId === req.params.id);
+    if (hasChildren) return res.status(400).json({ error: '请先删除子组织' });
+    const newList = list.filter(o => o.id !== req.params.id);
+    if (newList.length === list.length) return res.status(404).json({ error: 'Not found' });
+    saveOrg(newList);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 module.exports = router;

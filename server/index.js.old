@@ -1252,8 +1252,7 @@ app.delete('/api/admin/uploads/:filename', (req, res) => {
   }
 });
 
-// ============ 基础信息：组织架构管理（已迁移到 rag-admin.js）============
-/*
+// ============ 基础信息：组织架构管理 ============
 app.get('/api/admin/org', (req, res) => {
   try { res.json(loadOrg()); } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1313,8 +1312,6 @@ app.delete('/api/admin/org/:id', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-*/
-// 上述路由已迁移到 rag-admin.js，通过 router.get('/org', ...) 注册
 
 // ============ 基础信息：人员信息管理 ============
 app.get('/api/admin/personnel', (req, res) => {
