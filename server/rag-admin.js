@@ -763,7 +763,7 @@ router.post('/rewrite-evaluate', (req, res) => {
 // ==========================================
 // 七、向量库管理 API
 // ==========================================
-router.get('/vector-stats', (req, res) => {
+router.get('/vector/stats', (req, res) => {
   try {
     res.json(getVectorStats());
   } catch (err) {
@@ -830,7 +830,7 @@ router.get('/eval-report-latest', (req, res) => {
   }
 });
 
-router.post('/vector-rebuild', async (req, res) => {
+router.post('/vector/rebuild', async (req, res) => {
   try {
     res.json({ success: true, message: '向量库重建中，请稍候...' });
     rebuildVectorStore()
