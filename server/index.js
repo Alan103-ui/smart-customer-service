@@ -108,61 +108,6 @@ function loadOrg() {
 }
 function saveOrg(data) { fs.writeFileSync(ORG_PATH, JSON.stringify(data, null, 2)); }
 
-// ============ 基础信息：人员信息 ============
-const PERSONNEL_PATH = path.join(__dirname, '../data/personnel.json');
-function loadPersonnel() {
-  if (!fs.existsSync(PERSONNEL_PATH)) return [];
-  try { return JSON.parse(fs.readFileSync(PERSONNEL_PATH, 'utf8')); } catch (e) { return []; }
-}
-function savePersonnel(data) { fs.writeFileSync(PERSONNEL_PATH, JSON.stringify(data, null, 2)); }
-
-// ============ 基础信息：权限管理 ============
-const PERMISSIONS_PATH = path.join(__dirname, '../data/permissions.json');
-function loadPermissions() {
-  if (!fs.existsSync(PERMISSIONS_PATH)) {
-    // 种子数据：管理员 + 普通用户
-    const seed = [
-      {
-        id: 'perm_001',
-        roleName: '管理员',
-        roleKey: 'admin',
-        categoryId: null,
-        categoryName: '全部',
-        permissions: ['faq:read','faq:write','faq:delete','category:manage','personnel:manage','org:manage','permission:manage','a8:config'],
-        isSystem: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      },
-      {
-        id: 'perm_003',
-        roleName: '普通用户',
-        roleKey: 'user',
-        categoryId: null,
-        categoryName: '全部',
-        permissions: ['chat:access'],
-        isSystem: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
-    ];
-    savePermissions(seed);
-    return seed;
-  }
-  try { return JSON.parse(fs.readFileSync(PERMISSIONS_PATH, 'utf8')); } catch (e) { return []; }
-}
-function savePermissions(data) { fs.writeFileSync(PERMISSIONS_PATH, JSON.stringify(data, null, 2)); }
-
-// ============ 基础信息：A8配置 ============
-const A8_CONFIG_PATH = path.join(__dirname, '../data/a8_config.json');
-function loadA8Config() {
-  if (!fs.existsSync(A8_CONFIG_PATH)) {
-    const defaultConfig = { enabled: false, orgApiUrl: '', personnelApiUrl: '', syncInterval: 3600, lastSyncTime: null, auth: { type: 'basic', username: '', password: '' } };
-    saveA8Config(defaultConfig);
-    return defaultConfig;
-  }
-  try { return JSON.parse(fs.readFileSync(A8_CONFIG_PATH, 'utf8')); } catch (e) { return { enabled: false }; }
-}
-function saveA8Config(data) { fs.writeFileSync(A8_CONFIG_PATH, JSON.stringify(data, null, 2)); }
 
 // ============ 数据存储（JSON 文件） ============
 const DB_DIR = path.join(__dirname, '../data');
@@ -310,10 +255,6 @@ function normalizeQuery(text) {
   return normalized;
 }
 
-/**
- * 快速本地关键词匹配（不调用Ollama，<10ms）
- * 处理同义词、关键词重叠、包含关系等
- */
 function quickLocalMatch(query, faqList) {
   const normalizedQuery = normalizeQuery(query);
   const results = [];
@@ -558,11 +499,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 // 静态文件服务：uploads 目录（图片/附件）
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ============ 用户认证系统 ============
-auth.setupAuthRoutes(app);
-// 保护所有 /api/* 路由（认证相关路由已在 authMiddleware 内跳过）
-app.use('/api', auth.authMiddleware);
-
+// ============ RAG 管理统一路由（整合意图理解、答案改写、FAQ、知识库）============
+// 说明：以下路由已迁移到 rag-admin.js，通过统一 Router 管理
+// 路径保持不变（/api/admin/*），前端无需修改
+const ragAdminRouter = require('./rag-admin');
+app.use('/api/admin', ragAdminRouter);
+const uploadRouter = require('./upload-endpoints');
+app.use('/api/admin', uploadRouter);
 // 上传专用：支持图片和附件
 const uploadMedia = multer({
   dest: path.join(__dirname, 'uploads'),
@@ -574,76 +517,8 @@ const uploadMedia = multer({
     else cb(new Error('仅支持图片（jpg/png/gif/webp）和文档（pdf/docx/xlsx/txt/md）'));
   }
 });
-
-// ============ 管理后台 API（已迁移到 rag-admin.js）============
-/*
-app.get('/api/admin/stats', (req, res) => {
-  try {
-    const db = readDB();
-    const total = db.conversations.length;
-    const resolved = db.conversations.filter(c => c.resolved).length;
-    const rated = db.satisfaction_stats.filter(s => s.rating);
-    const avg = rated.length > 0 ? rated.reduce((a, b) => a + b.rating, 0) / rated.length : 0;
-    
-    res.json({
-      totalConversations: total,
-      resolvedCount: resolved,
-      avgSatisfaction: Math.round(avg * 10) / 10,
-      recentConversations: db.conversations.slice(-20).reverse()
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-*/
-
-
-
-// ============ RAG 管理统一路由（整合意图理解、答案改写、FAQ、知识库）============
-// 说明：以下路由已迁移到 rag-admin.js，通过统一 Router 管理
-// 路径保持不变（/api/admin/*），前端无需修改
-const ragAdminRouter = require('./rag-admin');
-app.use('/api/admin', ragAdminRouter);
-const uploadRouter = require('./upload-endpoints');
-app.use('/api/admin', uploadRouter);
-// ============ 以下为已迁移到 rag-admin.js 的旧路由定义（已注释，保留以备回滚）============
-/*
-  try {
-    const { query, context = {} } = req.body;
-    if (!query || !query.trim()) return res.status(400).json({ error: 'query 不能为空' });
-    console.log('[API] Received query:', JSON.stringify(query));
-    const result = await understandIntent(query.trim(), context);
-    console.log('[API] understandIntent result:', JSON.stringify(result));
-    res.json({ success: true, ...result });
-  } catch (err) {
-    console.error('[Intent API] 解析失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 批量问题意图解析
-app.post('/api/admin/intent-batch', async (req, res) => {
-  try {
-    const { queries } = req.body;
-    if (!Array.isArray(queries) || queries.length === 0) return res.status(400).json({ error: 'queries 必须是非空数组' });
-    const results = await batchUnderstandIntents(queries);
-    res.json({ success: true, results, total: results.length });
-  } catch (err) {
-    console.error('[Intent API] 批量解析失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 获取意图分类体系
-app.get('/api/admin/intent-taxonomy', (req, res) => {
-  try {
-    const taxonomy = INTENT_TAXONOMY;
-    res.json({ success: true, taxonomy });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-*/
+// ============ 用户认证系统 ============
+auth.setupAuthRoutes(app);
 // ============ 多轮对话记忆 API ============
 // 存储对话轮次
 app.post('/api/chat/store', (req, res) => {
@@ -712,139 +587,8 @@ app.post('/api/chat/clear', (req, res) => {
 });
 
 // ============ LLM 智能改写答案 API（已迁移到 rag-admin.js）============
-/*
-// 测试改写单个答案
-app.post('/api/admin/rewrite-test', async (req, res) => {
-  try {
-    const { originalAnswer, userMessage, conversationHistory, options = {} } = req.body;
-    if (!originalAnswer || !originalAnswer.trim()) return res.status(400).json({ error: 'originalAnswer 不能为空' });
-    const rewritten = await rewriteToColloquial(originalAnswer, {
-      userMessage: userMessage || '',
-      conversationHistory: conversationHistory || [],
-      tone: options.tone || 'friendly',
-      userName: options.userName || '',
-      isReturnUser: options.isReturnUser || false,
-      intent: options.intent || null
-    });
-    res.json({ success: true, original: originalAnswer, rewritten, changed: rewritten !== originalAnswer });
-  } catch (err) {
-    console.error('[Rewrite API] 改写失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 批量改写答案
-app.post('/api/admin/rewrite-batch', async (req, res) => {
-  try {
-    const { answers, options = {} } = req.body;
-    if (!Array.isArray(answers) || answers.length === 0) return res.status(400).json({ error: 'answers 必须是非空数组' });
-    const results = await batchRewrite(answers, options);
-    res.json({ success: true, results, total: results.length });
-  } catch (err) {
-    console.error('[Rewrite API] 批量改写失败:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 获取可用语气列表
-app.get('/api/admin/rewrite-tones', (req, res) => {
-  try {
-    const tones = getToneList();
-    res.json({ success: true, tones });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 评估改写质量
-app.post('/api/admin/rewrite-evaluate', (req, res) => {
-  try {
-    const { original, rewritten } = req.body;
-    if (!original || !rewritten) return res.status(400).json({ error: 'original 和 rewritten 必填' });
-    const evaluation = evaluateQuality(original, rewritten);
-    res.json({ success: true, evaluation });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-*/
 
 // ============ 知识库管理 API（已迁移到 rag-admin.js）============
-/*
-app.get('/api/admin/knowledge-bases', (req, res) => {
-  try {
-    res.json(getKnowledgeBases().filter(k => k.isActive));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 新增知识库
-app.post('/api/admin/knowledge-bases', (req, res) => {
-  try {
-    const { name, description } = req.body;
-    if (!name || !name.trim()) return res.status(400).json({ error: '知识库名称必填' });
-    const list = getKnowledgeBases();
-    if (list.some(k => k.name === name.trim())) return res.status(400).json({ error: '知识库名称已存在' });
-    const id = 'kb_' + Date.now();
-    list.push({ id, name: name.trim(), description: description || '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDefault: false, isActive: true });
-    saveKnowledgeBases(list);
-    auditLog('kb_create', 'admin', { id, name: name.trim() });
-    res.json({ success: true, id });
-  } catch (err) {
-    errorLog('新增知识库失败', err, req.body);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 修改知识库
-app.put('/api/admin/knowledge-bases/:id', (req, res) => {
-  try {
-    const list = getKnowledgeBases();
-    const idx = list.findIndex(k => k.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    const { name, description, isActive } = req.body;
-    if (name !== undefined) list[idx].name = name.trim();
-    if (description !== undefined) list[idx].description = description;
-    if (isActive !== undefined) list[idx].isActive = isActive;
-    list[idx].updatedAt = new Date().toISOString();
-    saveKnowledgeBases(list);
-    auditLog('kb_update', 'admin', { id: req.params.id, name: list[idx].name });
-    res.json({ success: true });
-  } catch (err) {
-    errorLog('修改知识库失败', err, req.body);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 删除知识库（将该库下分类和 FAQ 改为默认知识库）
-app.delete('/api/admin/knowledge-bases/:id', (req, res) => {
-  try {
-    const list = getKnowledgeBases();
-    const target = list.find(k => k.id === req.params.id);
-    if (!target) return res.status(404).json({ error: 'Not found' });
-    if (target.isDefault) return res.status(400).json({ error: '默认知识库不可删除' });
-    // 将该库下分类的 knowledgeBaseId 改为默认库
-    const catList = loadCategories();
-    catList.forEach(c => { if (c.knowledgeBaseId === target.id) c.knowledgeBaseId = 'kb_default'; });
-    saveCategories(catList);
-    // 将该库下 FAQ 的 category 改为「常见问题」
-    const faqList = getFAQ();
-    // 找到该库下的分类名称
-    const catNames = catList.filter(c => c.knowledgeBaseId === target.id).map(c => c.name);
-    faqList.forEach(f => { if (catNames.includes(f.category)) f.category = '常见问题'; });
-    saveFAQ(faqList);
-    // 标记删除（不真正删除，设为 inactive）
-    list.find(k => k.id === req.params.id).isActive = false;
-    saveKnowledgeBases(list);
-    auditLog('kb_delete', 'admin', { id: req.params.id, name: target.name });
-    res.json({ success: true });
-  } catch (err) {
-    errorLog('删除知识库失败', err, { id: req.params.id });
-    res.status(500).json({ error: err.message });
-  }
-});
-*/ // 知识库管理API注释结束
 
 // ============ 分类管理 API（支持二级分类）（已迁移到 rag-admin.js）============
 // 获取分类列表（支持按 knowledgeBaseId 过滤）
@@ -1253,67 +997,6 @@ app.delete('/api/admin/uploads/:filename', (req, res) => {
 });
 
 // ============ 基础信息：组织架构管理（已迁移到 rag-admin.js）============
-/*
-app.get('/api/admin/org', (req, res) => {
-  try { res.json(loadOrg()); } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/admin/org', (req, res) => {
-  try {
-    const { name, parentId, description } = req.body;
-    if (!name || !name.trim()) return res.status(400).json({ error: '组织名称必填' });
-    const list = loadOrg();
-    const newOrg = {
-      id: 'org_' + Date.now(),
-      name: name.trim(),
-      parentId: parentId || null,
-      sortOrder: list.length,
-      description: description || '',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    list.push(newOrg);
-    saveOrg(list);
-    res.json({ success: true, data: newOrg });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/admin/org/:id', (req, res) => {
-  try {
-    const list = loadOrg();
-    const idx = list.findIndex(o => o.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    const { name, parentId, description, isActive, sortOrder } = req.body;
-    if (name && name.trim()) list[idx].name = name.trim();
-    if (parentId !== undefined) list[idx].parentId = parentId || null;
-    if (description !== undefined) list[idx].description = description;
-    if (isActive !== undefined) list[idx].isActive = isActive;
-    if (sortOrder !== undefined) list[idx].sortOrder = sortOrder;
-    list[idx].updatedAt = new Date().toISOString();
-    saveOrg(list);
-    res.json({ success: true, data: list[idx] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/admin/org/:id', (req, res) => {
-  try {
-    let list = loadOrg();
-    const hasChildren = list.some(o => o.parentId === req.params.id);
-    if (hasChildren) return res.status(400).json({ error: '请先删除子组织' });
-    const newList = list.filter(o => o.id !== req.params.id);
-    if (newList.length === list.length) return res.status(404).json({ error: 'Not found' });
-    saveOrg(newList);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-*/
 // 上述路由已迁移到 rag-admin.js，通过 router.get('/org', ...) 注册
 
 // // ============ 基础信息：人员信息管理 ============
@@ -1596,77 +1279,6 @@ function extractFAQFromText(text, uploadCategory = null) {
 }
 
 // ============ 对话记录 API（已迁移到 rag-admin.js）============
-/*
-app.get('/api/admin/conversations', (req, res) => {
-  try {
-    const db = readDB();
-    const { limit = 100, offset = 0 } = req.query;
-    const slice = db.conversations.slice(Number(offset), Number(offset) + Number(limit));
-    res.json(slice.map(c => ({ ...c, messages: JSON.parse(c.messages) })));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/admin/conversations/:sessionId', (req, res) => {
-  try {
-    const db = readDB();
-    const conv = db.conversations.find(c => c.session_id === req.params.sessionId);
-    if (!conv) return res.status(404).json({ error: 'Not found' });
-    res.json({ ...conv, messages: JSON.parse(conv.messages) });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 对话记录 - 单个删除
-app.delete('/api/admin/conversations/:sessionId', (req, res) => {
-  try {
-    const db = readDB();
-    const before = db.conversations.length;
-    db.conversations = db.conversations.filter(c => c.session_id !== req.params.sessionId);
-    if (db.conversations.length === before) return res.status(404).json({ error: 'Not found' });
-    writeDB(db);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 对话记录 - 批量删除
-app.post('/api/admin/conversations/batch-delete', (req, res) => {
-  try {
-    const { ids } = req.body;
-    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids 必须是非空数组' });
-    const db = readDB();
-    const before = db.conversations.length;
-    db.conversations = db.conversations.filter(c => !ids.includes(c.session_id));
-    const deleted = before - db.conversations.length;
-    if (deleted === 0) return res.status(404).json({ error: '未找到要删除的记录' });
-    writeDB(db);
-    res.json({ success: true, deleted });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/admin/satisfaction', (req, res) => {
-  try {
-    const { sessionId, rating, comment } = req.body;
-    const db = readDB();
-    const id = uuidv4();
-    db.satisfaction_stats.push({ id, session_id: sessionId, rating, comment: comment || '', created_at: new Date().toISOString() });
-    
-    const conv = db.conversations.find(c => c.session_id === sessionId);
-    if (conv) { conv.satisfaction = rating; conv.resolved = true; conv.updated_at = new Date().toISOString(); }
-    
-    writeDB(db);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-*/
 
 // ============ WebSocket 服务 ============
 const server = http.createServer(app);
