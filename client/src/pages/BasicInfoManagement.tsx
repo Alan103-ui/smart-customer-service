@@ -57,6 +57,12 @@ export default function BasicInfoManagement() {
   const [pOrgId, setPOrgId] = useState('');
   const [pRole, setPRole] = useState('');
   const [pActive, setPActive] = useState(true);
+  
+  // 重置密码
+  const [showResetPwdModal, setShowResetPwdModal] = useState(false);
+  const [resetPwdPersonId, setResetPwdPersonId] = useState<string>('');
+  const [resetPwdNew, setResetPwdNew] = useState('');
+  const [resetPwdConfirm, setResetPwdConfirm] = useState('');
 
   // 权限
   const [permList, setPermList] = useState<any[]>([]);
@@ -111,6 +117,17 @@ export default function BasicInfoManagement() {
   const resetPForm = () => { setPName(''); setPUser(''); setPPass(''); setPOrgId(''); setPRole(''); setPActive(true); setEditingP(null); };
   const editP = (p: any) => { setEditingP(p); setPName(p.name); setPUser(p.username); setPPass(''); setPOrgId(p.orgId || ''); setPRole(p.roleName || ''); setPActive(p.isActive); setShowPModal(true); };
   const delP = async (id: string) => { if (!confirm('确定？')) return; const r = await fetch(API + '/personnel/' + id, { method: 'DELETE', headers: getAuthHeaders() }).then(r => r.json()); if (r.success) loadP(); else alert(r.error); };
+  const resetPassword = async () => {
+    if (!resetPwdNew || resetPwdNew.length < 4) { alert('新密码至少4位'); return; }
+    if (resetPwdNew !== resetPwdConfirm) { alert('两次密码不一致'); return; }
+    const r = await fetch(API + '/personnel/' + resetPwdPersonId + '/reset-password', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ newPassword: resetPwdNew })
+    }).then(r => r.json());
+    if (r.success) { alert('密码已重置'); setShowResetPwdModal(false); }
+    else alert(r.error || '重置失败');
+  };
 
   // ==================== 权限保存 ====================
   const savePerm = async () => {
@@ -180,6 +197,7 @@ export default function BasicInfoManagement() {
                   <td>{p.isActive ? '启用' : '禁用'}</td>
                   <td>
                     <button onClick={() => editP(p)}>编辑</button>
+                    <button onClick={() => { setResetPwdPersonId(p.id); setResetPwdNew(''); setResetPwdConfirm(''); setShowResetPwdModal(true); }} style={{ marginLeft: 8 }}>重置密码</button>
                     <button onClick={() => delP(p.id)} style={{ marginLeft: 8 }}>删除</button>
                   </td>
                 </tr>
@@ -296,6 +314,21 @@ export default function BasicInfoManagement() {
             <div style={{ marginTop: 16 }}>
               <button onClick={saveP}>保存</button>
               <button onClick={() => setShowPModal(false)} style={{ marginLeft: 8 }}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 重置密码弹窗 */}
+      {showResetPwdModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowResetPwdModal(false)}>
+          <div style={{ background: '#fff', padding: 24, borderRadius: 8, minWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <h3>重置密码</h3>
+            <div style={{ marginTop: 12 }}>新密码：<input type="password" value={resetPwdNew} onChange={e => setResetPwdNew(e.target.value)} style={{ width: 200 }} /></div>
+            <div style={{ marginTop: 8 }}>确认密码：<input type="password" value={resetPwdConfirm} onChange={e => setResetPwdConfirm(e.target.value)} style={{ width: 200 }} /></div>
+            <div style={{ marginTop: 16 }}>
+              <button onClick={resetPassword}>重置</button>
+              <button onClick={() => setShowResetPwdModal(false)} style={{ marginLeft: 8 }}>取消</button>
             </div>
           </div>
         </div>

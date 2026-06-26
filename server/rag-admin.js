@@ -8,8 +8,26 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
+
+// ============ 密码处理（与 auth.js 保持一致）============
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return salt + ':' + hash;
+}
+
+function verifyPassword(password, stored) {
+  try {
+    const [salt, hash] = stored.split(':');
+    const verifyHash = crypto.scryptSync(password, salt, 64).toString('hex');
+    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(verifyHash, 'hex'));
+  } catch (e) {
+    return false;
+  }
+}
 
 // ============ 数据共享模块 ============
 const data = require('./data');
@@ -1110,7 +1128,7 @@ router.post('/personnel', (req, res) => {
       id: 'user_' + Date.now(),
       name: name.trim(),
       username: username.trim(),
-      password: password || '123456',
+      passwordHash: hashPassword(password || '123456'),  // 存储密码哈希
       orgId: orgId || null,
       orgName: orgName || '',
       roleId: roleId || null,
@@ -1141,7 +1159,10 @@ router.put('/personnel/:id', (req, res) => {
       }
       list[idx].username = username.trim();
     }
-    if (password && password.trim()) list[idx].password = password.trim();
+    if (password && password.trim()) {
+      list[idx].passwordHash = hashPassword(password.trim());  // 存储密码哈希
+      delete list[idx].password;  // 删除明文密码字段（如果存在）
+    }
     if (orgId !== undefined) { list[idx].orgId = orgId || null; list[idx].orgName = orgName || ''; }
     if (roleId !== undefined) { list[idx].roleId = roleId || null; list[idx].roleName = roleName || ''; }
     if (isActive !== undefined) list[idx].isActive = isActive;
@@ -1160,6 +1181,27 @@ router.delete('/personnel/:id', (req, res) => {
     if (newList.length === list.length) return res.status(404).json({ error: 'Not found' });
     savePersonnel(newList);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ 人员密码重置 ============
+router.put('/personnel/:id/reset-password', (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 4) {
+      return res.status(400).json({ error: '新密码至少4位' });
+    }
+    const list = loadPersonnel();
+    const idx = list.findIndex(p => p.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: '人员不存在' });
+    
+    list[idx].passwordHash = hashPassword(newPassword);
+    list[idx].updatedAt = new Date().toISOString();
+    savePersonnel(list);
+    
+    res.json({ success: true, message: '密码已重置' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

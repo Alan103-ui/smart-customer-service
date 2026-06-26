@@ -3,14 +3,14 @@
     "id": "user_001",
     "name": "管理员",
     "username": "admin",
-    "password": "admin123",
     "orgId": "org_001",
     "orgName": "广康集团",
     "roleId": "perm_001",
     "roleName": "管理员",
     "isActive": true,
     "createdAt": "2026-06-10T00:00:00.000Z",
-    "updatedAt": "2026-06-10T00:00:00.000Z",
-    "lastLoginAt": null
+    "updatedAt": "2026-06-26T03:21:55.898Z",
+    "lastLoginAt": "2026-06-26T03:21:44.117Z",
+    "passwordHash": "b4b2f795a60fc572edd9f796c87d73a3:6c43022ca81a4130d03d035dff1b732ed77038761bf54aa60ae965276cf8c0ef8a455a24451997def5f7958450a3004f2e238570c14c1edadf52b349800af22d"
   }
 ]

@@ -3,7 +3,6 @@ import type { Message } from '../types';
 import BasicInfoManagement from './BasicInfoManagement';
 import RAGManagement from './RAGManagement';
 import DataStatistics from './DataStatistics';
-import UserManagement from './UserManagement';
 import { Editor, Toolbar } from '@wangeditor/editor-for-react';
 import { IDomEditor, IEditorConfig } from '@wangeditor/editor';
 
@@ -412,7 +411,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           <button className={`tab-btn ${tab === 'categories' ? 'active' : ''}`} onClick={() => setTab('categories')}>🏷️ 分类管理</button>
           <button className={`tab-btn ${tab === 'basicInfo' ? 'active' : ''}`} onClick={() => setTab('basicInfo')}>🏢 基础信息</button>
           <button className={`tab-btn ${tab === 'rag' ? 'active' : ''}`} onClick={() => setTab('rag')}>🤖 RAG 管理</button>
-          <button className={`tab-btn ${tab === 'users' ? 'active' : ''}`} onClick={() => setTab('users')}>👥 用户管理</button>
         </div>
       </div>
 
@@ -651,7 +649,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       {tab === 'basicInfo' && <BasicInfoManagement />}
 
       {tab === 'rag' && <RAGManagement />}
-      {tab === 'users' && <UserManagement onBack={() => setTab('stats')} />}
 
       {/* 分类新增/编辑弹窗 */}
       {showCatModal && (

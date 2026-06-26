@@ -12,6 +12,25 @@ const path = require('path');
 const JWT_SECRET = process.env.JWT_SECRET || 'smart-cs-secret-key-2026';
 const TOKEN_EXPIRES_IN = '7d';
 const USERS_PATH = path.join(__dirname, '../data/users.json');
+const PERSONNEL_PATH = path.join(__dirname, '../data/personnel.json');
+
+// ============ 人员数据操作（合并用户管理到人员信息） ============
+
+function loadPersonnel() {
+  if (!fs.existsSync(PERSONNEL_PATH)) return [];
+  return JSON.parse(fs.readFileSync(PERSONNEL_PATH, 'utf8'));
+}
+
+function savePersonnel(personnel) {
+  const dir = path.dirname(PERSONNEL_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(PERSONNEL_PATH, JSON.stringify(personnel, null, 2));
+}
+
+function findPersonnelByUsername(username) {
+  const personnel = loadPersonnel();
+  return personnel.find(p => p.username === username && p.isActive);
+}
 
 // ============ 用户数据操作 ============
 
@@ -40,11 +59,45 @@ function saveUsers(users) {
 }
 
 function findUserByUsername(username) {
+  // 优先检查 personnel.json（人员信息是唯一数据源）
+  const personnel = loadPersonnel();
+  const person = personnel.find(p => p.username === username && p.isActive);
+  if (person) {
+    // 映射人员到用户格式
+    return {
+      id: person.id,
+      username: person.username,
+      passwordHash: person.passwordHash || '',
+      name: person.name,
+      role: person.roleName === '管理员' ? 'admin' : 'user',
+      isActive: person.isActive,
+      lastLoginAt: person.lastLoginAt
+    };
+  }
+  
+  // 如果没找到，再检查 users.json（兼容旧数据）
   const users = loadUsers();
   return users.find(u => u.username === username);
 }
 
 function findUserById(userId) {
+  // 优先检查 personnel.json（人员信息是唯一数据源）
+  const personnel = loadPersonnel();
+  const person = personnel.find(p => p.id === userId && p.isActive);
+  if (person) {
+    // 映射人员到用户格式
+    return {
+      id: person.id,
+      username: person.username,
+      passwordHash: person.passwordHash || '',
+      name: person.name,
+      role: person.roleName === '管理员' ? 'admin' : 'user',
+      isActive: person.isActive,
+      lastLoginAt: person.lastLoginAt
+    };
+  }
+  
+  // 如果没找到，再检查 users.json（兼容旧数据）
   const users = loadUsers();
   return users.find(u => u.id === userId);
 }
@@ -152,11 +205,22 @@ function setupAuthRoutes(app) {
         return res.status(401).json({ error: '用户名或密码错误' });
       }
 
-      // 更新最后登录时间
-      const users = loadUsers();
-      const idx = users.findIndex(u => u.id === user.id);
-      users[idx].lastLoginAt = new Date().toISOString();
-      saveUsers(users);
+      // 更新最后登录时间（根据数据源更新）
+      const personnel = loadPersonnel();
+      const personIdx = personnel.findIndex(p => p.id === user.id);
+      if (personIdx !== -1) {
+        // 人员数据
+        personnel[personIdx].lastLoginAt = new Date().toISOString();
+        savePersonnel(personnel);
+      } else {
+        // users.json 数据
+        const users = loadUsers();
+        const userIdx = users.findIndex(u => u.id === user.id);
+        if (userIdx !== -1) {
+          users[userIdx].lastLoginAt = new Date().toISOString();
+          saveUsers(users);
+        }
+      }
 
       const token = generateToken(user);
       res.json({
