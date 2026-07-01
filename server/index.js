@@ -1,3 +1,5 @@
+require('dotenv').config();  // 加载.env环境变量配置
+
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -7,6 +9,9 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const multer = require('multer');
 const auth = require('./auth');  // 用户认证模块
+
+// 导入模型自动切换管理器
+const modelSwitcher = require('./model-switcher');
 
 // ============ 环境配置 ============
 // HyDE（假设文档生成）：默认关闭，因为会增加延迟
@@ -325,7 +330,7 @@ async function searchFAQCandidates(userMessage, threshold = 0.12, category = nul
   if (userMessage.length >= 2) {
     try {
       const start = Date.now();
-      const searchResults = await searchByFAQCacheAsync(userMessage, category, 5, 0.10);
+      const searchResults = await searchByFAQCacheAsync(userMessage, null, 5, 0.10);
       const cost = Date.now() - start;
       console.log(`[searchFAQCandidates] FAQ缓存搜索耗时: ${cost}ms, 结果: ${searchResults.length}条`);
 
@@ -495,7 +500,21 @@ app.use(cors());
 app.use(express.json());
 // 性能监控中间件（记录所有API响应时间）
 app.use(performanceMiddleware);
-app.use(express.static(path.join(__dirname, 'public')));
+// 静态文件服务（禁止缓存 index.html，带哈希的资源可长期缓存）
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    // index.html 不缓存，确保前端更新后用户能获取最新版本
+    if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    // 带哈希的JS/CSS文件（如 index-D2yTSMbE.js）可长期缓存
+    else if (filePath.match(/index-[A-Za-z0-9]+\.(js|css)$/)) {
+      res.setHeader('Cache-Control', 'max-age=31536000'); // 1年
+    }
+  }
+}));
 // 静态文件服务：uploads 目录（图片/附件）
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -519,19 +538,99 @@ const uploadMedia = multer({
 });
 // ============ 用户认证系统 ============
 auth.setupAuthRoutes(app);
+
+// ============ SSO配置测试接口 ============
+// 无需认证即可访问，用于验证SSO配置是否正确
+app.get('/api/auth/sso/test', (req, res) => {
+  const config = {
+    sso_enabled: auth.SSO_ENABLED,
+    sso_provider: auth.SSO_PROVIDER,
+    config_valid: auth.ssoConfigValidation.valid,
+    errors: auth.ssoConfigValidation.errors,
+    warnings: auth.ssoConfigValidation.warnings,
+    a8: {
+      configured: !!(auth.A8_SERVER_URL),
+      server_url: auth.A8_SERVER_URL || '(未配置)',
+      cas_configured: !!(auth.A8_CAS_SERVER_URL),
+      cas_server_url: auth.A8_CAS_SERVER_URL || '(未配置)',
+      trust_mode: auth.A8_SSO_TRUST_MODE
+    },
+    oauth2: {
+      configured: !!(process.env.SSO_LOGIN_URL && process.env.SSO_VERIFY_URL),
+      login_url: process.env.SSO_LOGIN_URL || '(未配置)',
+      verify_url: process.env.SSO_VERIFY_URL || '(未配置)',
+      client_id_configured: !!process.env.SSO_CLIENT_ID
+    }
+  };
+  
+  res.json({
+    success: true,
+    config,
+    timestamp: new Date().toISOString(),
+    message: config.config_valid 
+      ? '✅ SSO配置验证通过' 
+      : '⚠️ SSO配置存在问题，请检查errors和warnings'
+  });
+});
+
 // ============ 多轮对话记忆 API ============
+// 为所有聊天API添加认证中间件（登录后才能使用）
+app.use('/api/chat', auth.authMiddleware);
+app.use('/api/eval', auth.authMiddleware);
+
+// ============ 用户对话记录 API ============
+// 普通用户查看自己的对话记录（需要认证，但不需要管理员权限）
+app.get('/api/user/conversations', auth.authMiddleware, (req, res) => {
+  try {
+    const db = readDB();
+    // 只返回当前用户的对话记录
+    const list = db.conversations.filter(c => c.user_id === req.user.userId);
+    
+    // 按更新时间倒序排列
+    list.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    
+    // 简化返回数据（不包含完整消息内容，只返回概要）
+    const summary = list.map(c => {
+      let messages = [];
+      try { messages = typeof c.messages === 'string' ? JSON.parse(c.messages) : c.messages; } catch (e) {}
+      const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+      
+      return {
+        session_id: c.session_id,
+        user_id: c.user_id,
+        intent: c.intent,
+        resolved: c.resolved,
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        messageCount: messages.length,
+        lastMessage: lastMessage ? lastMessage.content.slice(0, 100) : '',
+        lastMessageRole: lastMessage ? lastMessage.role : null
+      };
+    });
+    
+    res.json({ success: true, data: summary });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 存储对话轮次
-app.post('/api/chat/store', (req, res) => {
+app.post('/api/chat/store', auth.authMiddleware, (req, res) => {
   try {
     const { sessionId, userQuery, aiResponse, intent, entities } = req.body;
     if (!sessionId) return res.status(400).json({ error: 'sessionId 不能为空' });
+    
+    // 获取 userId（从认证信息中）
+    const userId = req.user ? req.user.userId : null;
+    
     const result = storeConversationRound(sessionId, {
       userQuery: userQuery || '',
       aiResponse: aiResponse || '',
       intent: intent || null,
       entities: entities || [],
       timestamp: Date.now()
-    });
+    }, userId);  // 传递 userId
+    
     res.json({ success: true, roundId: result.roundId, totalRounds: result.totalRounds });
   } catch (err) {
     console.error('[Memory API] 存储失败:', err);
@@ -540,12 +639,19 @@ app.post('/api/chat/store', (req, res) => {
 });
 
 // 获取对话历史
-app.post('/api/chat/history', (req, res) => {
+app.post('/api/chat/history', auth.authMiddleware, (req, res) => {
   try {
-    const { sessionId, limit = 10, includeContext = false } = req.body;
-    if (!sessionId) return res.status(400).json({ error: 'sessionId 不能为空' });
-    const history = getConversationHistory(sessionId, limit, includeContext);
-    res.json({ success: true, history, total: history.length });
+    const { sessionId, limit = 10, includeContext = false, userId } = req.body;
+    
+    // 优先使用 userId（从请求体或认证信息）
+    const effectiveUserId = userId || (req.user ? req.user.userId : null);
+    
+    if (!sessionId && !effectiveUserId) {
+      return res.status(400).json({ error: 'sessionId 或 userId 必填' });
+    }
+    
+    const result = getConversationHistory(sessionId, limit, includeContext, effectiveUserId);
+    res.json({ success: true, history: result.history, total: result.history.length, context: result.context });
   } catch (err) {
     console.error('[Memory API] 获取历史失败:', err);
     res.status(500).json({ error: err.message });
@@ -553,7 +659,7 @@ app.post('/api/chat/history', (req, res) => {
 });
 
 // 增强查询（指代消解 + 上下文补全）
-app.post('/api/chat/enhance', async (req, res) => {
+app.post('/api/chat/enhance', auth.authMiddleware, async (req, res) => {
   try {
     const { query, sessionId } = req.body;
     if (!query || !sessionId) return res.status(400).json({ error: 'query 和 sessionId 必填' });
@@ -565,8 +671,8 @@ app.post('/api/chat/enhance', async (req, res) => {
   }
 });
 
-// 获取记忆统计
-app.get('/api/chat/memory-stats', (req, res) => {
+// 获取记忆统计（需要认证）
+app.get('/api/chat/memory-stats', auth.authMiddleware, (req, res) => {
   try {
     const stats = getMemoryStats();
     res.json({ success: true, ...stats });
@@ -575,13 +681,49 @@ app.get('/api/chat/memory-stats', (req, res) => {
   }
 });
 
-// 清空会话历史
-app.post('/api/chat/clear', (req, res) => {
+// 清空会话历史（需要认证）
+app.post('/api/chat/clear', auth.authMiddleware, (req, res) => {
   try {
     const { sessionId } = req.body;
     clearConversationHistory(sessionId || null);
     res.json({ success: true, message: sessionId ? '会话已清空' : '所有会话已清空' });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ RAG 评估接口 ============
+// 用于测试RAG检索质量
+app.post('/api/eval/rag', auth.authMiddleware, async (req, res) => {
+  try {
+    const { query, category = null, threshold = 0.12 } = req.body;
+    if (!query) return res.status(400).json({ error: 'query 不能为空' });
+    
+    console.log(`[评估] 查询: "${query}", category: ${category || '全部'}`);
+    
+    const candidates = await searchFAQCandidates(query, threshold, category);
+    
+    console.log(`[评估] 检索到 ${candidates.length} 个候选`);
+    
+    // 返回详细结果
+    const results = candidates.map(c => ({
+      id: c.faq.id,
+      question: c.faq.question,
+      answer: stripHtmlTags(c.faq.answer).substring(0, 200),
+      confidence: c.confidence,
+      intent: c.intent,
+      fromRAG: c.fromRAG || false,
+      ragScore: c.ragScore || 0
+    }));
+    
+    res.json({
+      success: true,
+      query,
+      candidateCount: results.length,
+      candidates: results
+    });
+  } catch (err) {
+    console.error('[评估] 错误:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -973,27 +1115,61 @@ wss.on('connection', (ws) => {
         sessionId = msg.sessionId || uuidv4();
         const category = msg.category || null; // 前端可选传入分类
         
-        // 认证：如果携带 token，验证并关联用户
-        let userId = null;
-        if (msg.token) {
-          const decoded = auth.verifyToken(msg.token);
-          if (decoded) {
-            const user = auth.findUserById(decoded.userId);
-            if (user && user.isActive) {
-              userId = user.id;
-              console.log(`[WS] 用户认证成功: ${user.username} (${user.name})`);
-            }
-          }
+        // 强制认证：必须携带有效token
+        if (!msg.token) {
+          ws.send(JSON.stringify({ type: 'error', message: '请先登录' }));
+          ws.close();
+          return;
         }
         
-        sessions.set(sessionId, { ws, history: [], category, userId });
-        ws.send(JSON.stringify({ type: 'init', sessionId, userId: userId || null }));
+        const decoded = auth.verifyToken(msg.token);
+        if (!decoded) {
+          ws.send(JSON.stringify({ type: 'error', message: '登录已过期，请重新登录' }));
+          ws.close();
+          return;
+        }
         
-        // 加载对话：已登录用户按 userId 查找，否则按 sessionId
-        const conv = getOrCreateConversation(sessionId, userId);
-        const messages = typeof conv.messages === 'string' ? JSON.parse(conv.messages) : conv.messages;
-        if (messages.length > 0) {
-          ws.send(JSON.stringify({ type: 'history', messages }));
+        const user = auth.findUserById(decoded.userId);
+        if (!user || !user.isActive) {
+          ws.send(JSON.stringify({ type: 'error', message: '账号已被禁用' }));
+          ws.close();
+          return;
+        }
+        
+        const userId = user.id;
+        console.log(`[WS] 用户认证成功: ${user.username} (${user.name})`);
+        
+        sessions.set(sessionId, { ws, history: [], category, userId });
+        ws.send(JSON.stringify({ type: 'init', sessionId, userId }));
+        
+        // 加载对话记忆：优先从用户记忆文件加载（跨会话持久化）
+        try {
+          const memoryResult = getConversationHistory(null, 0, false, userId);
+          if (memoryResult.success && memoryResult.history.length > 0) {
+            // 将对话记忆转换为前端消息格式
+            const messages = memoryResult.history.map(round => [
+              { role: 'user', content: round.userQuery, timestamp: new Date(round.timestamp).toISOString() },
+              { role: 'assistant', content: round.aiResponse, timestamp: new Date(round.timestamp + 100).toISOString() }
+            ]).flat().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            
+            ws.send(JSON.stringify({ type: 'history', messages }));
+            console.log(`[WS] 已从用户记忆加载 ${messages.length} 条消息: ${user.username}`);
+          } else {
+            // 如果没有用户记忆，则从 conversations.db 加载（向后兼容）
+            const conv = getOrCreateConversation(sessionId, userId);
+            const dbMessages = typeof conv.messages === 'string' ? JSON.parse(conv.messages) : conv.messages;
+            if (dbMessages.length > 0) {
+              ws.send(JSON.stringify({ type: 'history', messages: dbMessages }));
+              console.log(`[WS] 已从数据库加载 ${dbMessages.length} 条消息: ${user.username}`);
+            }
+          }
+        } catch (err) {
+          console.warn(`[WS] 加载用户记忆失败，回退到数据库:`, err.message);
+          const conv = getOrCreateConversation(sessionId, userId);
+          const dbMessages = typeof conv.messages === 'string' ? JSON.parse(conv.messages) : conv.messages;
+          if (dbMessages.length > 0) {
+            ws.send(JSON.stringify({ type: 'history', messages: dbMessages }));
+          }
         }
         return;
       }
@@ -1001,7 +1177,17 @@ wss.on('connection', (ws) => {
       if (msg.type === 'message' && sessionId) {
         const userMessage = msg.content;
         const category = (() => { const s = sessions.get(sessionId); return s ? s.category : null; })();
-        saveMessage(sessionId, 'user', userMessage);
+        
+        // 获取 userId
+        const sessionData = sessions.get(sessionId);
+        const userId = sessionData ? sessionData.userId : null;
+        
+        saveMessage(sessionId, 'user', userMessage, null, userId);
+        
+        // 存储最后一条用户消息（用于candidate_select场景）
+        if (sessionData) {
+          sessionData.lastUserMessage = userMessage;
+        }
         
         // 语义搜索候选 FAQ（本地快速匹配 → FAQ缓存搜索 → Rerank重排序）
         console.log(`[WS] 收到消息: "${userMessage}", 开始语义搜索...`);
@@ -1032,7 +1218,17 @@ wss.on('connection', (ws) => {
               });
             }
             
-            saveMessage(sessionId, 'assistant', reply, best.intent);
+            saveMessage(sessionId, 'assistant', reply, best.intent, userId);
+            
+            // 存储到对话记忆（按userId持久化）
+            storeConversationRound(sessionId, {
+              userQuery: userMessage,
+              aiResponse: reply,
+              intent: best.intent,
+              entities: [],
+              timestamp: Date.now()
+            }, userId);
+            
             ws.send(JSON.stringify({
               type: 'message',
               content: reply,
@@ -1090,7 +1286,17 @@ wss.on('connection', (ws) => {
         
         if (intentResult.confidence < 0.4) {
           const reply = '正在为您转接人工客服，请稍候...我们的工作时间是 9:00-21:00，请您耐心等待。';
-          saveMessage(sessionId, 'assistant', reply, intentResult.intent);
+          saveMessage(sessionId, 'assistant', reply, intentResult.intent, userId);
+          
+          // 存储到对话记忆（按userId持久化）
+          storeConversationRound(sessionId, {
+            userQuery: userMessage,
+            aiResponse: reply,
+            intent: intentResult.intent,
+            entities: [],
+            timestamp: Date.now()
+          }, userId);
+          
           ws.send(JSON.stringify({
             type: 'message', content: reply,
             timestamp: new Date().toISOString()
@@ -1109,7 +1315,16 @@ wss.on('connection', (ws) => {
         
         try {
           const reply = await generateAgentReply(sessionId, userMessage, history, intentResult);
-          saveMessage(sessionId, 'assistant', reply, intentResult.intent);
+          saveMessage(sessionId, 'assistant', reply, intentResult.intent, userId);
+          
+          // 存储到对话记忆（按userId持久化）
+          storeConversationRound(sessionId, {
+            userQuery: userMessage,
+            aiResponse: reply,
+            intent: intentResult.intent,
+            entities: [],
+            timestamp: Date.now()
+          }, userId);
           
           ws.send(JSON.stringify({
             type: 'message', content: reply,
@@ -1119,7 +1334,17 @@ wss.on('connection', (ws) => {
         } catch (err) {
           console.error('生成回复失败：', err);
           const fallback = '抱歉，我暂时无法处理您的问题，正在为您转接人工客服...';
-          saveMessage(sessionId, 'assistant', fallback, intentResult.intent);
+          saveMessage(sessionId, 'assistant', fallback, intentResult.intent, userId);
+          
+          // 存储到对话记忆（按userId持久化）
+          storeConversationRound(sessionId, {
+            userQuery: userMessage,
+            aiResponse: fallback,
+            intent: intentResult.intent,
+            entities: [],
+            timestamp: Date.now()
+          }, userId);
+          
           ws.send(JSON.stringify({ type: 'message', content: fallback, timestamp: new Date().toISOString(), fallback: true }));
         } finally {
           ws.send(JSON.stringify({ type: 'typing', status: false }));
@@ -1151,7 +1376,22 @@ wss.on('connection', (ws) => {
             });
           }
           
-          saveMessage(sessionId, 'assistant', reply, faq.intent);
+          saveMessage(sessionId, 'assistant', reply, faq.intent, userId);
+          
+          // 存储到对话记忆（按userId持久化）
+          const userMessageForMemory = (() => {
+            const s = sessions.get(sessionId);
+            return s && s.lastUserMessage ? s.lastUserMessage : '';
+          })();
+          
+          storeConversationRound(sessionId, {
+            userQuery: userMessageForMemory,
+            aiResponse: reply,
+            intent: faq.intent,
+            entities: [],
+            timestamp: Date.now()
+          }, userId);
+          
           ws.send(JSON.stringify({
             type: 'message', content: reply,
             timestamp: new Date().toISOString(),
@@ -1196,5 +1436,13 @@ server.listen(PORT, '0.0.0.0', async () => {
     console.log(`   FAQ 缓存: ${count} 条（内存加速搜索）`);
   } catch (e) {
     console.warn(`   FAQ 缓存构建失败: ${e.message}`);
+  }
+
+  // 启动模型自动切换管理器
+  try {
+    modelSwitcher.startAutoSwitch(60000); // 每60秒检查一次
+    console.log(`   模型自动切换: 已启用（间隔60秒）`);
+  } catch (e) {
+    console.warn(`   模型自动切换启动失败: ${e.message}`);
   }
 });

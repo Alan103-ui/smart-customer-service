@@ -12,6 +12,9 @@ const crypto = require('crypto');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 
+// 用户认证模块
+const auth = require('./auth');
+
 // ============ 密码处理（与 auth.js 保持一致）============
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -135,11 +138,15 @@ const mediaStorage = multer.diskStorage({
 });
 const uploadMedia = multer({ storage: mediaStorage });
 
+// ============ 认证中间件 ============
+// 所有管理后台路由都需要认证 + 管理员权限
+router.use(auth.authMiddleware);
+router.use(auth.adminOnly);
 
 // ==========================================
 // 一、统计 API
 // ==========================================
-router.get('/stats', (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
     const faqList = getFAQ();
     const categoryList = loadCategories();
@@ -250,7 +257,7 @@ router.get('/stats', (req, res) => {
         totalConversations,
         resolvedConversations,
         resolutionRate,
-        vectorStats: getVectorStats()
+        vectorStats: await getVectorStats()
       },
       // 趋势数据
       trends: {
@@ -733,9 +740,20 @@ router.post('/rewrite-evaluate', (req, res) => {
 // ==========================================
 // 七、向量库管理 API
 // ==========================================
-router.get('/vector/stats', (req, res) => {
+router.get('/vector/stats', async (req, res) => {
   try {
-    res.json(getVectorStats());
+    const stats = await getVectorStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 兼容前端请求路径（连字符）
+router.get('/vector-stats', async (req, res) => {
+  try {
+    const stats = await getVectorStats();
+    res.json(stats);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1316,6 +1334,107 @@ router.post('/a8-sync', async (req, res) => {
     res.json({ success: true, message: '同步完成' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ 模型自动切换管理 ============
+const modelSwitcher = require('./model-switcher');
+const { generatePerformancePage } = require('./performance-page');
+
+// 获取当前模型状态（增强版 - 包含性能数据）
+router.get('/models/status', (req, res) => {
+  try {
+    const status = modelSwitcher.getHealthStatus();
+    const performance = modelSwitcher.getPerformanceReport();
+    
+    res.json({
+      success: true,
+      currentModels: status.currentModels,
+      health: status.modelHealth,
+      performance,  // 新增：性能数据
+      config: {
+        embedding: {
+          primary: modelSwitcher.MODEL_CONFIG.embedding.primary,
+          fallback: modelSwitcher.MODEL_CONFIG.embedding.fallback,
+        },
+        llm: {
+          primary: modelSwitcher.MODEL_CONFIG.llm.primary,
+          fallback: modelSwitcher.MODEL_CONFIG.llm.fallback,
+        },
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 获取详细性能报告（新增）
+router.get('/models/performance', (req, res) => {
+  try {
+    const { type } = req.query;
+    const report = modelSwitcher.getPerformanceReport(type);
+    
+    if (!report) {
+      return res.status(400).json({ success: false, error: `未知的模型类型: ${type}` });
+    }
+    
+    res.json({
+      success: true,
+      report,
+      timestamp: Date.now(),
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 重置性能统计（新增）
+router.post('/models/performance/reset', (req, res) => {
+  try {
+    const { type } = req.body;
+    modelSwitcher.resetPerformanceStats(type);
+    
+    res.json({
+      success: true,
+      message: type ? '已重置 ' + type + ' 性能统计' : '已重置所有模型性能统计',
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 手动切换模型（用于测试）
+router.post('/models/switch', (req, res) => {
+  try {
+    const { type, modelName } = req.body;
+    
+    if (!type || !modelName) {
+      return res.status(400).json({ success: false, error: '缺少 type 或 modelName 参数' });
+    }
+    
+    const result = modelSwitcher.switchModel(type, modelName);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+
+
+// 性能监控页面（集成到管理后台）
+router.get('/performance', (req, res) => {
+  try {
+    // 依赖 auth.adminOnly 中间件验证，req.user 已设置
+    const token = req.headers['authorization'] || req.headers['Authorization'] || '';
+    const realToken = token.replace('Bearer ', '');
+    
+    // 生成性能监控页面HTML
+    const html = generatePerformancePage(realToken);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (e) {
+    res.status(500).send('页面生成失败: ' + e.message);
   }
 });
 

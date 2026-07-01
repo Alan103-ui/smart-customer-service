@@ -24,11 +24,51 @@
       "id": "21abe4a8-a305-4590-ad9d-5148997d9bb1",
       "session_id": "c5df6c9d-f149-4a53-836f-12a8d26dea39",
       "user_id": "user_1782280352928",
+      "messages": "[{\"role\":\"user\",\"content\":\"费用\",\"timestamp\":\"2026-06-29T06:11:06.687Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-29T06:11:06.693Z\"},{\"role\":\"user\",\"content\":\"费用预算\",\"timestamp\":\"2026-06-30T06:21:05.049Z\"},{\"role\":\"assistant\",\"content\":\"财务管理实行预算管理原则，按部门统一归口，分级授权审批相结合。所有支出须在预算范围内进行，或需获得书面授权审批后方可执行。预算外的支出需要总经理批准，并由财务负责人调整年度预算。\",\"timestamp\":\"2026-06-30T06:21:59.691Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-26T01:58:17.915Z",
+      "updated_at": "2026-06-30T06:21:59.691Z"
+    },
+    {
+      "id": "381984e4-9bcc-4b38-82dd-0fa2c21a5fcc",
+      "session_id": "7ff380a2-ee51-4d91-8348-f525d62ba8bc",
+      "user_id": "user_001",
+      "messages": "[{\"role\":\"user\",\"content\":\"费用报销\",\"timestamp\":\"2026-06-30T09:11:42.844Z\"},{\"role\":\"assistant\",\"content\":\"享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。\",\"timestamp\":\"2026-06-30T09:11:42.855Z\"},{\"role\":\"user\",\"content\":\"一级城市\",\"timestamp\":\"2026-06-30T09:11:46.595Z\"},{\"role\":\"assistant\",\"content\":\"北京、上海、广州、深圳\",\"timestamp\":\"2026-06-30T09:11:46.599Z\"},{\"role\":\"user\",\"content\":\"备用申请\",\"timestamp\":\"2026-06-30T09:11:50.548Z\"},{\"role\":\"assistant\",\"content\":\"公司专职司机、零星采购负责人、安全管理负责人可申请备用金，每人限额3万元，借支金额不超过借款人一个月薪酬总额。请通过OA提交备用金借款申请单进行申请。\",\"timestamp\":\"2026-06-30T09:12:40.621Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-26T06:34:05.530Z",
+      "updated_at": "2026-06-30T09:12:40.621Z"
+    },
+    {
+      "id": "ace094e6-5023-4efb-b4ad-6f57acfe4c9a",
+      "session_id": "test_1782696846756_jrenpea3y",
+      "user_id": null,
+      "messages": "[{\"role\":\"user\",\"content\":\"费用报销需要什么材料？\",\"timestamp\":\"2026-06-29T01:34:07.765Z\"},{\"role\":\"assistant\",\"content\":\"报销申请人应填写费用报销单或差旅费报销单。并提供真实、合法、有效的原始凭据，按费用类别分别填列并写明费用用途，内容涉及餐饮、礼品、卡券，住宿等业务支出且单笔金额超过500元，需要提供同本人或同行职员的业务支付凭据（信用卡、微信、支付宝、储蓄卡等非现金支付方式的支付页面截图或签字的相关支付设备打印的结算单据）作为单据附件，不能提供支付凭据的请详细说明原因。如果所报销的费用是预先借支的，则由经办人于费用报销单或差旅费报销单上注明冲借款项。办理数量及品种较多的办公用品、低值易耗品用品的购置及各种修理费用的报销时还应附有明细清单和验收人的签字确认。\",\"timestamp\":\"2026-06-29T01:34:07.777Z\"}]",
+      "intent": "custom",
+      "resolved": false,
+      "created_at": "2026-06-29T01:34:06.760Z",
+      "updated_at": "2026-06-29T01:34:07.777Z"
+    },
+    {
+      "id": "9735c0d2-2362-4afb-b1df-f37ea302a513",
+      "session_id": "dd91a2cc-9d38-4562-a14a-e457596763f9",
+      "user_id": "user_001",
       "messages": "[]",
       "intent": null,
       "resolved": false,
-      "created_at": "2026-06-26T01:58:17.915Z",
-      "updated_at": "2026-06-26T01:58:17.915Z"
+      "created_at": "2026-06-29T02:32:09.159Z",
+      "updated_at": "2026-06-29T02:32:09.159Z"
+    },
+    {
+      "id": "f6c608c2-54f4-4afe-90eb-91d494500f5c",
+      "session_id": "test_session_1782799942623",
+      "user_id": "user_001",
+      "messages": "[]",
+      "intent": null,
+      "resolved": false,
+      "created_at": "2026-06-30T06:12:22.633Z",
+      "updated_at": "2026-06-30T06:12:22.633Z"
     }
   ],
   "faq_logs": [
@@ -39,6 +79,22 @@
       "matched_question": null,
       "transferred": 0,
       "created_at": "2026-06-24T09:11:23.544Z"
+    },
+    {
+      "id": "5cb5ce86-4621-4416-96a9-5a5cd8aa123e",
+      "session_id": "c5df6c9d-f149-4a53-836f-12a8d26dea39",
+      "question": "费用预算",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-30T06:21:45.218Z"
+    },
+    {
+      "id": "70dd36fb-0256-457a-84aa-b694a2678f49",
+      "session_id": "7ff380a2-ee51-4d91-8348-f525d62ba8bc",
+      "question": "备用申请",
+      "matched_question": null,
+      "transferred": 0,
+      "created_at": "2026-06-30T09:12:25.314Z"
     }
   ]
 }

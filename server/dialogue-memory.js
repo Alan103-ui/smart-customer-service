@@ -292,6 +292,9 @@ function calculateOverlap(keywords1, keywords2) {
 const memoryCache = new Map();
 const CACHE_TTL = 5000; // 缓存有效期 5 秒（高频读写场景下有效）
 
+/** @type {Map<string, { history: Array, mtime: number }>} */
+const userMemoryCache = new Map(); // 用户记忆缓存（按userId）
+
 /**
  * 读取会话历史（带内存缓存）
  * @param {string} sessionId
@@ -346,13 +349,78 @@ function writeHistory(sessionId, history) {
 }
 
 /**
+ * 读取用户记忆（带内存缓存）
+ * @param {string} userId - 用户ID（格式：user_xxx）
+ * @returns {Array<ConversationRound>}
+ */
+function readUserMemory(userId) {
+  const filePath = getUserMemoryPath(userId);
+  if (!fs.existsSync(filePath)) return [];
+
+  try {
+    const stat = fs.statSync(filePath);
+    const cached = userMemoryCache.get(userId);
+
+    // 缓存命中且文件未修改 → 直接返回
+    if (cached && cached.mtime === stat.mtimeMs) {
+      return cached.history;
+    }
+
+    const history = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    
+    // 限制缓存大小（LRU策略）
+    if (userMemoryCache.size > CACHE_SIZE_LIMIT) {
+      const firstKey = userMemoryCache.keys().next().value;
+      userMemoryCache.delete(firstKey);
+    }
+
+    userMemoryCache.set(userId, { history, mtime: stat.mtimeMs });
+    return Array.isArray(history) ? history : [];
+
+  } catch (err) {
+    console.error('[DialogueMemory] 读取用户记忆失败:', err.message);
+    return [];
+  }
+}
+
+/**
+ * 写入用户记忆（更新缓存）
+ * @param {string} userId - 用户ID（格式：user_xxx）
+ * @param {Array} history
+ */
+function writeUserMemory(userId, history) {
+  const filePath = getUserMemoryPath(userId);
+  const data = JSON.stringify(history, null, 2);
+  fs.writeFileSync(filePath, data, 'utf8');
+
+  // 同步更新缓存
+  try {
+    const stat = fs.statSync(filePath);
+    userMemoryCache.set(userId, { history, mtime: stat.mtimeMs });
+  } catch (e) {
+    userMemoryCache.delete(userId);
+  }
+}
+
+/**
  * 获取文件路径（统一路径构造，防止路径遍历）
- * @param {string} sessionId
+ * @param {string} id - sessionId 或 userId（userId格式：user_xxx）
  * @returns {string}
  */
-function getFilePath(sessionId) {
+function getFilePath(id) {
   // 只允许字母、数字、下划线、短横线（防止路径遍历攻击）
-  const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '');
+  const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '');
+  return path.join(MEMORY_DIR, `${safeId}.json`);
+}
+
+/**
+ * 获取用户记忆文件路径（按userId存储）
+ * @param {string} userId - 用户ID（格式：user_xxx）
+ * @returns {string}
+ */
+function getUserMemoryPath(userId) {
+  // userId格式：user_xxx，直接使用userId作为文件名
+  const safeId = userId.replace(/[^a-zA-Z0-9_-]/g, '');
   return path.join(MEMORY_DIR, `${safeId}.json`);
 }
 
@@ -362,9 +430,10 @@ function getFilePath(sessionId) {
  * 存储对话轮次
  * @param {string} sessionId  - 会话ID（非空字符串）
  * @param {Object} round     - 轮次数据 { userQuery, aiResponse, intent, entities, topics }
+ * @param {string} [userId]  - 用户ID（可选，格式：user_xxx）
  * @returns {{ success: boolean, totalRounds: number, roundId: string, error?: string }}
  */
-function storeConversationRound(sessionId, round) {
+function storeConversationRound(sessionId, round, userId) {
   if (!sessionId || typeof sessionId !== 'string') {
     return { success: false, error: 'sessionId 无效' };
   }
@@ -373,8 +442,9 @@ function storeConversationRound(sessionId, round) {
   }
 
   try {
+    // 1. 存储到 sessionId 对应的文件（向后兼容）
     const history = readHistory(sessionId);
-
+    
     const roundWithId = {
       roundId: `${sessionId}_${history.length + 1}`,
       timestamp: round.timestamp || Date.now(),
@@ -382,7 +452,9 @@ function storeConversationRound(sessionId, round) {
       aiResponse: (round.aiResponse || '').slice(0, 2000),
       intent: round.intent || null,
       entities: Array.isArray(round.entities) ? round.entities.slice(0, 50) : [],
-      topics: Array.isArray(round.topics) ? round.topics : []
+      topics: Array.isArray(round.topics) ? round.topics : [],
+      sessionId: sessionId,  // 记录所属的 sessionId
+      userId: userId || null  // 记录所属的用户ID
     };
 
     history.push(roundWithId);
@@ -397,6 +469,20 @@ function storeConversationRound(sessionId, round) {
     writeHistory(sessionId, history);
 
     console.log(`[DialogueMemory] 存储成功：sessionId=${sessionId}, roundId=${roundWithId.roundId}`);
+    
+    // 2. 如果传入了 userId，同时存储到用户记忆文件
+    if (userId && typeof userId === 'string' && userId.startsWith('user_')) {
+      const userHistory = readUserMemory(userId);
+      userHistory.push(roundWithId);
+      
+      // 限制用户记忆长度
+      if (userHistory.length > MAX_HISTORY_ROUNDS * 2) {  // 用户记忆保留更多轮次
+        userHistory.splice(0, userHistory.length - MAX_HISTORY_ROUNDS * 2);
+      }
+      
+      writeUserMemory(userId, userHistory);
+      console.log(`[DialogueMemory] 同时存储到用户记忆：userId=${userId}`);
+    }
     
     // 异步预计算嵌入向量（不阻塞主流程）
     precomputeEmbedding(sessionId, roundWithId).catch(err => {
@@ -416,9 +502,33 @@ function storeConversationRound(sessionId, round) {
  * @param {string} sessionId       - 会话ID
  * @param {number} [limit=0]      - 返回最近 N 轮（0=全部）
  * @param {boolean} [includeContext=false] - 是否构建上下文增强信息
+ * @param {string} [userId]       - 用户ID（可选，格式：user_xxx）
  * @returns {{ success: boolean, history: Array, context: (ContextInfo|null), error?: string }}
  */
-function getConversationHistory(sessionId, limit = 0, includeContext = false) {
+function getConversationHistory(sessionId, limit = 0, includeContext = false, userId) {
+  // 如果传入了 userId，优先从用户记忆文件读取
+  if (userId && typeof userId === 'string' && userId.startsWith('user_')) {
+    try {
+      let history = readUserMemory(userId);
+
+      // 限制返回轮次
+      if (Number.isInteger(limit) && limit > 0 && history.length > limit) {
+        history = history.slice(-limit);
+      }
+
+      let context = null;
+      if (includeContext && history.length > 0) {
+        context = buildContextFromHistory(history);
+      }
+
+      return { success: true, history, context };
+    } catch (err) {
+      console.error('[DialogueMemory] 从用户记忆读取失败，回退到sessionId:', err.message);
+      // 回退到 sessionId
+    }
+  }
+
+  // 按 sessionId 读取（向后兼容）
   if (!sessionId || typeof sessionId !== 'string') {
     return { success: false, history: [], context: null, error: 'sessionId 无效' };
   }
@@ -767,10 +877,21 @@ function findRelevantHistory(query, history, sessionId = null) {
 /**
  * 清除对话历史
  * @param {string|null} [sessionId=null] - 会话ID（null=清除所有）
+ * @param {string} [userId=null]      - 用户ID（可选，格式：user_xxx）
  * @returns {{ success: boolean, message: string, error?: string }}
  */
-function clearConversationHistory(sessionId = null) {
+function clearConversationHistory(sessionId = null, userId = null) {
   try {
+    // 如果传入了 userId，清除用户记忆
+    if (userId && typeof userId === 'string' && userId.startsWith('user_')) {
+      const userFilePath = getUserMemoryPath(userId);
+      if (fs.existsSync(userFilePath)) {
+        fs.unlinkSync(userFilePath);
+        userMemoryCache.delete(userId);
+      }
+      return { success: true, message: `用户 ${userId} 的记忆已清除` };
+    }
+
     if (sessionId) {
       const filePath = getFilePath(sessionId);
       if (fs.existsSync(filePath)) {
@@ -787,6 +908,7 @@ function clearConversationHistory(sessionId = null) {
         count++;
       }
       memoryCache.clear();
+      userMemoryCache.clear();
       return { success: true, message: `已清除 ${count} 个会话的历史` };
     }
   } catch (err) {
@@ -796,38 +918,104 @@ function clearConversationHistory(sessionId = null) {
 }
 
 /**
- * 获取会话统计信息
- * @returns {{ success: boolean, totalSessions: number, totalRounds: number, sessions: Array, error?: string }}
+ * 获取会话统计信息（适配管理后台前端展示）
+ * @returns {{ success: boolean, total_memories: number, active_sessions: number, hit_rate: number, user_memories: Object, memory_types: Object, sessions: Array, error?: string }}
  */
 function getMemoryStats() {
   try {
-    const files = fs.readdirSync(MEMORY_DIR).filter(f => f.endsWith('.json'));
+    const files = fs.readdirSync(MEMORY_DIR).filter(f => f.endsWith('.json') && !f.includes('-embeddings'));
     const sessions = [];
+    const now = Date.now();
+    const ACTIVE_THRESHOLD = 24 * 60 * 60 * 1000; // 24小时内的会话算活跃
+    const userMemories = {};  // 按用户(userId)分组统计记忆数
+    const memoryTypes = {};   // 按意图类型统计
 
-    for (const file of files) {
-      const sessionId = file.replace('.json', '');
+    // 分离用户记忆文件和会话文件
+    const userFiles = files.filter(f => f.startsWith('user_'));
+    const sessionFiles = files.filter(f => !f.startsWith('user_'));
+
+    // 优先统计用户记忆文件
+    for (const file of userFiles) {
+      const userId = file.replace('.json', '');
       const filePath = path.join(MEMORY_DIR, file);
 
       try {
         const stat = fs.statSync(filePath);
-        const history = readHistory(sessionId);
+        const history = readUserMemory(userId);
+        const roundCount = history.length;
+
+        // 统计用户记忆
+        if (roundCount > 0) {
+          userMemories[userId] = roundCount;
+        }
+
+        // 统计记忆类型（按intent分布）
+        for (const round of history) {
+          if (round.intent) {
+            const type = round.intent;
+            memoryTypes[type] = (memoryTypes[type] || 0) + 1;
+          }
+        }
+
         sessions.push({
-          sessionId,
-          totalRounds: history.length,
+          sessionId: userId,  // 使用userId作为标识
+          totalRounds: roundCount,
           lastUpdated: stat.mtime.toISOString(),
-          latestQuery: history.length > 0 ? history[history.length - 1].userQuery : ''
+          latestQuery: roundCount > 0 ? history[roundCount - 1].userQuery : '',
+          isActive: (now - stat.mtimeMs) < ACTIVE_THRESHOLD
         });
       } catch (e) {
-        console.warn(`[DialogueMemory] 读取会话 ${sessionId} 失败，跳过:`, e.message);
+        console.warn(`[DialogueMemory] 读取用户记忆 ${userId} 失败，跳过:`, e.message);
       }
     }
 
-    const totalRounds = sessions.reduce((sum, s) => sum + s.totalRounds, 0);
+    // 如果没有用户记忆文件，则统计会话文件（向后兼容）
+    if (userFiles.length === 0) {
+      for (const file of sessionFiles) {
+        const sessionId = file.replace('.json', '');
+        const filePath = path.join(MEMORY_DIR, file);
+
+        try {
+          const stat = fs.statSync(filePath);
+          const history = readHistory(sessionId);
+          const roundCount = history.length;
+
+          // 统计用户记忆（用sessionId作为用户标识）
+          if (roundCount > 0) {
+            userMemories[sessionId] = roundCount;
+          }
+
+          // 统计记忆类型（按intent分布）
+          for (const round of history) {
+            if (round.intent) {
+              const type = round.intent;
+              memoryTypes[type] = (memoryTypes[type] || 0) + 1;
+            }
+          }
+
+          sessions.push({
+            sessionId,
+            totalRounds: roundCount,
+            lastUpdated: stat.mtime.toISOString(),
+            latestQuery: roundCount > 0 ? history[roundCount - 1].userQuery : '',
+            isActive: (now - stat.mtimeMs) < ACTIVE_THRESHOLD
+          });
+        } catch (e) {
+          console.warn(`[DialogueMemory] 读取会话 ${sessionId} 失败，跳过:`, e.message);
+        }
+      }
+    }
+
+    const totalMemories = sessions.reduce((sum, s) => sum + s.totalRounds, 0);
+    const activeSessions = sessions.filter(s => s.isActive).length;
 
     return {
       success: true,
-      totalSessions: sessions.length,
-      totalRounds,
+      total_memories: totalMemories,
+      active_sessions: activeSessions,
+      hit_rate: 0,  // TODO: 需要记录记忆命中次数来计算命中率
+      user_memories: userMemories,
+      memory_types: memoryTypes,
       sessions: sessions.sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated))
     };
 

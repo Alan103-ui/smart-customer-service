@@ -1,0 +1,83 @@
+{
+  "timestamp": "2026-07-01T02:59:22.500Z",
+  "summary": {
+    "totalTests": 12,
+    "passedTests": 12,
+    "failedTests": 0,
+    "passRate": 100
+  },
+  "details": [
+    {
+      "name": "登录",
+      "passed": true,
+      "details": "Token获取成功",
+      "timestamp": "2026-07-01T02:59:22.442Z"
+    },
+    {
+      "name": "对话功能-REST接口",
+      "passed": true,
+      "details": "回答长度: 13字符",
+      "timestamp": "2026-07-01T02:59:22.449Z"
+    },
+    {
+      "name": "对话历史",
+      "passed": true,
+      "details": "历史记录数: 0",
+      "timestamp": "2026-07-01T02:59:22.454Z"
+    },
+    {
+      "name": "对话记忆统计",
+      "passed": true,
+      "details": "总记忆数: 0",
+      "timestamp": "2026-07-01T02:59:22.458Z"
+    },
+    {
+      "name": "知识库列表",
+      "passed": true,
+      "details": "知识库数量: 1",
+      "timestamp": "2026-07-01T02:59:22.462Z"
+    },
+    {
+      "name": "分类列表",
+      "passed": true,
+      "details": "分类数量: 6",
+      "timestamp": "2026-07-01T02:59:22.465Z"
+    },
+    {
+      "name": "FAQ列表",
+      "passed": true,
+      "details": "FAQ数量: 10",
+      "timestamp": "2026-07-01T02:59:22.469Z"
+    },
+    {
+      "name": "向量库统计",
+      "passed": true,
+      "details": "总chunk数: 34, 模型: bge-m3:latest",
+      "timestamp": "2026-07-01T02:59:22.484Z"
+    },
+    {
+      "name": "RAG检索",
+      "passed": true,
+      "details": "回答长度: 10字符, 来源数: 0",
+      "timestamp": "2026-07-01T02:59:22.489Z"
+    },
+    {
+      "name": "重排序功能",
+      "passed": true,
+      "details": "Rerank服务状态: 正常",
+      "timestamp": "2026-07-01T02:59:22.493Z"
+    },
+    {
+      "name": "性能监控API",
+      "passed": true,
+      "details": "总请求数: 45",
+      "timestamp": "2026-07-01T02:59:22.496Z"
+    },
+    {
+      "name": "模型状态API",
+      "passed": true,
+      "details": "当前模型: {\"embedding\":\"bge-m3:latest\",\"llm\":\"qwen2.5:14b\",\"reranker\":\"bge-reranker-v2-m3:latest\"}",
+      "timestamp": "2026-07-01T02:59:22.499Z"
+    }
+  ]
+}

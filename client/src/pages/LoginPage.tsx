@@ -56,9 +56,37 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
   // SSO 登录（跳转 OA 系统）
   const handleSSOLogin = () => {
-    // TODO: 跳转到 A8/OA 的 SSO 登录地址
-    alert('SSO 登录待配置 A8/OA 系统地址后启用');
+    // 跳转到后端SSO登录接口，由后端重定向到OA系统
+    window.location.href = `${API_BASE}/api/auth/sso/login`;
   };
+
+  // 检查URL中是否有SSO回调的token（SSO登录成功后后端重定向带回token）
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      // 移除URL中的token参数（安全考虑）
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // 用token获取用户信息并自动登录
+      fetch(`${API_BASE}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(r => r.json())
+        .then(u => {
+          if (u.id) {
+            localStorage.setItem('cs_token', token);
+            localStorage.setItem('cs_user', JSON.stringify(u));
+            onLogin(u);
+          } else {
+            setError('SSO登录失败：无法获取用户信息');
+          }
+        })
+        .catch(() => {
+          setError('SSO登录失败：网络错误');
+        });
+    }
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">

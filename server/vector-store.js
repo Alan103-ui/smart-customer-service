@@ -78,9 +78,14 @@ function loadIntentCategoryMap() {
 // 根据意图获取相关分类名称
 function getCategoriesByIntent(intent) {
   if (!intent) return null;
+  // 类型检查：如果 intent 不是字符串，直接返回 null（避免 intent.toLowerCase is not a function）
+  if (typeof intent !== 'string') {
+    console.warn(`[getCategoriesByIntent] ⚠️ intent 不是字符串，已自动处理为 null. 类型: ${typeof intent}, 值:`, intent);
+    return null;
+  }
   
   const map = loadIntentCategoryMap();
-  const intentLower = intent ? intent.toLowerCase() : '';
+  const intentLower = intent.toLowerCase();
   
   // 精确匹配
   if (map[intentLower]) {
@@ -1354,20 +1359,127 @@ function deleteDocument(docId) {
 }
 
 /**
- * 获取向量库统计
+ * 获取 Ollama 上所有可用模型（带缓存，5分钟刷新）
  */
-function getStats() {
+let _ollamaModelsCache = { data: null, fetchedAt: 0 };
+const OLLAMA_MODELS_CACHE_TTL = 5 * 60 * 1000; // 5分钟
+
+async function fetchOllamaModels() {
+  const now = Date.now();
+  if (_ollamaModelsCache.data && (now - _ollamaModelsCache.fetchedAt) < OLLAMA_MODELS_CACHE_TTL) {
+    return _ollamaModelsCache.data;
+  }
+
+  return new Promise((resolve) => {
+    const http = require('http');
+    const options = {
+      hostname: OLLAMA_HOST,
+      port: OLLAMA_PORT,
+      path: '/api/tags',
+      method: 'GET',
+      timeout: 5000
+    };
+    const req = http.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          const models = (parsed.models || []).map(m => ({
+            name: m.name,
+            family: m.details?.family || 'unknown',
+            size: m.details?.parameter_size || 'unknown',
+            modified_at: m.modified_at
+          }));
+          _ollamaModelsCache = { data: models, fetchedAt: now };
+          resolve(models);
+        } catch (e) {
+          console.warn('[VectorStore] 解析Ollama模型列表失败:', e.message);
+          resolve([]);
+        }
+      });
+    });
+    req.on('error', (err) => {
+      console.warn('[VectorStore] 获取Ollama模型列表失败:', err.message);
+      resolve(_ollamaModelsCache.data || []);
+    });
+    req.on('timeout', () => { req.destroy(); resolve(_ollamaModelsCache.data || []); });
+    req.end();
+  });
+}
+
+/**
+ * 根据 embedding 向量维度推断使用的模型（启发式）
+ * bge-m3 → 1024维, nomic-embed-text → 768维, qwen2.5 embed → 4096/3584维等
+ */
+function detectModelByDimension(dims) {
+  if (dims === 1024) return 'bge-m3';
+  if (dims === 768) return 'nomic-embed-text';
+  if (dims >= 3500 && dims <= 4100) return 'qwen2.5:14b';
+  return `unknown(${dims}d)`;
+}
+
+/**
+ * 获取向量库统计（增强版：显示所有可用嵌入模型 + 各自chunk统计）
+ * 改为 async 以支持调用 Ollama API
+ */
+async function getStats() {
   const store = loadStore();
+
+  // 分块类型统计
   const chunkTypes = {};
   store.chunks.forEach(c => {
     const t = c.chunkType || 'unknown';
     chunkTypes[t] = (chunkTypes[t] || 0) + 1;
   });
+
+  // 按embedding维度分组统计（推断各模型的chunk数量）
+  const modelChunks = {};
+  let currentModel = store.meta.embeddingModel || 'unknown';
+  store.chunks.forEach(c => {
+    if (c.embedding && Array.isArray(c.embedding)) {
+      const dims = c.embedding.length;
+      const inferred = detectModelByDimension(dims);
+      modelChunks[inferred] = (modelChunks[inferred] || 0) + 1;
+    }
+  });
+
+  // 获取Ollama上所有可用嵌入模型
+  const ollamaModels = await fetchOllamaModels();
+  // 筛选可用于嵌入的模型（bert系列 + 已知LLM）
+  const embeddingModels = ollamaModels.filter(m =>
+    m.family === 'bert' ||
+    ['bge-m3', 'nomic-embed', 'mxbai-embed', 'qwen2.5', 'qwen2'].some(k => m.name.includes(k))
+  ).map(m => ({
+    name: m.name,
+    family: m.family,
+    size: m.size,
+    isActive: m.name === currentModel,
+    chunkCount: modelChunks[m.name.split(':')[0]] || 0
+  }));
+
+  // 确保当前模型在列表中
+  if (!embeddingModels.some(m => m.name === currentModel)) {
+    embeddingModels.unshift({
+      name: currentModel,
+      family: currentModel.includes('bge') ? 'bert' : 'unknown',
+      size: '-',
+      isActive: true,
+      chunkCount: modelChunks[currentModel.split(':')[0]] || store.chunks.length
+    });
+  }
+
   return {
     totalChunks: store.chunks.length,
     uniqueDocs: [...new Set(store.chunks.map(c => c.parentDocId || c.docId))].length,
     updatedAt: store.meta.updatedAt,
-    embeddingModel: store.meta.embeddingModel || 'unknown',
+    // 当前活跃模型（兼容旧前端）
+    embeddingModel: currentModel,
+    // 增强信息：所有可用嵌入模型
+    availableEmbeddingModels: embeddingModels,
+    // 各模型chunk分布（按维度推断）
+    modelChunkDistribution: modelChunks,
+    // 分块类型统计
     chunkTypes
   };
 }

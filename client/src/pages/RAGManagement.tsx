@@ -12,7 +12,7 @@ let toastIdCounter = 0;
 
 // ==================== RAG 管理组件 ====================
 export default function RAGManagement() {
-  const [activeTab, setActiveTab] = useState<'stats' | 'test' | 'eval' | 'intent' | 'rewrite'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'test' | 'eval' | 'intent' | 'rewrite' | 'performance'>('stats');
   const [loading, setLoading] = useState(false);
   
   // Toast 通知
@@ -47,6 +47,13 @@ export default function RAGManagement() {
   const [rewriteTone, setRewriteTone] = useState('亲切友好');
   const [rewriteResult, setRewriteResult] = useState('');
   const [rewriteLoading, setRewriteLoading] = useState(false);
+  
+  // 性能监控
+  const [perfLoading, setPerfLoading] = useState(false);
+  const [modelStatus, setModelStatus] = useState<any>(null);
+  const [performanceReport, setPerformanceReport] = useState<any>(null);
+  const [selectedPerfType, setSelectedPerfType] = useState<'embedding' | 'reranker'>('embedding');
+  const [perfRefreshTimer, setPerfRefreshTimer] = useState<NodeJS.Timeout | null>(null);
   
   const API_BASE = '/api/admin';
 
@@ -282,6 +289,76 @@ export default function RAGManagement() {
     setRewriteLoading(false);
   };
 
+  // ==================== 性能监控 ====================
+  const fetchModelStatus = async () => {
+    setPerfLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/models/status`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setModelStatus(data);
+        showToast('模型状态已刷新', 'success');
+      } else {
+        showToast('获取模型状态失败: ' + (data.error || '未知错误'), 'error');
+      }
+    } catch (err: any) {
+      showToast('获取模型状态失败: ' + err.message, 'error');
+    }
+    setPerfLoading(false);
+  };
+
+  const fetchPerformanceReport = async (type?: 'embedding' | 'reranker') => {
+    try {
+      const url = type ? `${API_BASE}/models/performance?type=${type}` : `${API_BASE}/models/performance`;
+      const res = await fetch(url, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setPerformanceReport(data.report);
+      } else {
+        showToast('获取性能报告失败: ' + (data.error || '未知错误'), 'error');
+      }
+    } catch (err: any) {
+      showToast('获取性能报告失败: ' + err.message, 'error');
+    }
+  };
+
+  const handleResetPerformance = async (type?: 'embedding' | 'reranker') => {
+    if (!confirm(`确定重置${type ? type : '所有'}性能统计？`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/models/performance/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ type })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('性能统计已重置', 'success');
+        fetchModelStatus();
+        fetchPerformanceReport(selectedPerfType);
+      } else {
+        showToast('重置失败: ' + (data.error || '未知错误'), 'error');
+      }
+    } catch (err: any) {
+      showToast('重置失败: ' + err.message, 'error');
+    }
+  };
+
+  // 自动刷新性能数据
+  useEffect(() => {
+    if (activeTab === 'performance') {
+      fetchModelStatus();
+      fetchPerformanceReport(selectedPerfType);
+      
+      // 每30秒自动刷新
+      const timer = setInterval(() => {
+        fetchModelStatus();
+        fetchPerformanceReport(selectedPerfType);
+      }, 30000);
+      
+      return () => clearInterval(timer);
+    }
+  }, [activeTab, selectedPerfType]);
+
   // ==================== UI 渲染 ====================
   return (
     <div className="rag-management">
@@ -306,7 +383,8 @@ export default function RAGManagement() {
           { key: 'test', label: '🔍 测试搜索' },
           { key: 'eval', label: '📈 效果评估' },
           { key: 'intent', label: '🧠 意图理解' },
-          { key: 'rewrite', label: '✏️ 答案改写' }
+          { key: 'rewrite', label: '✏️ 答案改写' },
+          { key: 'performance', label: '⚡ 性能监控' }
         ].map(tab => (
           <button
             key={tab.key}
@@ -811,6 +889,227 @@ export default function RAGManagement() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 性能监控 Tab */}
+      {activeTab === 'performance' && (
+        <div className="rag-tab-content">
+          {perfLoading ? (
+            <div className="rag-loading">加载中...</div>
+          ) : (
+            <div>
+              {/* 模型状态卡片 */}
+              <div className="rag-card">
+                <h3 className="rag-card-title">⚡ 模型状态</h3>
+                {modelStatus ? (
+                  <div>
+                    {/* Ollama 模型状态 */}
+                    <div style={{ marginBottom: 20 }}>
+                      <h4 style={{ marginBottom: 12, fontSize: 16 }}>🤖 Ollama 嵌入模型</h4>
+                      <div className="rag-stats-grid">
+                        <div className="rag-stat-card" style={{ borderLeft: '4px solid #1890ff' }}>
+                          <div className="rag-stat-label">当前主模型</div>
+                          <div className="rag-stat-value">{modelStatus.currentModels?.embedding || '-'}</div>
+                        </div>
+                        <div className="rag-stat-card" style={{ borderLeft: '4px solid #52c41a' }}>
+                          <div className="rag-stat-label">备用模型</div>
+                          <div className="rag-stat-value">{modelStatus.config?.embedding?.fallback || '-'}</div>
+                        </div>
+                        <div className="rag-stat-card" style={{ borderLeft: '4px solid #faad14' }}>
+                          <div className="rag-stat-label">健康状态</div>
+                          <div className="rag-stat-value">
+                            {modelStatus.health?.embedding?.available ? '✅ 正常' : '⚠️ 异常'}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 模型健康详情 */}
+                      {modelStatus.health?.embedding && (
+                        <div style={{ marginTop: 12 }}>
+                          <h5 style={{ marginBottom: 8, fontSize: 14 }}>模型健康详情</h5>
+                          <div style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: 8 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                              <span>模型名称: {modelStatus.currentModels?.embedding}</span>
+                              <span>状态: {modelStatus.health?.embedding?.available ? '✅' : '⚠️'}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                              <span>响应时间: {modelStatus.health?.embedding?.lastResponseTime ? `${modelStatus.health.embedding.lastResponseTime}ms` : '-'}</span>
+                              <span>最后检查: {modelStatus.health?.embedding?.lastCheck ? new Date(modelStatus.health.embedding.lastCheck).toLocaleTimeString() : '-'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Rerank 服务状态 */}
+                    <div style={{ marginBottom: 20 }}>
+                      <h4 style={{ marginBottom: 12, fontSize: 16 }}>🔄 Rerank 重排序服务</h4>
+                      <div className="rag-stats-grid">
+                        <div className="rag-stat-card" style={{ borderLeft: '4px solid #1890ff' }}>
+                          <div className="rag-stat-label">服务地址</div>
+                          <div className="rag-stat-value" style={{ fontSize: 14 }}>{modelStatus.config?.reranker?.serviceUrl || '-'}</div>
+                        </div>
+                        <div className="rag-stat-card" style={{ borderLeft: '4px solid #52c41a' }}>
+                          <div className="rag-stat-label">健康状态</div>
+                          <div className="rag-stat-value">
+                            {modelStatus.health?.reranker?.available ? '✅ 正常' : '⚠️ 异常'}
+                          </div>
+                        </div>
+                        <div className="rag-stat-card" style={{ borderLeft: '4px solid #faad14' }}>
+                          <div className="rag-stat-label">响应时间</div>
+                          <div className="rag-stat-value">
+                            {modelStatus.health?.reranker?.lastResponseTime ? `${modelStatus.health.reranker.lastResponseTime}ms` : '-'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rag-empty">暂无数据，请点击"刷新状态"</div>
+                )}
+                
+                <div className="rag-actions" style={{ marginTop: 16 }}>
+                  <button onClick={fetchModelStatus} className="rag-btn rag-btn-secondary" disabled={perfLoading}>
+                    🔄 刷新状态
+                  </button>
+                </div>
+              </div>
+
+              {/* 性能指标卡片 */}
+              <div className="rag-card" style={{ marginTop: 20 }}>
+                <h3 className="rag-card-title">📊 性能指标</h3>
+                
+                {/* 选择性能类型 */}
+                <div className="rag-form-row" style={{ marginBottom: 16 }}>
+                  <div className="rag-form-group">
+                    <label className="rag-label">查看性能数据</label>
+                    <select
+                      value={selectedPerfType}
+                      onChange={e => setSelectedPerfType(e.target.value as 'embedding' | 'reranker')}
+                      className="rag-select"
+                    >
+                      <option value="embedding">Ollama 嵌入模型</option>
+                      <option value="reranker">Rerank 重排序服务</option>
+                    </select>
+                  </div>
+                  <div className="rag-form-group">
+                    <button onClick={() => fetchPerformanceReport(selectedPerfType)} className="rag-btn rag-btn-secondary">
+                      🔄 刷新数据
+                    </button>
+                    <button onClick={() => handleResetPerformance(selectedPerfType)} className="rag-btn rag-btn-danger" style={{ marginLeft: 8 }}>
+                      🗑️ 重置统计
+                    </button>
+                  </div>
+                </div>
+
+                {performanceReport ? (
+                  <div>
+                    {/* 性能摘要 */}
+                    <div className="rag-stats-grid" style={{ marginBottom: 20 }}>
+                      <div className="rag-stat-card" style={{ borderLeft: '4px solid #1890ff' }}>
+                        <div className="rag-stat-label">平均响应时间</div>
+                        <div className="rag-stat-value">
+                          {performanceReport.avgResponseTime || '-'}
+                        </div>
+                      </div>
+                      <div className="rag-stat-card" style={{ borderLeft: '4px solid #52c41a' }}>
+                        <div className="rag-stat-label">成功率</div>
+                        <div className="rag-stat-value">
+                          {performanceReport.successRate || '-'}
+                        </div>
+                      </div>
+                      <div className="rag-stat-card" style={{ borderLeft: '4px solid #faad14' }}>
+                        <div className="rag-stat-label">总请求数</div>
+                        <div className="rag-stat-value">{performanceReport.totalRequests || 0}</div>
+                      </div>
+                      <div className="rag-stat-card" style={{ borderLeft: '4px solid #f5222d' }}>
+                        <div className="rag-stat-label">失败请求数</div>
+                        <div className="rag-stat-value">{performanceReport.failedRequests || 0}</div>
+                      </div>
+                    </div>
+
+                    {/* 响应时间详情 */}
+                    <div className="rag-card" style={{ marginBottom: 20 }}>
+                      <h4 style={{ marginBottom: 12, fontSize: 16 }}>⏱️ 响应时间详情</h4>
+                      <div className="rag-stats-grid">
+                        <div className="rag-stat-card">
+                          <div className="rag-stat-label">最小响应时间</div>
+                          <div className="rag-stat-value">{performanceReport.minResponseTime || '-'}</div>
+                        </div>
+                        <div className="rag-stat-card">
+                          <div className="rag-stat-label">最大响应时间</div>
+                          <div className="rag-stat-value">{performanceReport.maxResponseTime || '-'}</div>
+                        </div>
+                        <div className="rag-stat-card">
+                          <div className="rag-stat-label">最后响应时间</div>
+                          <div className="rag-stat-value">{performanceReport.lastResponseTime || '-'}</div>
+                        </div>
+                        <div className="rag-stat-card">
+                          <div className="rag-stat-label">每分钟请求数</div>
+                          <div className="rag-stat-value">{performanceReport.requestsPerMinute || 0}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 健康状态 */}
+                    <div className="rag-card" style={{ marginBottom: 20 }}>
+                      <h4 style={{ marginBottom: 12, fontSize: 16 }}>💚 健康状态</h4>
+                      <div className="rag-stats-grid">
+                        <div className="rag-stat-card">
+                          <div className="rag-stat-label">健康状态</div>
+                          <div className="rag-stat-value">{performanceReport.healthStatus || '-'}</div>
+                        </div>
+                        <div className="rag-stat-card">
+                          <div className="rag-stat-label">最后健康检查</div>
+                          <div className="rag-stat-value" style={{ fontSize: 14 }}>{performanceReport.lastHealthCheck || '-'}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 最近请求记录 */}
+                    {performanceReport.recentRequests && performanceReport.recentRequests.length > 0 && (
+                      <div>
+                        <h4 style={{ marginBottom: 12, fontSize: 16 }}>📋 最近请求记录（共 {performanceReport.recentRequests.length} 条）</h4>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                            <thead>
+                              <tr style={{ background: '#fafafa', borderBottom: '2px solid #e8e8e8' }}>
+                                <th style={{ padding: '8px 12px', textAlign: 'left' }}>时间</th>
+                                <th style={{ padding: '8px 12px', textAlign: 'center' }}>响应时间</th>
+                                <th style={{ padding: '8px 12px', textAlign: 'center' }}>状态</th>
+                                <th style={{ padding: '8px 12px', textAlign: 'left' }}>错误</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {performanceReport.recentRequests.slice(0, 10).map((req: any, idx: number) => (
+                                <tr key={idx} style={{ borderBottom: '1px solid #e8e8e8', background: req.success ? '#f6ffed' : '#fff2f0' }}>
+                                  <td style={{ padding: '8px 12px', fontSize: 12 }}>
+                                    {new Date(req.timestamp).toLocaleTimeString()}
+                                  </td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                    {req.responseTime}ms
+                                  </td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                    {req.success ? '✅' : '❌'}
+                                  </td>
+                                  <td style={{ padding: '8px 12px', fontSize: 12, color: '#f5222d' }}>
+                                    {req.error || '-'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rag-empty">暂无性能数据，请点击"刷新数据"</div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

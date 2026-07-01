@@ -76,12 +76,22 @@ interface CategoryItem {
 
 // ==================== 主组件 ====================
 export default function AdminDashboard({ onBack }: AdminDashboardProps) {
-  const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag'>('stats');
+  const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag' | 'conversations' | 'memory' | 'logs'>('stats');
   const [stats, setStats] = useState<Stats | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
+
+  // 记忆管理状态
+  const [memoryStats, setMemoryStats] = useState<any>(null);
+  const [memoryLoading, setMemoryLoading] = useState(false);
+
+  // 日志管理状态
+  const [logFiles, setLogFiles] = useState<string[]>([]);
+  const [logContent, setLogContent] = useState<string>('');
+  const [selectedLogFile, setSelectedLogFile] = useState<string>('');
+  const [logLoading, setLogLoading] = useState(false);
 
   // 知识库状态（供分类和FAQ选择使用）
   const [knowledgeBases, setKnowledgeBases] = useState<any[]>([]);
@@ -171,6 +181,77 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     } catch (err) { console.error('获取对话列表失败', err); setConversations([]); setLoading(false); }
   };
 
+  // 获取记忆统计
+  const fetchMemoryStats = async () => {
+    setMemoryLoading(true);
+    try {
+      const res = await fetch(`/api/chat/memory-stats`, { headers: getAuthHeaders() });
+      if (!res.ok) { console.error('获取记忆统计失败:', res.status); setMemoryStats(null); }
+      else { setMemoryStats(await res.json()); }
+    } catch (err) { console.error('获取记忆统计失败', err); setMemoryStats(null); }
+    finally { setMemoryLoading(false); }
+  };
+
+  // 获取日志文件列表
+  const fetchLogs = async () => {
+    setLogLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/logs`, { headers: getAuthHeaders() });
+      if (!res.ok) { console.error('获取日志文件列表失败:', res.status); setLogFiles([]); }
+      else {
+        const result = await res.json();
+        // 后端返回 { success: true, data: [...] }
+        const files = Array.isArray(result) ? result : (result.data || []);
+        setLogFiles(files);
+      }
+    } catch (err) { console.error('获取日志文件列表失败', err); setLogFiles([]); }
+    finally { setLogLoading(false); }
+  };
+
+  // 读取日志文件内容
+  const fetchLogFileContent = async (filename: string) => {
+    setLogLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/logs/${filename}`, { headers: getAuthHeaders() });
+      if (!res.ok) { console.error('读取日志文件失败:', res.status); setLogContent(''); }
+      else {
+        const result = await res.json();
+        // 后端返回 { success: true, content: '...' }
+        setLogContent(result.content || '(空文件)');
+        setSelectedLogFile(filename);
+      }
+    } catch (err) { console.error('读取日志文件失败', err); setLogContent(''); }
+    finally { setLogLoading(false); }
+  };
+
+  // 删除单个对话
+  const deleteConversation = async (sessionId: string) => {
+    if (!confirm('确定要删除这个对话吗？')) return;
+    try {
+      const res = await fetch(`${API_BASE}/conversations/${sessionId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) { alert('删除成功'); fetchConversations(); }
+      else { alert('删除失败：' + res.status); }
+    } catch (err) { console.error('删除对话失败', err); alert('删除失败'); }
+  };
+
+  // 批量删除对话
+  const batchDeleteConversations = async () => {
+    if (selectedSessionIds.size === 0) return;
+    if (!confirm(`确定要删除选中的 ${selectedSessionIds.size} 个对话吗？`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/conversations/batch-delete`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ ids: Array.from(selectedSessionIds) })
+      });
+      if (res.ok) { alert('批量删除成功'); setSelectedSessionIds(new Set()); fetchConversations(); }
+      else { alert('批量删除失败：' + res.status); }
+    } catch (err) { console.error('批量删除失败', err); alert('批量删除失败'); }
+  };
+
   useEffect(() => {
     fetchStats();
     fetchConversations();
@@ -183,6 +264,9 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   useEffect(() => {
     if (tab === 'faq') { fetchFAQ(); fetchCategories(); fetchKnowledgeBases(); }
     if (tab === 'categories') { fetchCategories(); fetchKnowledgeBases(); }
+    if (tab === 'conversations') { fetchConversations(); }
+    if (tab === 'memory') { fetchMemoryStats(); }
+    if (tab === 'logs') { fetchLogs(); }
   }, [tab]);
 
   // FAQ 列表筛选
@@ -411,6 +495,9 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           <button className={`tab-btn ${tab === 'categories' ? 'active' : ''}`} onClick={() => setTab('categories')}>🏷️ 分类管理</button>
           <button className={`tab-btn ${tab === 'basicInfo' ? 'active' : ''}`} onClick={() => setTab('basicInfo')}>🏢 基础信息</button>
           <button className={`tab-btn ${tab === 'rag' ? 'active' : ''}`} onClick={() => setTab('rag')}>🤖 RAG 管理</button>
+          <button className={`tab-btn ${tab === 'conversations' ? 'active' : ''}`} onClick={() => setTab('conversations')}>💬 对话管理</button>
+          <button className={`tab-btn ${tab === 'memory' ? 'active' : ''}`} onClick={() => setTab('memory')}>🧠 记忆管理</button>
+          <button className={`tab-btn ${tab === 'logs' ? 'active' : ''}`} onClick={() => setTab('logs')}>📝 日志管理</button>
         </div>
       </div>
 
@@ -649,6 +736,173 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       {tab === 'basicInfo' && <BasicInfoManagement />}
 
       {tab === 'rag' && <RAGManagement />}
+
+      {/* 对话管理 */}
+      {tab === 'conversations' && (
+        <div className="conversation-management" style={{ padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ margin: 0 }}>💬 对话管理</h3>
+            <div>
+              <button className="btn-danger" onClick={batchDeleteConversations} disabled={selectedSessionIds.size === 0}>
+                批量删除({selectedSessionIds.size})
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
+          ) : conversations.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>暂无对话记录</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#fafafa' }}>
+                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}><input type="checkbox" checked={selectedSessionIds.size > 0 && selectedSessionIds.size === conversations.length} onChange={(e) => { if (e.target.checked) setSelectedSessionIds(new Set(conversations.map((c: Conversation) => c.session_id))); else setSelectedSessionIds(new Set()); }} /></th>
+                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>会话ID</th>
+                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>消息数</th>
+                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>状态</th>
+                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>时间</th>
+                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {conversations.map((conv) => {
+                  let msgCount = 0;
+                  try {
+                    const msgs = typeof conv.messages === 'string'
+                      ? JSON.parse(conv.messages || '[]')
+                      : (Array.isArray(conv.messages) ? conv.messages : []);
+                    msgCount = msgs.length;
+                  } catch(e) { console.error('解析消息数失败', e); }
+                  return (
+                    <tr key={conv.session_id}>
+                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>
+                        <input type="checkbox" checked={selectedSessionIds.has(conv.session_id)} onChange={(e) => {
+                          const s = new Set(selectedSessionIds);
+                          if (e.target.checked) s.add(conv.session_id); else s.delete(conv.session_id);
+                          setSelectedSessionIds(s);
+                        }} />
+                      </td>
+                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5', fontSize: 12, fontFamily: 'monospace' }}>{conv.session_id.substring(0, 16)}...</td>
+                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>{msgCount}</td>
+                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>{conv.resolved ? '✅ 已解决' : '⏳ 进行中'}</td>
+                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5', fontSize: 12 }}>{new Date(conv.created_at).toLocaleString('zh-CN')}</td>
+                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>
+                        <button onClick={() => setSelectedSession(conv.session_id)} style={{ marginRight: 4, cursor: 'pointer' }}>查看</button>
+                        <button onClick={() => deleteConversation(conv.session_id)} style={{ color: '#ff4d4f', cursor: 'pointer', border: 'none', background: 'none' }}>删除</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+
+          {selectedSession && (() => {
+            const conv = conversations.find(c => c.session_id === selectedSession);
+            if (!conv) return null;
+            let msgs: any[] = [];
+            try {
+              msgs = typeof conv.messages === 'string'
+                ? JSON.parse(conv.messages || '[]')
+                : (Array.isArray(conv.messages) ? conv.messages : []);
+            } catch(e) { console.error('解析对话消息失败', e); }
+            return (
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setSelectedSession(null)}>
+                <div style={{ background: '#fff', borderRadius: 8, maxWidth: 800, width: '90%', maxHeight: 500, display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+                  <div style={{ padding: 16, borderBottom: '1px solid #f0f0f0', fontSize: 16, fontWeight: 600 }}>对话详情</div>
+                  <div style={{ overflowY: 'auto', padding: 16, flex: 1 }}>
+                    {msgs.length === 0 ? <div style={{ textAlign: 'center', color: '#999' }}>无消息</div> : msgs.map((m, i) => (
+                      <div key={i} style={{ marginBottom: 12, padding: 10, borderRadius: 6, background: m.role === 'user' ? '#e6f7ff' : '#f6ffed', borderLeft: m.role === 'user' ? '4px solid #1890ff' : '4px solid #52c41a' }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>{m.role === 'user' ? '👤 用户' : '🤖 AI'}</div>
+                        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.content}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ padding: 12, borderTop: '1px solid #f0f0f0', textAlign: 'right' }}>
+                    <button onClick={() => setSelectedSession(null)} style={{ padding: '6px 20px', cursor: 'pointer' }}>关闭</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* 记忆管理 */}
+      {tab === 'memory' && (
+        <div className="memory-management">
+          <div className="faq-toolbar">
+            <h3>🧠 记忆管理</h3>
+            <button className="btn-primary" onClick={fetchMemoryStats} disabled={memoryLoading}>
+              刷新统计
+            </button>
+          </div>
+
+          {memoryLoading ? (
+            <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
+          ) : memoryStats ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, padding: 16 }}>
+              <div style={{ background: '#e6f7ff', padding: 20, borderRadius: 8, borderLeft: '4px solid #1890ff' }}>
+                <h4>📊 总体统计</h4>
+                <p><strong>总记忆数：</strong>{memoryStats.total_memories || 0}</p>
+                <p><strong>活跃会话：</strong>{memoryStats.active_sessions || 0}</p>
+                <p><strong>记忆命中率：</strong>{((memoryStats.hit_rate || 0) * 100).toFixed(1)}%</p>
+              </div>
+
+              <div style={{ background: '#f6ffed', padding: 20, borderRadius: 8, borderLeft: '4px solid #52c41a' }}>
+                <h4>👤 用户记忆</h4>
+                {memoryStats.user_memories && Object.entries(memoryStats.user_memories).map(([userId, count]: [string, any]) => (
+                  <div key={userId} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                    <span>{userId}</span>
+                    <span>{count} 条记忆</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background: '#fff7e6', padding: 20, borderRadius: 8, borderLeft: '4px solid #fa8c16' }}>
+                <h4>🏷️ 记忆类型分布</h4>
+                {memoryStats.memory_types && Object.entries(memoryStats.memory_types).map(([type, count]: [string, any]) => (
+                  <div key={type} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                    <span>{type}</span>
+                    <span>{count} 条</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+              暂无数据，点击"刷新统计"按钮加载
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 日志管理 */}
+      {tab === 'logs' && (
+        <div style={{ padding: 20, background: '#fff', minHeight: 300 }}>
+          <h3 style={{ margin: '0 0 16px' }}>📝 日志管理</h3>
+          <p style={{ color: '#666' }}>
+            日志文件列表功能已就绪（共 {logFiles.length} 个文件）。
+            <br />
+            <button
+              onClick={fetchLogs}
+              style={{ marginTop: 8, padding: '6px 16px', cursor: 'pointer' }}
+            >
+              刷新列表
+            </button>
+          </p>
+          <div style={{ marginTop: 12, maxHeight: 400, overflow: 'auto' }}>
+            {logFiles.map((f) => (
+              <div key={String(f.filename || f)} style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0', fontFamily: 'monospace', fontSize: 13 }}>
+                {typeof f === 'string' ? f : f.filename}
+                {' '}
+                {typeof f !== 'string' && f.size && '(' + f.size + ')'}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 分类新增/编辑弹窗 */}
       {showCatModal && (

@@ -10,9 +10,264 @@ const path = require('path');
 
 // ============ 配置 ============
 const JWT_SECRET = process.env.JWT_SECRET || 'smart-cs-secret-key-2026';
-const TOKEN_EXPIRES_IN = '7d';
+const TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const USERS_PATH = path.join(__dirname, '../data/users.json');
 const PERSONNEL_PATH = path.join(__dirname, '../data/personnel.json');
+
+// ============ SSO 配置（通过环境变量配置）============
+const SSO_ENABLED = process.env.SSO_ENABLED === '1';
+const SSO_PROVIDER = process.env.SSO_PROVIDER || 'oa';  // oa, a8, generic
+const SSO_LOGIN_URL = process.env.SSO_LOGIN_URL || '';  // OA系统登录地址
+const SSO_VERIFY_URL = process.env.SSO_VERIFY_URL || '';  // OA系统验证ticket地址
+const SSO_CLIENT_ID = process.env.SSO_CLIENT_ID || '';
+const SSO_CLIENT_SECRET = process.env.SSO_CLIENT_SECRET || '';
+const SSO_CALLBACK_PATH = '/api/auth/sso/callback';  // 回调路径（相对路径）
+
+// A8专用配置
+const A8_SERVER_URL = process.env.A8_SERVER_URL || '';
+const A8_CAS_SERVER_URL = process.env.A8_CAS_SERVER_URL || '';
+const A8_API_USERNAME = process.env.A8_API_USERNAME || '';
+const A8_API_PASSWORD = process.env.A8_API_PASSWORD || '';
+const A8_SSO_TRUST_MODE = process.env.A8_SSO_TRUST_MODE === '1';
+
+// 回调完整URL（自动拼接当前服务地址）
+function getSSOCallbackURL(req) {
+  const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+  const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3001';
+  return `${protocol}://${host}${SSO_CALLBACK_PATH}`;
+}
+
+// ============ 配置验证 ============
+/**
+ * 验证SSO配置是否正确
+ * 在服务器启动时调用，输出警告信息
+ */
+function validateSSOConfig() {
+  const errors = [];
+  const warnings = [];
+  
+  console.log('\n[SSO] 验证SSO配置...');
+  console.log('='.repeat(60));
+  
+  if (!SSO_ENABLED) {
+    console.log('[SSO] ℹ️  SSO登录已禁用（SSO_ENABLED=0）');
+    console.log('='.repeat(60) + '\n');
+    return { valid: true, errors: [], warnings: [] };
+  }
+  
+  console.log(`[SSO] 提供商: ${SSO_PROVIDER}`);
+  console.log(`[SSO] 状态: ✅ 已启用`);
+  
+  // 通用验证
+  if (!JWT_SECRET || JWT_SECRET === 'smart-cs-secret-key-2026') {
+    warnings.push('JWT_SECRET 使用默认值，生产环境请修改');
+  }
+  
+  // 按提供商验证
+  if (SSO_PROVIDER === 'a8') {
+    console.log('\n[A8] 验证A8配置...');
+    
+    if (!A8_SERVER_URL) {
+      errors.push('A8_SERVER_URL 未配置');
+    } else {
+      console.log(`[A8] ✅ A8_SERVER_URL: ${A8_SERVER_URL}`);
+    }
+    
+    if (!A8_API_USERNAME || !A8_API_PASSWORD) {
+      warnings.push('A8_API_USERNAME 或 A8_API_PASSWORD 未配置（自动创建用户功能将不可用）');
+    } else {
+      console.log(`[A8] ✅ API账号: ${A8_API_USERNAME}`);
+    }
+    
+    if (A8_CAS_SERVER_URL) {
+      console.log(`[A8] ✅ CAS服务器: ${A8_CAS_SERVER_URL}`);
+    }
+    
+    if (A8_SSO_TRUST_MODE) {
+      warnings.push('A8 SSO信任模式已启用（仅用于测试或内网环境）');
+      console.log('[A8] ⚠️  信任模式已启用（跳过ticket验证）');
+    }
+    
+  } else {
+    console.log('\n[OAuth2] 验证OAuth2配置...');
+    
+    if (!SSO_LOGIN_URL) {
+      errors.push('SSO_LOGIN_URL 未配置');
+    } else {
+      console.log(`[OAuth2] ✅ 登录地址: ${SSO_LOGIN_URL}`);
+    }
+    
+    if (!SSO_VERIFY_URL) {
+      errors.push('SSO_VERIFY_URL 未配置');
+    } else {
+      console.log(`[OAuth2] ✅ 验证地址: ${SSO_VERIFY_URL}`);
+    }
+    
+    if (!SSO_CLIENT_ID || !SSO_CLIENT_SECRET) {
+      warnings.push('SSO_CLIENT_ID 或 SSO_CLIENT_SECRET 未配置（OAuth2流程将无法完成）');
+    } else {
+      console.log(`[OAuth2] ✅ 客户端ID: ${SSO_CLIENT_ID}`);
+      console.log(`[OAuth2] ✅ 客户端密钥: 已配置（长度: ${SSO_CLIENT_SECRET.length}）`);
+    }
+  }
+  
+  // 输出结果
+  console.log('\n[SSO] 验证结果:');
+  if (errors.length > 0) {
+    console.error(`[SSO] ❌ 发现 ${errors.length} 个错误：`);
+    errors.forEach((err, i) => console.error(`[SSO]    ${i + 1}. ${err}`));
+  }
+  
+  if (warnings.length > 0) {
+    console.warn(`[SSO] ⚠️  发现 ${warnings.length} 个警告：`);
+    warnings.forEach((warn, i) => console.warn(`[SSO]    ${i + 1}. ${warn}`));
+  }
+  
+  if (errors.length === 0 && warnings.length === 0) {
+    console.log('[SSO] ✅ 配置验证通过！');
+  }
+  
+  console.log('='.repeat(60) + '\n');
+  
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+// 启动时自动验证配置
+const ssoConfigValidation = validateSSOConfig();
+
+// ============ SSO Ticket验证函数 ============
+
+/**
+ * 验证致远A8 OA的ticket（CAS协议）
+ * A8 OA通常使用CAS协议，ticket需要到/serviceValidate验证
+ */
+async function verifyA4Ticket(ticket) {
+  if (!SSO_VERIFY_URL) {
+    throw new Error('SSO_VERIFY_URL未配置，无法验证A8 ticket');
+  }
+  
+  const callbackURL = SSO_CALLBACK_PATH; // 相对路径，A8会拼接完整地址
+  const verifyURL = `${SSO_VERIFY_URL}?service=${encodeURIComponent(callbackURL)}&ticket=${ticket}`;
+  
+  console.log(`[SSO] 验证A8 ticket: ${verifyURL}`);
+  
+  const response = await fetch(verifyURL, {
+    method: 'GET',
+    headers: { 'Accept': 'application/json, text/xml' }
+  });
+  
+  if (!response.ok) {
+    throw new Error(`A8 ticket验证失败: ${response.status} ${response.statusText}`);
+  }
+  
+  const text = await response.text();
+  
+  // A8返回XML格式，解析XML获取用户信息
+  // 成功格式：<cas:serviceResponse><cas:authenticationSuccess><cas:user>username</cas:user>...
+  const userMatch = text.match(/<cas:user>(.*?)<\/cas:user>/) || text.match(/<user>(.*?)<\/user>/);
+  const nameMatch = text.match(/<cas:attributes>.*?<cas:name>(.*?)<\/cas:name>.*?<\/cas:attributes>/s);
+  
+  if (!userMatch) {
+    throw new Error('A8 ticket验证失败：无效的ticket或已过期');
+  }
+  
+  return {
+    username: userMatch[1],
+    name: nameMatch ? nameMatch[1] : userMatch[1],
+    role: 'user'
+  };
+}
+
+/**
+ * 验证通用OA系统的OAuth2 code
+ * 用code换access_token，再用access_token换用户信息
+ */
+async function verifyOACode(code) {
+  if (!SSO_VERIFY_URL || !SSO_CLIENT_SECRET) {
+    throw new Error('SSO_VERIFY_URL或SSO_CLIENT_SECRET未配置，无法验证OAuth2 code');
+  }
+  
+  // 1. 用code换access_token
+  const tokenURL = SSO_VERIFY_URL;
+  const tokenRes = await fetch(tokenURL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: SSO_CLIENT_ID,
+      client_secret: SSO_CLIENT_SECRET,
+      code: code,
+      redirect_uri: SSO_CALLBACK_PATH
+    })
+  });
+  
+  if (!tokenRes.ok) {
+    const errText = await tokenRes.text();
+    throw new Error(`OAuth2 code换token失败: ${errText}`);
+  }
+  
+  const tokenData = await tokenRes.json();
+  const accessToken = tokenData.access_token;
+  
+  if (!accessToken) {
+    throw new Error('OAuth2 code换token失败：未返回access_token');
+  }
+  
+  // 2. 用access_token换用户信息
+  const userInfoURL = process.env.SSO_USER_INFO_URL || `${SSO_VERIFY_URL}/userinfo`;
+  const userRes = await fetch(userInfoURL, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  
+  if (!userRes.ok) {
+    const errText = await userRes.text();
+    throw new Error(`获取用户信息失败: ${errText}`);
+  }
+  
+  const userInfo = await userRes.json();
+  
+  return {
+    username: userInfo.username || userInfo.user_name || userInfo.sub || userInfo.id,
+    name: userInfo.name || userInfo.display_name || userInfo.username,
+    role: userInfo.role || 'user'
+  };
+}
+
+/**
+ * 通用ticket验证（直接调用配置好的验证接口）
+ */
+async function verifySSOTicketGeneric(ticket) {
+  if (!SSO_VERIFY_URL) {
+    throw new Error('SSO_VERIFY_URL未配置，无法验证ticket');
+  }
+  
+  const verifyURL = `${SSO_VERIFY_URL}?ticket=${ticket}`;
+  
+  console.log(`[SSO] 验证ticket: ${verifyURL}`);
+  
+  const response = await fetch(verifyURL, {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' }
+  });
+  
+  if (!response.ok) {
+    throw new Error(`ticket验证失败: ${response.status} ${response.statusText}`);
+  }
+  
+  const data = await response.json();
+  
+  // 支持多种返回格式
+  if (data.success && data.user) {
+    return data.user;
+  } else if (data.username) {
+    return data;
+  } else if (data.data && data.data.username) {
+    return data.data;
+  } else {
+    throw new Error('ticket验证失败：无效的响应格式');
+  }
+}
 
 // ============ 人员数据操作（合并用户管理到人员信息） ============
 
@@ -146,12 +401,14 @@ function verifyToken(token) {
  */
 function authMiddleware(req, res, next) {
   // 跳过以下路径（无需认证）
-  // 注意：当使用 app.use('/api', authMiddleware) 时，req.path 已去掉 /api 前缀
+  // 注意：此中间件仅用于 rag-admin.js 等子路由器内部
+  // 公共路由 /api/categories, /api/* 等已在 index.js 中独立注册，不经过此中间件
   const skipPaths = [
     '/auth/login',
     '/auth/sso',
-    '/health',
-    '/categories'  // 普通用户获取分类列表（仅一级分类，无敏感信息）
+    '/health'
+    // 注意：不要在此添加 /categories，否则 /api/admin/categories 也会被跳过认证！
+    // 因为 Express Router 会剥离挂载前缀（/api/admin），导致 req.path 变为 /categories
   ];
   if (skipPaths.some(p => req.path.startsWith(p))) return next();
 
@@ -253,8 +510,123 @@ function setupAuthRoutes(app) {
   });
 
   // ============ SSO单点登录（A8/OA系统对接）============
-  // 请求体：{ ticket?: string, code?: string, userInfo?: object }
-  // 对接方式：OA系统跳转时携带用户身份信息，后端验证后自动创建/登录
+  
+  /**
+   * SSO登录入口 - 重定向到OA系统登录页
+   * GET /api/auth/sso/login
+   */
+  app.get('/api/auth/sso/login', (req, res) => {
+    if (!SSO_ENABLED) {
+      return res.status(501).json({ error: 'SSO登录未启用，请配置环境变量SSO_ENABLED=1' });
+    }
+    
+    if (!SSO_LOGIN_URL) {
+      return res.status(500).json({ error: 'SSO登录地址未配置，请设置SSO_LOGIN_URL环境变量' });
+    }
+    
+    try {
+      // 构建OA登录URL（不同OA系统格式可能不同）
+      const callbackURL = getSSOCallbackURL(req);
+      let oaLoginURL;
+      
+      if (SSO_PROVIDER === 'a8') {
+        // 致远A8 OA SSO格式
+        oaLoginURL = `${SSO_LOGIN_URL}?service=${encodeURIComponent(callbackURL)}`;
+      } else if (SSO_PROVIDER === 'oa') {
+        // 通用OA系统OAuth2格式
+        oaLoginURL = `${SSO_LOGIN_URL}?client_id=${SSO_CLIENT_ID}&redirect_uri=${encodeURIComponent(callbackURL)}&response_type=code`;
+      } else {
+        // 通用格式：直接跳转，由OA系统处理回调
+        oaLoginURL = `${SSO_LOGIN_URL}?redirect=${encodeURIComponent(callbackURL)}`;
+      }
+      
+      console.log(`[SSO] 重定向到OA登录页: ${oaLoginURL}`);
+      res.redirect(oaLoginURL);
+    } catch (err) {
+      res.status(500).json({ error: `SSO登录重定向失败: ${err.message}` });
+    }
+  });
+  
+  /**
+   * SSO回调处理 - OA系统登录成功后回调此地址
+   * GET /api/auth/sso/callback?ticket=xxx 或 ?code=xxx
+   */
+  app.get('/api/auth/sso/callback', async (req, res) => {
+    try {
+      const { ticket, code } = req.query;
+      
+      if (!ticket && !code) {
+        return res.status(400).send('SSO回调参数错误：缺少ticket或code');
+      }
+      
+      // 验证ticket/code并获取用户信息
+      let userInfo = null;
+      
+      if (SSO_PROVIDER === 'a8') {
+        // 致远A8 OA：验证ticket
+        userInfo = await verifyA8Ticket(ticket || code);
+      } else if (SSO_PROVIDER === 'oa') {
+        // 通用OA：用code换token，再换用户信息
+        userInfo = await verifyOACode(code);
+      } else {
+        // 通用：直接验证ticket
+        userInfo = await verifySSOTicketGeneric(ticket || code);
+      }
+      
+      if (!userInfo || !userInfo.username) {
+        return res.status(401).send('SSO认证失败：无法获取用户信息');
+      }
+      
+      // 自动创建或更新用户
+      let user = findUserByUsername(userInfo.username);
+      if (!user) {
+        // 自动创建用户
+        const users = loadUsers();
+        user = {
+          id: 'user_' + Date.now(),
+          username: userInfo.username,
+          passwordHash: '',
+          name: userInfo.name || userInfo.username,
+          role: userInfo.role || 'user',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
+          ssoProvider: SSO_PROVIDER
+        };
+        users.push(user);
+        saveUsers(users);
+        console.log(`[SSO] 自动创建用户: ${userInfo.username}`);
+      } else {
+        // 更新最后登录时间和姓名（如果OA返回了新姓名）
+        const users = loadUsers();
+        const idx = users.findIndex(u => u.id === user.id);
+        users[idx].lastLoginAt = new Date().toISOString();
+        if (userInfo.name && userInfo.name !== user.name) {
+          users[idx].name = userInfo.name;
+        }
+        saveUsers(users);
+      }
+      
+      // 生成JWT Token
+      const token = generateToken(user);
+      
+      // 重定向到前端页面，并携带token（前端从URL参数中获取token自动登录）
+      const frontendURL = process.env.FRONTEND_URL || 'http://localhost:3001';
+      const redirectURL = `${frontendURL}/?token=${token}`;
+      
+      console.log(`[SSO] 用户 ${userInfo.username} SSO登录成功，重定向到前端`);
+      res.redirect(redirectURL);
+      
+    } catch (err) {
+      console.error('[SSO] 回调处理失败:', err);
+      res.status(500).send(`SSO登录失败: ${err.message}`);
+    }
+  });
+  
+  /**
+   * SSO认证接口（兼容旧版，支持直接传递userInfo或ticket）
+   * POST /api/auth/sso
+   */
   app.post('/api/auth/sso', (req, res) => {
     try {
       const { ticket, code, userInfo } = req.body;
@@ -295,12 +667,18 @@ function setupAuthRoutes(app) {
         });
       }
 
-      // 方式2：通过ticket验证（需配置A8/OA的SSO验证地址）
-      if (ticket) {
-        // TODO: 调用A8/OA的SSO验证接口验证ticket
-        // const ssoResult = await verifySSOTicket(ticket);
-        // 暂时返回未实现
-        return res.status(501).json({ error: 'SSO ticket验证方式待配置A8/OA接口后启用' });
+      // 方式2：通过ticket验证
+      if (ticket || code) {
+        if (!SSO_ENABLED) {
+          return res.status(501).json({ error: 'SSO ticket验证未启用，请配置环境变量SSO_ENABLED=1' });
+        }
+        
+        // 异步验证ticket（返回202，让客户端轮询结果）
+        res.status(202).json({ 
+          success: false, 
+          message: 'SSO ticket验证中，请使用GET /api/auth/sso/callback接口完成SSO登录' 
+        });
+        return;
       }
 
       return res.status(400).json({ error: '缺少SSO认证信息（ticket或userInfo）' });
@@ -422,5 +800,13 @@ module.exports = {
   verifyToken,
   authMiddleware,
   adminOnly,
-  setupAuthRoutes
+  setupAuthRoutes,
+  // SSO配置验证
+  validateSSOConfig,
+  ssoConfigValidation,
+  SSO_ENABLED,
+  SSO_PROVIDER,
+  A8_SERVER_URL,
+  A8_CAS_SERVER_URL,
+  A8_SSO_TRUST_MODE
 };

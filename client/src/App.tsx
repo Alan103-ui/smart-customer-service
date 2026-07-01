@@ -104,6 +104,9 @@ function MainApp({ user, onLogout }: MainAppProps) {
   const [showAdmin, setShowAdmin] = useState<boolean>(() => {
     return window.location.pathname === '/admin';
   });
+  const [showMyConversations, setShowMyConversations] = useState<boolean>(false);
+  const [myConversations, setMyConversations] = useState<any[]>([]);
+  const [conversationsLoading, setConversationsLoading] = useState<boolean>(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('全部');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -152,6 +155,27 @@ function MainApp({ user, onLogout }: MainAppProps) {
       .catch(err => console.error('获取分类失败', err));
   }, []);
 
+  // 加载用户的对话列表
+  useEffect(() => {
+    if (!showMyConversations) return;
+    
+    setConversationsLoading(true);
+    fetch('/api/user/conversations', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('cs_token')}` },
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setMyConversations(data.data || []);
+        }
+        setConversationsLoading(false);
+      })
+      .catch(err => {
+        console.error('获取对话列表失败', err);
+        setConversationsLoading(false);
+      });
+  }, [showMyConversations]);
+
   // =========== WebSocket 连接 ===========
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -199,6 +223,15 @@ function MainApp({ user, onLogout }: MainAppProps) {
     switch (msg.type) {
       case 'init':
         if (msg.sessionId) setSessionId(msg.sessionId);
+        break;
+      case 'error':
+        alert(msg.message || '发生错误');
+        // 如果是认证错误，跳转到登录页面
+        if (msg.message && (msg.message.includes('登录') || msg.message.includes('请先'))) {
+          localStorage.removeItem('cs_token');
+          localStorage.removeItem('cs_user');
+          window.location.reload();
+        }
         break;
       case 'history':
         if (msg.messages) setMessages(msg.messages);
@@ -298,6 +331,9 @@ function MainApp({ user, onLogout }: MainAppProps) {
           <button className="theme-toggle-btn" onClick={toggleTheme} title={theme === 'light' ? '深色模式' : '浅色模式'}>
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
+          <button className="history-btn" onClick={() => setShowMyConversations(true)}>
+            📜 我的对话
+          </button>
           {user.role === 'admin' && (
             <button className="admin-btn" onClick={() => setShowAdmin(true)}>
               📊 管理后台
@@ -317,6 +353,88 @@ function MainApp({ user, onLogout }: MainAppProps) {
         selectedCategory={selectedCategory}
         onSelectCategory={setSelectedCategory}
       />
+
+      {/* 我的对话模态框 */}
+      {showMyConversations && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '24px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ margin: 0 }}>我的对话记录</h2>
+              <button onClick={() => setShowMyConversations(false)} style={{ fontSize: '24px', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+            </div>
+            
+            {conversationsLoading ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>加载中...</div>
+            ) : myConversations.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>暂无对话记录</div>
+            ) : (
+              <div>
+                {myConversations.map((conv) => (
+                  <div
+                    key={conv.session_id}
+                    onClick={async () => {
+                      // 加载该对话的消息
+                      try {
+                        const res = await fetch(`/api/chat/history`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${localStorage.getItem('cs_token')}`
+                          },
+                          body: JSON.stringify({ sessionId: conv.session_id, limit: 100 })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                          // 加载历史消息到当前会话
+                          setMessages(data.history.reverse());
+                          setSessionId(conv.session_id);
+                          setShowMyConversations(false);
+                        }
+                      } catch (err) {
+                        console.error('加载对话失败', err);
+                      }
+                    }}
+                    style={{
+                      padding: '12px',
+                      borderBottom: '1px solid #eee',
+                      cursor: 'pointer',
+                      hover: { backgroundColor: '#f5f5f5' }
+                    }}
+                  >
+                    <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                      对话 {conv.session_id.slice(0, 8)}...
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#999' }}>
+                      消息数: {conv.messageCount} | 最后更新: {new Date(conv.updated_at).toLocaleString()}
+                    </div>
+                    {conv.lastMessage && (
+                      <div style={{ fontSize: '14px', color: '#666', marginTop: '4px' }}>
+                        最后消息: {conv.lastMessage}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
