@@ -290,29 +290,35 @@ function resetPerformanceStats(type = null) {
 function checkOllamaHealth(modelName) {
   return new Promise((resolve) => {
     const startTime = Date.now();
+    const type = modelName.includes('bge-m3') || modelName.includes('nomic') || modelName.includes('mxbai') ? 'embedding' : 'llm';
+    const isLLM = type === 'llm';
+    // LLM 用真实 /api/chat 推理探测（能反映真实推理可用性，并 keep_alive 触发模型常驻）；
+    // 嵌入等模型仍用 /api/show 元数据探测（轻量，避免无意义推理）。
+    const path = isLLM ? '/api/chat' : '/api/show';
+    const payloadObj = isLLM
+      ? { model: modelName, messages: [{ role: 'user', content: 'ping' }], stream: false, keep_alive: '10m', options: { num_predict: 2 } }
+      : { name: modelName };
+    const payload = JSON.stringify(payloadObj);
     const options = {
       hostname: OLLAMA_HOST,
       port: OLLAMA_PORT,
-      path: '/api/show',
+      path,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 5000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+      },
+      // LLM 推理可能触发冷加载（约 26s），超时放宽到 60s；元数据探测保持 5s
+      timeout: isLLM ? 60000 : 5000,
     };
-    
-    const payload = JSON.stringify({ name: modelName });
-    options.headers['Content-Length'] = Buffer.byteLength(payload);
-    
+
     const req = http.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         const responseTime = Date.now() - startTime;
         const success = res.statusCode === 200;
-        
-        // 记录性能数据
-        const type = modelName.includes('bge-m3') || modelName.includes('nomic') || modelName.includes('mxbai') ? 'embedding' : 'llm';
         recordRequest(type, success, responseTime, success ? null : `状态码: ${res.statusCode}`);
-        
         if (success) {
           resolve({ available: true, error: null, responseTime });
         } else {
@@ -320,22 +326,20 @@ function checkOllamaHealth(modelName) {
         }
       });
     });
-    
+
     req.on('error', (e) => {
       const responseTime = Date.now() - startTime;
-      const type = modelName.includes('bge-m3') || modelName.includes('nomic') || modelName.includes('mxbai') ? 'embedding' : 'llm';
       recordRequest(type, false, responseTime, e.message);
       resolve({ available: false, error: e.message, responseTime });
     });
-    
+
     req.on('timeout', () => {
       const responseTime = Date.now() - startTime;
       req.destroy();
-      const type = modelName.includes('bge-m3') || modelName.includes('nomic') || modelName.includes('mxbai') ? 'embedding' : 'llm';
       recordRequest(type, false, responseTime, '请求超时');
       resolve({ available: false, error: '请求超时', responseTime });
     });
-    
+
     req.write(payload);
     req.end();
   });

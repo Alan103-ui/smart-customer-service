@@ -11,6 +11,9 @@ const DEFAULT_BASE_URL = 'http://172.17.6.18:11434';
 const DEFAULT_MODEL = 'qwen2.5:14b';
 const DEFAULT_TIMEOUT = 60000; // 60秒（优化：从30秒增加到60秒）
 const DEFAULT_MAX_TOKENS = 500;
+// 模型常驻显存时长：避免空闲超过 Ollama 默认 5 分钟后被卸载，
+// 导致每次冷启动重新加载 qwen2.5:14b（约 26 秒）造成首问卡顿/超时。
+const DEFAULT_KEEP_ALIVE = '10m';
 
 /**
  * 调用 Ollama LLM（chat 接口，推荐）
@@ -35,6 +38,7 @@ async function callOllamaChat(messages, options = {}) {
     model,
     messages,
     stream: false,
+    keep_alive: options.keep_alive || DEFAULT_KEEP_ALIVE,
     options: {
       temperature,
       num_predict: maxTokens,
@@ -116,6 +120,7 @@ async function callOllamaGenerate(prompt, options = {}) {
     model,
     prompt,
     stream: false,
+    keep_alive: options.keep_alive || DEFAULT_KEEP_ALIVE,
     options: {
       temperature,
       num_predict: maxTokens,
