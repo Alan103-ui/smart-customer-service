@@ -180,7 +180,9 @@ router.post('/import-member', async (req, res) => {
     if (exist) {
       Object.assign(exist, {
         name: rec.name,
-        orgName: '',
+        orgName: rec.orgName || '',
+        postName: rec.postName || '',
+        levelName: rec.levelName || '',
         email: rec.email,
         phone: rec.phone,
         isActive: rec.isActive,
@@ -194,6 +196,74 @@ router.post('/import-member', async (req, res) => {
     local.push(newRec);
     savePersonnel(local);
     res.json({ success: true, message: '人员已导入（密码请通过SSO或重置密码设置）', data: newRec });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+// ============ 批量按 ID 列表导入人员 ============
+router.post('/batch-import', async (req, res) => {
+  try {
+    const { memberIds } = req.body || {};
+    if (!Array.isArray(memberIds) || memberIds.length === 0) {
+      return res.status(400).json({ error: '缺少 memberIds 数组' });
+    }
+
+    const results = await oa.batchGetMembers(memberIds, {
+      concurrency: 3,
+      onProgress: (done, total, item) => {
+        // SSE 不适用（Express 非 streaming），进度通过最终结果返回
+      },
+    });
+
+    // 将成功的写入本地 personnel.json
+    const local = loadPersonnel();
+    let added = 0;
+    let updated = 0;
+    const imported = [];
+
+    for (const m of results.successes) {
+      const rec = oa.oaMemberToPersonnel(m);
+      const exist = local.find((p) => p.oaId === rec.oaId || p.username === rec.username);
+      if (exist) {
+        Object.assign(exist, {
+          name: rec.name,
+          orgName: rec.orgName || '',
+          postName: rec.postName || '',
+          levelName: rec.levelName || '',
+          email: rec.email,
+          phone: rec.phone,
+          isActive: rec.isActive,
+          oaAccountId: rec.oaAccountId,
+          updatedAt: rec.updatedAt,
+        });
+        updated++;
+        imported.push({ name: rec.name, action: 'updated', username: exist.username });
+      } else {
+        const newRec = Object.assign({ id: 'user_oa_' + rec.oaId, passwordHash: null }, rec);
+        local.push(newRec);
+        added++;
+        imported.push({ name: rec.name, action: 'added', username: rec.username });
+      }
+    }
+
+    if (results.successes.length > 0) {
+      savePersonnel(local);
+    }
+
+    res.json({
+      success: true,
+      message: `批量导入完成：成功 ${results.successes.length} 个（新增 ${added}、更新 ${added ? 0 : updated}）、失败 ${results.failures.length} 个`,
+      summary: {
+        totalRequested: memberIds.length,
+        successCount: results.successes.length,
+        failCount: results.failures.length,
+        added,
+        updated,
+      },
+      imported,
+      failures: results.failures,
+    });
   } catch (e) {
     res.json({ success: false, error: e.message });
   }

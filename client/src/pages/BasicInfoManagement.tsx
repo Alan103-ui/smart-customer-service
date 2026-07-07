@@ -80,6 +80,8 @@ export default function BasicInfoManagement() {
   const [oaMsg, setOaMsg] = useState('');
   const [oaMemberId, setOaMemberId] = useState('');
   const [oaMember, setOaMember] = useState<any>(null);
+  const [oaBatchIds, setOaBatchIds] = useState('');
+  const [oaBatchResult, setOaBatchResult] = useState<any>(null);
 
   // ==================== 数据获取 ====================
   const loadOrg = () => safeFetch<any[]>(API + '/org').then(setOrgList).catch(e => { console.error('加载组织失败:', e); setOrgList([]); });
@@ -174,6 +176,22 @@ export default function BasicInfoManagement() {
     const r = await fetch(API + '/oa/import-member', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ memberId: oaMemberId.trim() }) }).then(r => r.json());
     setOaMsg(r.success ? r.message : ('导入失败：' + (r.error || '')));
     if (r.success) loadP();
+  };
+  const batchImportOA = async () => {
+    const ids = oaBatchIds.split(/[\n,，;；\s]+/).map(s => s.trim()).filter(Boolean);
+    if (ids.length === 0) { setOaMsg('请输入至少一个 OA 人员 ID（每行一个）'); return; }
+    if (!confirm(`确定批量导入 ${ids.length} 个人员？将逐个从 OA 拉取档案并写入本地。`)) return;
+    setOaMsg('正在批量拉取，请稍候...'); setOaBatchResult(null);
+    try {
+      const r = await fetch(API + '/oa/batch-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ memberIds: ids }),
+      }).then(r => r.json());
+      setOaBatchResult(r);
+      setOaMsg(r.success ? r.message : ('批量导入失败：' + (r.error || '')));
+      if (r.success) loadP();
+    } catch (e) { setOaMsg('请求异常：' + String(e)); }
   };
 
   // ==================== 渲染 ====================
@@ -287,6 +305,42 @@ export default function BasicInfoManagement() {
             {oaMember && (
               <div style={{ marginTop: 8, fontSize: 13 }}>
                 姓名：{oaMember.name} ｜ 工号：{oaMember.code} ｜ 邮箱：{oaMember.email || '-'} ｜ OA ID：{oaMember.oaId}
+              </div>
+            )}
+          </div>
+
+          {/* 批量按 ID 导入 */}
+          <div style={{ marginTop: 12, padding: 12, border: '1px solid #d4b106', borderRadius: 6, background: '#fffbe6' }}>
+            <h4 style={{ margin: '0 0 8px' }}>📋 批量导入（ID列表逐个拉取）</h4>
+            <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
+              每行输入一个 OA 人员 ID，将逐个从致远OA拉取完整档案并写入本地人员库。
+            </div>
+            <textarea
+              value={oaBatchIds}
+              onChange={e => setOaBatchIds(e.target.value)}
+              placeholder={'240467409362108676\n5266869733074352723\n...'}
+              rows={5}
+              style={{ width: '100%', maxWidth: 500, fontFamily: 'monospace', fontSize: 13, padding: 6 }}
+            />
+            <div style={{ marginTop: 8 }}>
+              <button onClick={batchImportOA}>批量导入 ({oaBatchIds.split(/[\n,，;；\s]+/).filter(s => s.trim()).length} 个)</button>
+            </div>
+            {oaBatchResult && (
+              <div style={{ marginTop: 10, fontSize: 13 }}>
+                <div style={{ color: '#52c41a' }}>
+                  ✅ 成功：{oaBatchResult.summary?.successCount || 0} 个（新增 {oaBatchResult.summary?.added || 0}、更新 {oaBatchResult.summary?.updated || 0}）
+                  ｜ ❌ 失败：{oaBatchResult.summary?.failCount || 0} 个
+                </div>
+                {(oaBatchResult.imported || []).length > 0 && (
+                  <div style={{ maxHeight: 200, overflow: 'auto', background: '#f9f9f9', padding: 6, marginTop: 6, borderRadius: 4 }}>
+                    {oaBatchResult.imported.map((item: any) => (
+                      <div key={item.username}>{item.action === 'added' ? '➕' : '🔄'} {item.name}（{item.username}）{item.action === 'updated' ? ' 已更新' : ' 已新增'}</div>
+                    ))}
+                  </div>
+                )}
+                {(oaBatchResult.failures || []).map((f: any) => (
+                  <div key={f.memberId} style={{ color: '#f5222d' }}>❌ {f.memberId}: {f.error}</div>
+                ))}
               </div>
             )}
           </div>

@@ -213,23 +213,72 @@ async function getOrgMember(memberId) {
 // 将 OA 人员映射为系统 personnel 记录（不含密码，登录走 SSO 或管理员重置）
 function oaMemberToPersonnel(m) {
   const username = (m.code && String(m.code).trim()) || 'oa_' + m.oaId;
+  // 从 raw 中提取更丰富的组织信息（OA 返回的原始字段）
+  const raw = m.raw || {};
   return {
     oaId: m.oaId,
     oaAccountId: m.oaAccountId,
     name: m.name,
     username,
     orgId: null,
-    orgName: '',
-    roleId: 'perm_003', // 默认普通用户
+    orgName: raw.orgDepartmentName || '',      // 部门名称
+    roleId: 'perm_003',                         // 默认普通用户
     roleName: '普通用户',
+    postName: raw.orgPostName || '',            // 岗位名称
+    levelName: raw.orgLevelName || '',          // 职级名称
     email: m.email,
     phone: m.phone,
+    gender: m.gender,
     isActive: m.enabled,
     source: 'oa',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     lastLoginAt: null,
   };
+}
+
+// ============ 批量人员拉取 ============
+/**
+ * 按成员 ID 列表批量从 OA 拉取人员档案。
+ * @param {string[]} memberIds - OA 成员 ID 列表
+ * @param {object} opts
+ * @param {number} opts.concurrency - 并发数（默认 3，避免压垮 OA）
+ * @param {function} opts.onProgress - 进度回调 (done, total, item)
+ * @returns {{successes: object[], failures: object[]}}
+ */
+async function batchGetMembers(memberIds, { concurrency = 3, onProgress } = {}) {
+  if (!Array.isArray(memberIds) || memberIds.length === 0) {
+    throw new Error('memberIds 必须为非空数组');
+  }
+  const ids = memberIds.map((id) => String(id).trim()).filter(Boolean);
+  if (ids.length === 0) throw new Error('无有效的人员 ID');
+
+  const successes = [];
+  const failures = [];
+  let done = 0;
+  const total = ids.length;
+
+  // 并发控制：滑动窗口
+  async function worker() {
+    while (ids.length > 0) {
+      const memberId = ids.shift();
+      if (!memberId) break;
+      try {
+        const m = await getOrgMember(memberId);
+        successes.push(m);
+        if (onProgress) onProgress(++done, total, { ok: true, memberId, name: m.name });
+      } catch (e) {
+        failures.push({ memberId, error: e.message });
+        if (onProgress) onProgress(++done, total, { ok: false, memberId, error: e.message });
+      }
+    }
+  }
+
+  // 启动并发 worker
+  const workers = Array.from({ length: Math.min(concurrency, total) }, () => worker());
+  await Promise.all(workers);
+
+  return { successes, failures };
 }
 
 module.exports = {
@@ -241,4 +290,5 @@ module.exports = {
   getOrgAccounts,
   getOrgMember,
   oaMemberToPersonnel,
+  batchGetMembers,
 };
