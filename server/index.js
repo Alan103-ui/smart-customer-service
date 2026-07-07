@@ -20,6 +20,10 @@ const modelSwitcher = require('./model-switcher');
 const ENABLE_HYDE = process.env.ENABLE_HYDE === '1';
 console.log(`[Config] HyDE: ${ENABLE_HYDE ? '已启用' : '已禁用'} (ENABLE_HYDE=${process.env.ENABLE_HYDE || '0'})`);
 
+// 答案口语化改写：默认启用，设置 ENABLE_ANSWER_REWRITE=0 可关闭
+const ENABLE_ANSWER_REWRITE = process.env.ENABLE_ANSWER_REWRITE !== '0';
+console.log(`[Config] 答案改写: ${ENABLE_ANSWER_REWRITE ? '已启用' : '已禁用'} (ENABLE_ANSWER_REWRITE=${process.env.ENABLE_ANSWER_REWRITE || '1'})`);
+
 // ============ 工具函数 ============
 // 去除HTML标签（FAQ answer字段可能包含<p>等标签）
 function stripHtmlTags(html) {
@@ -306,6 +310,7 @@ function quickLocalMatch(query, faqList) {
 async function searchFAQCandidates(userMessage, threshold = 0.12, category = null) {
   const faqList = getFAQByCategory(category);
   const candidates = [];
+  console.log(`[searchFAQCandidates] 开始: query="${userMessage}", faqList=${faqList.length}条, threshold=${threshold}`);
 
   // ===== 超快速路径：本地关键词匹配（不调用Ollama，<10ms） =====
   const startLocal = Date.now();
@@ -341,13 +346,17 @@ async function searchFAQCandidates(userMessage, threshold = 0.12, category = nul
         if (!faq) continue;
         if (candidates.some(c => c.faq.id === faq.id)) continue;
 
-        // 直接使用余弦相似度作为置信度（更稳定，不受 Rerank 波动影响）
-        let confidence = r.score;
-
+        // 置信度：优先用余弦相似度（稳定），Rerank 分数作为参考（不覆盖）
+        let confidence = r.score || 0;
+        // 如果 Rerank 分数显著更高（>0.3），才用它
+        if (r.rerankScore !== undefined && r.rerankScore > confidence + 0.2) {
+          confidence = r.rerankScore;
+        }
+        
         // 置信度上限
         if (confidence > 0.90) confidence = 0.90;
-        // 置信度下限
-        if (confidence < 0.25) continue;
+        // 置信度下限（0.05：匹配 RAG 搜索阈值）
+        if (confidence < 0.05) continue;
 
         candidates.push({
           faq,
@@ -368,10 +377,13 @@ async function searchFAQCandidates(userMessage, threshold = 0.12, category = nul
           const faq = faqList.find(f => f.id === faqId);
           if (!faq) continue;
           if (candidates.some(c => c.faq.id === faq.id)) continue;
-          const finalScore = (r.rerankScore !== undefined ? r.rerankScore : r.score);
+          // 置信度：优先用余弦相似度，Rerank 分数只作为参考
           let confidence = finalScore;
+          if (r.rerankScore !== undefined && r.rerankScore > confidence + 0.2) {
+            confidence = r.rerankScore;
+          }
           if (confidence > 0.85) confidence = 0.85;
-          if (confidence < 0.3) continue;
+          if (confidence < 0.05) continue;
           candidates.push({ faq, confidence, intent: faq.intent, fromRAG: true, ragScore: finalScore });
         }
       } catch (e2) {
@@ -523,6 +535,10 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // 路径保持不变（/api/admin/*），前端无需修改
 const ragAdminRouter = require('./rag-admin');
 app.use('/api/admin', ragAdminRouter);
+
+// 致远 OA（seeyon / A8）基础信息管理对接接口
+const oaAdminRouter = require('./oa-admin');
+app.use('/api/admin/oa', oaAdminRouter);
 const uploadRouter = require('./upload-endpoints');
 app.use('/api/admin', uploadRouter);
 // 上传专用：支持图片和附件
@@ -675,6 +691,35 @@ app.post('/api/chat/enhance', auth.authMiddleware, async (req, res) => {
 app.get('/api/chat/memory-stats', auth.authMiddleware, (req, res) => {
   try {
     const stats = getMemoryStats();
+    // 关联用户姓名（sessionId 实际为 userId）
+    const nameCache = {};
+    const getName = (uid) => {
+      if (!uid) return { user_name: '匿名用户', username: '' };
+      if (nameCache[uid]) return nameCache[uid];
+      let info;
+      const u = auth.findUserById(uid);
+      if (u) {
+        info = { user_name: u.name || u.username, username: u.username };
+      } else if (uid.startsWith('user')) {
+        info = { user_name: uid, username: '' };
+      } else {
+        info = { user_name: '匿名会话', username: uid };
+      }
+      nameCache[uid] = info;
+      return info;
+    };
+    if (Array.isArray(stats.sessions)) {
+      stats.sessions = stats.sessions.map(s => {
+        const { user_name, username } = getName(s.sessionId);
+        return { ...s, user_name, username };
+      });
+    }
+    if (stats.user_memories && typeof stats.user_memories === 'object') {
+      stats.user_memories_list = Object.entries(stats.user_memories).map(([uid, count]) => {
+        const { user_name, username } = getName(uid);
+        return { userId: uid, user_name, username, count };
+      });
+    }
     res.json({ success: true, ...stats });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1198,7 +1243,26 @@ wss.on('connection', (ws) => {
           // 高置信度（≥0.6）：直接返回最佳答案，不等待用户点击，不调LLM
           if (candidates[0].confidence >= 0.6) {
             const best = candidates[0];
-            let reply = stripHtmlTags(best.faq.answer);
+            const rawAnswer = stripHtmlTags(best.faq.answer);
+            
+            // 口语化改写（短答案跳过，避免不必要延迟）
+            let reply = rawAnswer;
+            if (ENABLE_ANSWER_REWRITE && rawAnswer.length > 20) {
+              ws.send(JSON.stringify({ type: 'typing', status: true }));
+              try {
+                reply = await rewriteToColloquial(rawAnswer, {
+                  userMessage,
+                  tone: 'friendly',
+                  faqId: best.faq.id,
+                  intent: best.intent ? { primaryIntent: { level1: best.intent } } : null
+                });
+                console.log(`[WS] 答案已口语化改写，原长度: ${rawAnswer.length} → 新长度: ${reply.length}`);
+              } catch (e) {
+                console.error('[WS] 答案改写失败，使用原答案:', e.message);
+                reply = rawAnswer;
+              }
+              ws.send(JSON.stringify({ type: 'typing', status: false }));
+            }
             
             // 添加附件信息（区分图片和文件）
             if (best.faq.attachments && best.faq.attachments.length > 0) {
@@ -1353,10 +1417,38 @@ wss.on('connection', (ws) => {
       
       if (msg.type === 'candidate_select' && sessionId) {
         const { candidateId } = msg;
+        // 获取 userId（从 session 数据）
+        const sessionData = sessions.get(sessionId);
+        const userId = sessionData ? sessionData.userId : null;
         const faqList = getFAQ();
         const faq = faqList.find(f => f.id === candidateId);
         if (faq) {
-          let reply = stripHtmlTags(faq.answer);
+          const rawAnswer = stripHtmlTags(faq.answer);
+          
+          // 获取用户原始问题（用于改写上下文）
+          const userMessageForMemory = (() => {
+            const s = sessions.get(sessionId);
+            return s && s.lastUserMessage ? s.lastUserMessage : '';
+          })();
+          
+          // 口语化改写
+          let reply = rawAnswer;
+          if (ENABLE_ANSWER_REWRITE && rawAnswer.length > 20) {
+            ws.send(JSON.stringify({ type: 'typing', status: true }));
+            try {
+              reply = await rewriteToColloquial(rawAnswer, {
+                userMessage: userMessageForMemory,
+                tone: 'friendly',
+                faqId: candidateId,
+                intent: faq.intent ? { primaryIntent: { level1: faq.intent } } : null
+              });
+              console.log(`[WS] 候选答案已口语化改写，原长度: ${rawAnswer.length} → 新长度: ${reply.length}`);
+            } catch (e) {
+              console.error('[WS] 答案改写失败，使用原答案:', e.message);
+              reply = rawAnswer;
+            }
+            ws.send(JSON.stringify({ type: 'typing', status: false }));
+          }
           
           // 添加附件信息（区分图片和文件）
           if (faq.attachments && faq.attachments.length > 0) {
@@ -1379,11 +1471,6 @@ wss.on('connection', (ws) => {
           saveMessage(sessionId, 'assistant', reply, faq.intent, userId);
           
           // 存储到对话记忆（按userId持久化）
-          const userMessageForMemory = (() => {
-            const s = sessions.get(sessionId);
-            return s && s.lastUserMessage ? s.lastUserMessage : '';
-          })();
-          
           storeConversationRound(sessionId, {
             userQuery: userMessageForMemory,
             aiResponse: reply,

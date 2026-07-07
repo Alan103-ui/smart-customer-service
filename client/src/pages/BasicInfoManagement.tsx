@@ -16,7 +16,7 @@ async function safeFetch<T>(url: string): Promise<T> {
   return [] as unknown as T;
 }
 
-type SubTab = 'org' | 'personnel' | 'permissions' | 'a8';
+type SubTab = 'org' | 'personnel' | 'permissions' | 'oa';
 
 const PERM_LABELS: Record<string, string> = {
   'faq:read': 'FAQ查看',
@@ -74,20 +74,24 @@ export default function BasicInfoManagement() {
   const [permCatName, setPermCatName] = useState('');
   const [permArr, setPermArr] = useState<string[]>([]);
 
-  // A8
-  const [a8, setA8] = useState<any>({ enabled: false, orgApiUrl: '', personnelApiUrl: '', syncInterval: 3600, auth: { type: 'basic', username: '', password: '' } });
+  // 致远 OA
+  const [oa, setOa] = useState<any>({ enabled: false, baseUrl: '', username: '', secret: '', fixedToken: '' });
+  const [oaTest, setOaTest] = useState<any>(null);
+  const [oaMsg, setOaMsg] = useState('');
+  const [oaMemberId, setOaMemberId] = useState('');
+  const [oaMember, setOaMember] = useState<any>(null);
 
   // ==================== 数据获取 ====================
   const loadOrg = () => safeFetch<any[]>(API + '/org').then(setOrgList).catch(e => { console.error('加载组织失败:', e); setOrgList([]); });
   const loadP = () => safeFetch<any[]>(API + '/personnel').then(setPList).catch(e => { console.error('加载人员失败:', e); setPList([]); });
   const loadPerm = () => Promise.all([safeFetch<any[]>(API + '/permissions'), safeFetch<any[]>(API + '/categories')]).then(([p, c]) => { setPermList(p); setCats(c); }).catch(console.error);
-  const loadA8 = () => fetch(API + '/a8-config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then(setA8 || {}).catch(() => {});
+  const loadOA = () => fetch(API + '/oa/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: '', fixedToken: '' })).catch(() => {});
 
   useEffect(() => {
     if (subTab === 'org') loadOrg();
     if (subTab === 'personnel') loadP();
     if (subTab === 'permissions') loadPerm();
-    if (subTab === 'a8') loadA8();
+    if (subTab === 'oa') loadOA();
   }, [subTab]);
 
   // ==================== 组织架构保存 ====================
@@ -143,18 +147,42 @@ export default function BasicInfoManagement() {
   const editPerm = (r: any) => { setEditingPerm(r); setPermName(r.roleName); setPermCatId(r.categoryId || ''); setPermCatName(r.categoryName || ''); setPermArr(r.permissions || []); setShowPermModal(true); };
   const delPerm = async (id: string) => { if (!confirm('确定？')) return; const r = await fetch(API + '/permissions/' + id, { method: 'DELETE', headers: getAuthHeaders() }).then(r => r.json()); if (r.success) loadPerm(); else alert(r.error); };
 
-  // ==================== A8 ====================
-  const saveA8 = async () => { const r = await fetch(API + '/a8-config', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(a8) }).then(r => r.json()); if (r.success) alert('保存成功'); else alert(r.error); };
-  const testA8 = async () => { const r = await fetch(API + '/a8-test', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json()); if (r.success) alert('连接成功'); else alert(r.error); };
-  const syncA8 = async () => { if (!confirm('确定同步？')) return; const r = await fetch(API + '/a8-sync', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json()); if (r.success) { alert('同步成功'); loadOrg(); loadP(); } else alert(r.error); };
+  // ==================== 致远 OA ====================
+  const saveOA = async () => {
+    const r = await fetch(API + '/oa/config', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(oa) }).then(r => r.json());
+    if (r.success) { setOaMsg('配置已保存'); loadOA(); } else setOaMsg('保存失败：' + (r.error || ''));
+  };
+  const testOA = async () => {
+    setOaTest(null); setOaMsg('');
+    const r = await fetch(API + '/oa/test', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json());
+    setOaTest(r);
+    setOaMsg(r.success ? ('连接成功，组织数：' + (r.orgCount || 0)) : ('连接失败：' + (r.message || '')));
+  };
+  const syncOAOrg = async () => {
+    if (!confirm('确定从致远OA同步组织架构到本地？')) return;
+    const r = await fetch(API + '/oa/sync-org', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json());
+    setOaMsg(r.success ? r.message : ('同步失败：' + (r.error || '')));
+    if (r.success) loadOrg();
+  };
+  const queryOAMember = async () => {
+    if (!oaMemberId.trim()) { setOaMsg('请输入 OA 人员 ID'); return; }
+    const r = await fetch(API + '/oa/member?memberId=' + encodeURIComponent(oaMemberId.trim()), { headers: getAuthHeaders() }).then(r => r.json());
+    if (r.success) setOaMember(r.data); else { setOaMember(null); setOaMsg('查询失败：' + (r.error || '')); }
+  };
+  const importOAMember = async () => {
+    if (!oaMember) return;
+    const r = await fetch(API + '/oa/import-member', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ memberId: oaMemberId.trim() }) }).then(r => r.json());
+    setOaMsg(r.success ? r.message : ('导入失败：' + (r.error || '')));
+    if (r.success) loadP();
+  };
 
   // ==================== 渲染 ====================
   return (
     <div>
       <h2>基础信息管理</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {(['org', 'personnel', 'permissions', 'a8'] as SubTab[]).map(k => (
-          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织架构' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : 'A8对接'}</button>
+        {(['org', 'personnel', 'permissions', 'oa'] as SubTab[]).map(k => (
+          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织架构' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : '致远OA对接'}</button>
         ))}
       </div>
 
@@ -234,32 +262,42 @@ export default function BasicInfoManagement() {
         </div>
       )}
 
-      {/* A8对接 */}
-      {subTab === 'a8' && (
-        <div style={{ maxWidth: 600 }}>
-          <label><input type="checkbox" checked={a8.enabled} onChange={e => setA8({ ...a8, enabled: e.target.checked })} /> 启用A8集成</label>
-          <div style={{ marginTop: 12 }}>
-            <div>组织架构API：<input value={a8.orgApiUrl || ''} onChange={e => setA8({ ...a8, orgApiUrl: e.target.value })} style={{ width: 400 }} /></div>
-            <div style={{ marginTop: 8 }}>人员API：<input value={a8.personnelApiUrl || ''} onChange={e => setA8({ ...a8, personnelApiUrl: e.target.value })} style={{ width: 400 }} /></div>
-            <div style={{ marginTop: 8 }}>同步间隔(秒)：<input type="number" value={a8.syncInterval || 3600} onChange={e => setA8({ ...a8, syncInterval: Number(e.target.value) })} style={{ width: 120 }} /></div>
-            <div style={{ marginTop: 8 }}>认证方式：
-              <select value={a8.auth?.type || 'basic'} onChange={e => setA8({ ...a8, auth: { ...a8.auth, type: e.target.value } })}>
-                <option value="basic">Basic</option>
-                <option value="token">Token</option>
-              </select>
+      {/* 致远 OA 对接 */}
+      {subTab === 'oa' && (
+        <div style={{ maxWidth: 700 }}>
+          <div style={{ background: '#f6f8fa', padding: 12, borderRadius: 6, marginBottom: 12 }}>
+            <label><input type="checkbox" checked={oa.enabled} onChange={e => setOa({ ...oa, enabled: e.target.checked })} /> 启用致远OA对接</label>
+          </div>
+          <div style={{ marginTop: 8 }}>服务地址：<input value={oa.baseUrl} onChange={e => setOa({ ...oa, baseUrl: e.target.value })} placeholder="http://IP:端口" style={{ width: 380 }} /></div>
+          <div style={{ marginTop: 8 }}>API账号：<input value={oa.username} onChange={e => setOa({ ...oa, username: e.target.value })} style={{ width: 240 }} /></div>
+          <div style={{ marginTop: 8 }}>API密钥：<input type="password" value={oa.secret} onChange={e => setOa({ ...oa, secret: e.target.value })} placeholder="已配置则留空" style={{ width: 320 }} /></div>
+          <div style={{ marginTop: 8 }}>固定Token(可选)：<input type="password" value={oa.fixedToken} onChange={e => setOa({ ...oa, fixedToken: e.target.value })} placeholder="已配置则留空" style={{ width: 320 }} /></div>
+          <div style={{ marginTop: 16 }}>
+            <button onClick={saveOA}>保存配置</button>
+            <button onClick={testOA} style={{ marginLeft: 8 }}>测试连接</button>
+            <button onClick={syncOAOrg} style={{ marginLeft: 8 }}>同步组织架构</button>
+          </div>
+
+          <div style={{ marginTop: 16, padding: 12, border: '1px solid #e8e8e8', borderRadius: 6 }}>
+            <h4 style={{ margin: '0 0 8px' }}>按 OA ID 查询 / 导入人员</h4>
+            <div>人员ID：<input value={oaMemberId} onChange={e => setOaMemberId(e.target.value)} placeholder="如 240467409362108676" style={{ width: 280 }} />
+              <button onClick={queryOAMember} style={{ marginLeft: 8 }}>查询</button>
+              {oaMember && <button onClick={importOAMember} style={{ marginLeft: 8 }}>导入到本地</button>}
             </div>
-            {a8.auth?.type === 'basic' && (
-              <div>
-                <div style={{ marginTop: 8 }}>用户名：<input value={a8.auth?.username || ''} onChange={e => setA8({ ...a8, auth: { ...a8.auth, username: e.target.value } })} style={{ width: 200 }} /></div>
-                <div style={{ marginTop: 8 }}>密码：<input type="password" value={a8.auth?.password || ''} onChange={e => setA8({ ...a8, auth: { ...a8.auth, password: e.target.value } })} style={{ width: 200 }} /></div>
+            {oaMember && (
+              <div style={{ marginTop: 8, fontSize: 13 }}>
+                姓名：{oaMember.name} ｜ 工号：{oaMember.code} ｜ 邮箱：{oaMember.email || '-'} ｜ OA ID：{oaMember.oaId}
               </div>
             )}
-            <div style={{ marginTop: 16 }}>
-              <button onClick={saveA8}>保存配置</button>
-              <button onClick={testA8} style={{ marginLeft: 8 }}>测试连接</button>
-              <button onClick={syncA8} style={{ marginLeft: 8 }}>立即同步</button>
-            </div>
           </div>
+
+          {oaMsg && <div style={{ marginTop: 12, color: '#1890ff' }}>{oaMsg}</div>}
+          {oaTest && (
+            <div style={{ marginTop: 12, color: oaTest.success ? '#52c41a' : '#f5222d' }}>
+              连接测试：{oaTest.success ? '成功' : '失败'}{oaTest.tokenMasked ? '（token ' + oaTest.tokenMasked + '）' : ''}
+              {oaTest.sampleAccount ? ' ｜ 示例组织：' + oaTest.sampleAccount.name : ''}
+            </div>
+          )}
         </div>
       )}
 
