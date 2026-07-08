@@ -148,7 +148,7 @@ interface CategoryItem {
 
 // ==================== 主组件 ====================
 export default function AdminDashboard({ onBack }: AdminDashboardProps) {
-  const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag' | 'conversations' | 'memory' | 'logs'>('stats');
+  const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag' | 'conversations' | 'logs'>('stats');
   const [stats, setStats] = useState<Stats | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
@@ -368,7 +368,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     if (tab === 'faq') { fetchFAQ(); fetchCategories(); fetchKnowledgeBases(); }
     if (tab === 'categories') { fetchCategories(); fetchKnowledgeBases(); }
     if (tab === 'conversations') { fetchConversations(); }
-    if (tab === 'memory') { fetchMemoryStats(); }
+    if (tab === 'rag') { fetchMemoryStats(); }
     if (tab === 'logs') { fetchLogs(); }
   }, [tab]);
 
@@ -599,7 +599,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           <button className={`tab-btn ${tab === 'basicInfo' ? 'active' : ''}`} onClick={() => setTab('basicInfo')}>🏢 基础信息</button>
           <button className={`tab-btn ${tab === 'rag' ? 'active' : ''}`} onClick={() => setTab('rag')}>🤖 RAG 管理</button>
           <button className={`tab-btn ${tab === 'conversations' ? 'active' : ''}`} onClick={() => setTab('conversations')}>💬 对话管理</button>
-          <button className={`tab-btn ${tab === 'memory' ? 'active' : ''}`} onClick={() => setTab('memory')}>🧠 记忆管理</button>
           <button className={`tab-btn ${tab === 'logs' ? 'active' : ''}`} onClick={() => setTab('logs')}>📝 日志管理</button>
         </div>
       </div>
@@ -838,7 +837,70 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
 
       {tab === 'basicInfo' && <BasicInfoManagement />}
 
-      {tab === 'rag' && <RAGManagement />}
+      {tab === 'rag' && (
+        <div>
+          <RAGManagement />
+          {/* 记忆管理（并入 RAG 管理） */}
+          <div className="memory-management" style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 20 }}>
+            <div className="faq-toolbar">
+              <h3>🧠 记忆管理</h3>
+              <button className="btn-primary" onClick={fetchMemoryStats} disabled={memoryLoading}>
+                刷新统计
+              </button>
+            </div>
+
+            {memoryLoading ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
+            ) : memoryStats ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, padding: 16 }}>
+                <div style={{ background: '#e6f7ff', padding: 20, borderRadius: 8, borderLeft: '4px solid #1890ff' }}>
+                  <h4>📊 总体统计</h4>
+                  <p><strong>总记忆数：</strong>{memoryStats.total_memories || 0}</p>
+                  <p><strong>活跃会话：</strong>{memoryStats.active_sessions || 0}</p>
+                  <p><strong>记忆命中率：</strong>{((memoryStats.hit_rate || 0) * 100).toFixed(1)}%</p>
+                </div>
+
+                <div style={{ background: '#f6ffed', padding: 20, borderRadius: 8, borderLeft: '4px solid #52c41a' }}>
+                  <h4>👤 用户记忆</h4>
+                  {(() => {
+                    const list = memoryStats.user_memories_list && memoryStats.user_memories_list.length > 0
+                      ? memoryStats.user_memories_list
+                      : (memoryStats.user_memories && Object.keys(memoryStats.user_memories).length > 0
+                        ? Object.entries(memoryStats.user_memories).map(([userId, count]: [string, any]) => ({ userId, user_name: userId, username: '', count }))
+                        : []);
+                    if (list.length === 0) {
+                      return <div style={{ color: '#999', padding: '4px 0' }}>暂无用户记忆</div>;
+                    }
+                    return list.map((u: any) => (
+                      <div key={u.userId} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                        <span>
+                          {u.user_name}
+                          {u.username && u.username !== u.user_name ? `（${u.username}）` : ''}
+                        </span>
+                        <span>{u.count} 条记忆</span>
+                      </div>
+                    ));
+                  })()}
+                </div>
+
+                <div style={{ background: '#fff7e6', padding: 20, borderRadius: 8, borderLeft: '4px solid #fa8c16' }}>
+                  <h4>🏷️ 记忆类型分布</h4>
+                  {memoryStats.memory_types && Object.entries(memoryStats.memory_types).map(([type, count]: [string, any]) => (
+                    <div key={type} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                      <span>{type}</span>
+                      <span>{count} 条</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+                暂无数据，点击"刷新统计"按钮加载
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 对话管理 */}
       {tab === 'conversations' && (
@@ -939,68 +1001,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
               </div>
             );
           })()}
-        </div>
-      )}
-
-      {/* 记忆管理 */}
-      {tab === 'memory' && (
-        <div className="memory-management">
-          <div className="faq-toolbar">
-            <h3>🧠 记忆管理</h3>
-            <button className="btn-primary" onClick={fetchMemoryStats} disabled={memoryLoading}>
-              刷新统计
-            </button>
-          </div>
-
-          {memoryLoading ? (
-            <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
-          ) : memoryStats ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, padding: 16 }}>
-              <div style={{ background: '#e6f7ff', padding: 20, borderRadius: 8, borderLeft: '4px solid #1890ff' }}>
-                <h4>📊 总体统计</h4>
-                <p><strong>总记忆数：</strong>{memoryStats.total_memories || 0}</p>
-                <p><strong>活跃会话：</strong>{memoryStats.active_sessions || 0}</p>
-                <p><strong>记忆命中率：</strong>{((memoryStats.hit_rate || 0) * 100).toFixed(1)}%</p>
-              </div>
-
-              <div style={{ background: '#f6ffed', padding: 20, borderRadius: 8, borderLeft: '4px solid #52c41a' }}>
-                <h4>👤 用户记忆</h4>
-                {(() => {
-                  const list = memoryStats.user_memories_list && memoryStats.user_memories_list.length > 0
-                    ? memoryStats.user_memories_list
-                    : (memoryStats.user_memories && Object.keys(memoryStats.user_memories).length > 0
-                      ? Object.entries(memoryStats.user_memories).map(([userId, count]: [string, any]) => ({ userId, user_name: userId, username: '', count }))
-                      : []);
-                  if (list.length === 0) {
-                    return <div style={{ color: '#999', padding: '4px 0' }}>暂无用户记忆</div>;
-                  }
-                  return list.map((u: any) => (
-                    <div key={u.userId} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                      <span>
-                        {u.user_name}
-                        {u.username && u.username !== u.user_name ? `（${u.username}）` : ''}
-                      </span>
-                      <span>{u.count} 条记忆</span>
-                    </div>
-                  ));
-                })()}
-              </div>
-
-              <div style={{ background: '#fff7e6', padding: 20, borderRadius: 8, borderLeft: '4px solid #fa8c16' }}>
-                <h4>🏷️ 记忆类型分布</h4>
-                {memoryStats.memory_types && Object.entries(memoryStats.memory_types).map(([type, count]: [string, any]) => (
-                  <div key={type} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                    <span>{type}</span>
-                    <span>{count} 条</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
-              暂无数据，点击"刷新统计"按钮加载
-            </div>
-          )}
         </div>
       )}
 
