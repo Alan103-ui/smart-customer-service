@@ -183,16 +183,11 @@ async function getOrgAccounts() {
 }
 
 // ============ 人员 ============
-async function getOrgMember(memberId) {
-  if (memberId === undefined || memberId === null || String(memberId).trim() === '') {
-    throw new Error('缺少人员 ID');
-  }
-  const token = await getToken();
-  const url = `${loadOAConfig().baseUrl}/seeyon/rest/orgMembers/${encodeURIComponent(String(memberId))}?token=${encodeURIComponent(token)}`;
-  const data = await requestText(url);
-  const arr = parseOAJson(data);
-  const m = Array.isArray(arr) ? arr[0] : null;
-  if (!m) throw new Error('未找到该 OA 人员');
+// 该 OA 人员接口：GET /orgMembers/{orgAccountId}?token= 返回该组织【全部人员】数组
+// （无"按人员ID单查"能力）。因此批量拉取 = 拉取各组织单位全部人员。
+
+// 从 OA 原始成员对象提取系统所需字段（优先用顶层富字段，回退 properties）
+function mapRawMember(m) {
   const p = m.properties || {};
   return {
     oaId: String(m.id),
@@ -201,13 +196,51 @@ async function getOrgMember(memberId) {
     code: m.code || '', // 工号
     orgDepartmentId: m.orgDepartmentId != null ? String(m.orgDepartmentId) : null,
     orgPostId: m.orgPostId != null ? String(m.orgPostId) : null,
-    email: p.emailaddress || '',
-    gender: p.gender,
-    phone: p.telnumber || p.officenumber || '',
+    email: m.emailAddress || p.emailaddress || '',
+    gender: m.gender || p.gender || '',
+    phone: m.telNumber || m.officeNum || p.telnumber || p.officenumber || '',
     isLoginable: !!m.isLoginable,
     enabled: m.enabled !== false,
     raw: m,
   };
+}
+
+// 拉取某组织单位下的全部人员（路径参数为 orgAccountId）
+async function getOrgMembersByAccount(accountId) {
+  if (!accountId) throw new Error('缺少组织单位ID');
+  const token = await getToken();
+  const url = `${loadOAConfig().baseUrl}/seeyon/rest/orgMembers/${encodeURIComponent(String(accountId))}?token=${encodeURIComponent(token)}`;
+  const data = await requestText(url);
+  const arr = parseOAJson(data);
+  if (!Array.isArray(arr)) throw new Error('orgMembers 返回格式异常');
+  return arr.map(mapRawMember);
+}
+
+// 拉取所有组织单位下的全部人员（跨单位去重，按人员 id）
+async function getAllOrgMembers() {
+  const accounts = await getOrgAccounts();
+  const seen = new Set();
+  const all = [];
+  for (const acc of accounts) {
+    const members = await getOrgMembersByAccount(acc.oaId);
+    for (const m of members) {
+      if (seen.has(m.oaId)) continue;
+      seen.add(m.oaId);
+      all.push(m);
+    }
+  }
+  return all;
+}
+
+// 兼容旧调用：按人员ID/工号查找（拉全量后本地过滤）
+async function getOrgMember(memberId) {
+  if (memberId === undefined || memberId === null || String(memberId).trim() === '') {
+    throw new Error('缺少人员 ID');
+  }
+  const all = await getAllOrgMembers();
+  const m = all.find((x) => String(x.oaId) === String(memberId) || (x.code && String(x.code) === String(memberId)));
+  if (!m) throw new Error('未找到该 OA 人员');
+  return m;
 }
 
 // 将 OA 人员映射为系统 personnel 记录（不含密码，登录走 SSO 或管理员重置）
@@ -239,46 +272,45 @@ function oaMemberToPersonnel(m) {
 
 // ============ 批量人员拉取 ============
 /**
- * 按成员 ID 列表批量从 OA 拉取人员档案。
- * @param {string[]} memberIds - OA 成员 ID 列表
- * @param {object} opts
- * @param {number} opts.concurrency - 并发数（默认 3，避免压垮 OA）
- * @param {function} opts.onProgress - 进度回调 (done, total, item)
+ * 按人员ID/工号列表，从 OA 全量人员中筛选（该 OA 无单人接口，先拉全量再本地过滤）。
+ * @param {string[]} memberIds - OA 人员ID或工号列表
  * @returns {{successes: object[], failures: object[]}}
  */
-async function batchGetMembers(memberIds, { concurrency = 3, onProgress } = {}) {
+async function batchGetMembers(memberIds) {
   if (!Array.isArray(memberIds) || memberIds.length === 0) {
     throw new Error('memberIds 必须为非空数组');
   }
-  const ids = memberIds.map((id) => String(id).trim()).filter(Boolean);
-  if (ids.length === 0) throw new Error('无有效的人员 ID');
+  const idSet = new Set(memberIds.map((id) => String(id).trim()).filter(Boolean));
+  if (idSet.size === 0) throw new Error('无有效的人员 ID');
+  const all = await getAllOrgMembers();
+  const successes = all.filter(
+    (m) => idSet.has(m.oaId) || (m.code && idSet.has(m.code))
+  );
+  const foundKeys = new Set(
+    successes.map((m) => m.oaId).concat(successes.map((m) => (m.code ? String(m.code) : ''))).filter(Boolean)
+  );
+  const failures = memberIds
+    .filter((id) => !foundKeys.has(String(id).trim()))
+    .map((id) => ({ memberId: id, error: '未找到该 OA 人员' }));
+  return { successes, failures };
+}
 
-  const successes = [];
-  const failures = [];
-  let done = 0;
-  const total = ids.length;
-
-  // 并发控制：滑动窗口
-  async function worker() {
-    while (ids.length > 0) {
-      const memberId = ids.shift();
-      if (!memberId) break;
-      try {
-        const m = await getOrgMember(memberId);
-        successes.push(m);
-        if (onProgress) onProgress(++done, total, { ok: true, memberId, name: m.name });
-      } catch (e) {
-        failures.push({ memberId, error: e.message });
-        if (onProgress) onProgress(++done, total, { ok: false, memberId, error: e.message });
-      }
+// 拉取 OA 全量人员（所有组织单位），返回原始成员数组与按单位统计
+async function fetchAllMembers() {
+  const accounts = await getOrgAccounts();
+  const seen = new Set();
+  const members = [];
+  const byAccount = {};
+  for (const acc of accounts) {
+    const list = await getOrgMembersByAccount(acc.oaId);
+    byAccount[acc.oaId] = list.length;
+    for (const m of list) {
+      if (seen.has(m.oaId)) continue;
+      seen.add(m.oaId);
+      members.push(m);
     }
   }
-
-  // 启动并发 worker
-  const workers = Array.from({ length: Math.min(concurrency, total) }, () => worker());
-  await Promise.all(workers);
-
-  return { successes, failures };
+  return { members, byAccount };
 }
 
 module.exports = {
@@ -288,6 +320,9 @@ module.exports = {
   getToken,
   clearTokenCache,
   getOrgAccounts,
+  getOrgMembersByAccount,
+  getAllOrgMembers,
+  fetchAllMembers,
   getOrgMember,
   oaMemberToPersonnel,
   batchGetMembers,

@@ -177,11 +177,21 @@ export default function BasicInfoManagement() {
     setOaMsg(r.success ? r.message : ('导入失败：' + (r.error || '')));
     if (r.success) loadP();
   };
+  const syncOAMembers = async () => {
+    if (!confirm('确定从致远OA同步全部人员到本地？将拉取所有组织单位的人员档案（可能数百人，请耐心等待）。')) return;
+    setOaMsg('正在从 OA 拉取全部人员，请稍候...'); setOaBatchResult(null);
+    try {
+      const r = await fetch(API + '/oa/sync-members', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({}) }).then(r => r.json());
+      setOaBatchResult(r);
+      setOaMsg(r.success ? r.message : ('同步失败：' + (r.error || '')));
+      if (r.success) loadP();
+    } catch (e) { setOaMsg('请求异常：' + String(e)); }
+  };
   const batchImportOA = async () => {
     const ids = oaBatchIds.split(/[\n,，;；\s]+/).map(s => s.trim()).filter(Boolean);
-    if (ids.length === 0) { setOaMsg('请输入至少一个 OA 人员 ID（每行一个）'); return; }
-    if (!confirm(`确定批量导入 ${ids.length} 个人员？将逐个从 OA 拉取档案并写入本地。`)) return;
-    setOaMsg('正在批量拉取，请稍候...'); setOaBatchResult(null);
+    if (ids.length === 0) { setOaMsg('请输入至少一个 OA 人员 ID 或工号（每行一个）'); return; }
+    if (!confirm(`确定导入 ${ids.length} 个指定人员？`)) return;
+    setOaMsg('正在导入指定人员，请稍候...'); setOaBatchResult(null);
     try {
       const r = await fetch(API + '/oa/batch-import', {
         method: 'POST',
@@ -294,6 +304,7 @@ export default function BasicInfoManagement() {
             <button onClick={saveOA}>保存配置</button>
             <button onClick={testOA} style={{ marginLeft: 8 }}>测试连接</button>
             <button onClick={syncOAOrg} style={{ marginLeft: 8 }}>同步组织架构</button>
+            <button onClick={syncOAMembers} style={{ marginLeft: 8, background: '#52c41a', color: '#fff', border: 'none' }}>🔄 同步全部人员</button>
           </div>
 
           <div style={{ marginTop: 16, padding: 12, border: '1px solid #e8e8e8', borderRadius: 6 }}>
@@ -309,16 +320,16 @@ export default function BasicInfoManagement() {
             )}
           </div>
 
-          {/* 批量按 ID 导入 */}
+          {/* 批量按 ID 导入（可选） */}
           <div style={{ marginTop: 12, padding: 12, border: '1px solid #d4b106', borderRadius: 6, background: '#fffbe6' }}>
-            <h4 style={{ margin: '0 0 8px' }}>📋 批量导入（ID列表逐个拉取）</h4>
+            <h4 style={{ margin: '0 0 8px' }}>📋 按人员ID/工号选择性导入（可选）</h4>
             <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
-              每行输入一个 OA 人员 ID，将逐个从致远OA拉取完整档案并写入本地人员库。
+              只导入部分人员时，每行输入一个 OA 人员ID或工号（从"同步全部人员"结果中挑选）。留空则可直接点上方「同步全部人员」。
             </div>
             <textarea
               value={oaBatchIds}
               onChange={e => setOaBatchIds(e.target.value)}
-              placeholder={'240467409362108676\n5266869733074352723\n...'}
+              placeholder={'工号如 GK88888\n或 OA 人员ID\n...'}
               rows={5}
               style={{ width: '100%', maxWidth: 500, fontFamily: 'monospace', fontSize: 13, padding: 6 }}
             />

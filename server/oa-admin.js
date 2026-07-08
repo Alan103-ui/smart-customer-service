@@ -113,6 +113,32 @@ router.get('/org-accounts', async (req, res) => {
   }
 });
 
+// ============ 实时拉取某组织单位下的全部人员（预览）============
+router.get('/members', async (req, res) => {
+  try {
+    const { accountId } = req.query;
+    if (!accountId) return res.status(400).json({ error: '缺少 accountId' });
+    const list = await oa.getOrgMembersByAccount(accountId);
+    res.json({
+      success: true,
+      total: list.length,
+      data: list.map((m) => ({
+        oaId: m.oaId,
+        name: m.name,
+        code: m.code,
+        orgDepartmentName: m.raw.orgDepartmentName || '',
+        orgPostName: m.raw.orgPostName || '',
+        orgLevelName: m.raw.orgLevelName || '',
+        email: m.email,
+        phone: m.phone,
+        isActive: m.enabled,
+      })),
+    });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
 // ============ 按 OA ID 实时查询人员 ============
 router.get('/member', async (req, res) => {
   try {
@@ -253,7 +279,7 @@ router.post('/batch-import', async (req, res) => {
 
     res.json({
       success: true,
-      message: `批量导入完成：成功 ${results.successes.length} 个（新增 ${added}、更新 ${added ? 0 : updated}）、失败 ${results.failures.length} 个`,
+      message: `批量导入完成：成功 ${results.successes.length} 个（新增 ${added}、更新 ${updated}）、失败 ${results.failures.length} 个`,
       summary: {
         totalRequested: memberIds.length,
         successCount: results.successes.length,
@@ -263,6 +289,64 @@ router.post('/batch-import', async (req, res) => {
       },
       imported,
       failures: results.failures,
+    });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+// ============ 一键同步 OA 全部人员 ============
+router.post('/sync-members', async (req, res) => {
+  try {
+    const { accountId } = req.body || {};
+    // 拉取 OA 全量人员（指定单位或全部单位）
+    let members;
+    let byAccount = {};
+    if (accountId) {
+      members = await oa.getOrgMembersByAccount(accountId);
+      byAccount[accountId] = members.length;
+    } else {
+      const r = await oa.fetchAllMembers();
+      members = r.members;
+      byAccount = r.byAccount;
+    }
+
+    const local = loadPersonnel();
+    let added = 0;
+    let updated = 0;
+    const imported = [];
+    for (const m of members) {
+      const rec = oa.oaMemberToPersonnel(m);
+      const exist = local.find((p) => p.oaId === rec.oaId || p.username === rec.username);
+      if (exist) {
+        Object.assign(exist, {
+          name: rec.name,
+          orgName: rec.orgName || '',
+          postName: rec.postName || '',
+          levelName: rec.levelName || '',
+          email: rec.email,
+          phone: rec.phone,
+          isActive: rec.isActive,
+          oaAccountId: rec.oaAccountId,
+          updatedAt: rec.updatedAt,
+        });
+        updated++;
+        imported.push({ name: rec.name, action: 'updated', username: exist.username });
+      } else {
+        const newRec = Object.assign({ id: 'user_oa_' + rec.oaId, passwordHash: null }, rec);
+        local.push(newRec);
+        added++;
+        imported.push({ name: rec.name, action: 'added', username: rec.username });
+      }
+    }
+    savePersonnel(local);
+
+    res.json({
+      success: true,
+      message: `OA 人员同步完成：共 ${members.length} 人（新增 ${added}、更新 ${updated}）`,
+      summary: { total: members.length, added, updated, byAccount },
+      imported: imported.slice(0, 50), // 预览前 50 条，避免响应过大
+      importedCount: imported.length,
     });
   } catch (e) {
     res.json({ success: false, error: e.message });
