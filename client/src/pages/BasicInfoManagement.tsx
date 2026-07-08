@@ -18,18 +18,59 @@ async function safeFetch<T>(url: string): Promise<T> {
 
 type SubTab = 'org' | 'personnel' | 'permissions' | 'oa';
 
-const PERM_LABELS: Record<string, string> = {
-  'faq:read': 'FAQ查看',
-  'faq:write': 'FAQ编辑',
-  'faq:delete': 'FAQ删除',
-  'category:manage': '分类管理',
-  'personnel:manage': '人员管理',
-  'org:manage': '组织管理',
-  'permission:manage': '权限管理',
-  'a8:config': 'A8配置',
-  'chat:access': '前端聊天',
-};
-
+// 权限目录（本地兜底，后端 /api/admin/permissions/catalog 返回权威版本）
+const PERM_GROUPS_LOCAL: { group: string; items: { code: string; label: string }[] }[] = [
+  { group: '知识库', items: [
+    { code: 'faq:read', label: 'FAQ查看' },
+    { code: 'faq:write', label: 'FAQ编辑' },
+    { code: 'faq:delete', label: 'FAQ删除' },
+    { code: 'category:manage', label: '分类管理' },
+  ]},
+  { group: '基础信息', items: [
+    { code: 'org:manage', label: '组织管理' },
+    { code: 'personnel:manage', label: '人员管理' },
+    { code: 'user:manage', label: '用户账号管理' },
+    { code: 'permission:manage', label: '权限管理' },
+  ]},
+  { group: 'RAG引擎', items: [
+    { code: 'rag:manage', label: 'RAG配置' },
+    { code: 'rag:test', label: '检索测试' },
+    { code: 'rag:eval', label: '批量评估' },
+    { code: 'vector:rebuild', label: '向量库重建' },
+  ]},
+  { group: '答案与意图', items: [
+    { code: 'rewrite:manage', label: '答案改写' },
+    { code: 'intent:manage', label: '意图识别' },
+  ]},
+  { group: '对话与记忆', items: [
+    { code: 'conversation:view', label: '对话查看' },
+    { code: 'conversation:delete', label: '对话删除' },
+    { code: 'memory:view', label: '记忆查看' },
+  ]},
+  { group: '数据统计', items: [
+    { code: 'stats:view', label: '数据统计' },
+    { code: 'feedback:view', label: '满意度查看' },
+  ]},
+  { group: '日志', items: [
+    { code: 'log:view', label: '日志查看' },
+    { code: 'log:clean', label: '日志清理' },
+  ]},
+  { group: '致远OA', items: [
+    { code: 'oa:manage', label: 'OA对接管理' },
+    { code: 'oa:sso', label: 'OA单点登录' },
+  ]},
+  { group: '系统', items: [
+    { code: 'upload:manage', label: '文件上传' },
+    { code: 'model:manage', label: '模型管理' },
+    { code: 'a8:config', label: 'A8配置' },
+  ]},
+  { group: '前端', items: [
+    { code: 'chat:access', label: '前端聊天' },
+  ]},
+];
+const PERM_LABELS: Record<string, string> = Object.fromEntries(
+  PERM_GROUPS_LOCAL.flatMap(g => g.items.map(i => [i.code, i.label]))
+);
 function formatPerms(arr: string[]): string {
   return arr.map(p => PERM_LABELS[p] || p).join('、');
 }
@@ -73,6 +114,7 @@ export default function BasicInfoManagement() {
   const [permCatId, setPermCatId] = useState('');
   const [permCatName, setPermCatName] = useState('');
   const [permArr, setPermArr] = useState<string[]>([]);
+  const [permCatalog, setPermCatalog] = useState<{ group: string; items: { code: string; label: string }[] }[]>(PERM_GROUPS_LOCAL);
 
   // 致远 OA
   const [oa, setOa] = useState<any>({ enabled: false, baseUrl: '', username: '', secret: '', fixedToken: '' });
@@ -93,7 +135,15 @@ export default function BasicInfoManagement() {
   // ==================== 数据获取 ====================
   const loadOrg = () => safeFetch<any[]>(API + '/org').then(setOrgList).catch(e => { console.error('加载组织失败:', e); setOrgList([]); });
   const loadP = () => safeFetch<any[]>(API + '/personnel').then(setPList).catch(e => { console.error('加载人员失败:', e); setPList([]); });
-  const loadPerm = () => Promise.all([safeFetch<any[]>(API + '/permissions'), safeFetch<any[]>(API + '/categories')]).then(([p, c]) => { setPermList(p); setCats(c); }).catch(console.error);
+  const loadPerm = () => {
+    safeFetch<any[]>(API + '/categories').then(setCats).catch(() => {});
+    safeFetch<any[]>(API + '/permissions').then(setPermList).catch(console.error);
+    // 拉取后端权威权限目录（若失败则用本地兜底）
+    fetch(API + '/permissions/catalog', { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then((d: any) => { if (d && d.success && Array.isArray(d.data) && d.data.length) setPermCatalog(d.data); })
+      .catch(() => {});
+  };
   const loadOA = () => fetch(API + '/oa/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: '', fixedToken: '' })).catch(() => {});
 
   useEffect(() => {
@@ -305,11 +355,14 @@ export default function BasicInfoManagement() {
           <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr><th>角色</th><th>可访问分类</th><th>权限</th><th>操作</th></tr></thead>
             <tbody>
-              {permList.map(r => (
+                {permList.map(r => (
                 <tr key={r.id}>
-                  <td>{r.roleName}</td>
+                  <td>{r.roleName}{r.isSystem && <span style={{ color: '#999', fontSize: 12 }}>（系统）</span>}</td>
                   <td>{r.categoryName || '全部'}</td>
-                  <td>{formatPerms(r.permissions || [])}</td>
+                  <td>
+                    <span style={{ background: '#e6f7ff', color: '#1890ff', borderRadius: 10, padding: '1px 8px', fontSize: 12, marginRight: 6 }}>{ (r.permissions || []).length } 项</span>
+                    <span style={{ color: '#666', fontSize: 13 }}>{formatPerms(r.permissions || [])}</span>
+                  </td>
                   <td>
                     {!r.isSystem && (
                       <>
@@ -546,18 +599,38 @@ export default function BasicInfoManagement() {
               </select>
             </div>
             <div style={{ marginTop: 8 }}>权限：
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 4 }}>
-                {Object.entries(PERM_LABELS).map(([code, label]) => (
-                  <label key={code} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14 }}>
-                    <input type="checkbox" checked={(permArr || []).includes(code)} onChange={e => {
-                      const next = e.target.checked
-                        ? [...permArr, code]
-                        : permArr.filter((c: string) => c !== code);
-                      setPermArr(next);
-                    }} />
-                    {label}
-                  </label>
-                ))}
+              <div style={{ marginTop: 4, marginBottom: 8 }}>
+                <button onClick={() => setPermArr([...permCatalog.flatMap(g => g.items.map(i => i.code))])}>全选</button>
+                <button onClick={() => setPermArr([])} style={{ marginLeft: 8 }}>清空</button>
+              </div>
+              <div style={{ maxHeight: 340, overflow: 'auto', border: '1px solid #eee', padding: 12, borderRadius: 6 }}>
+                {permCatalog.map(g => {
+                  const groupCodes = g.items.map(i => i.code);
+                  const allChecked = groupCodes.every(c => (permArr || []).includes(c));
+                  const toggleGroup = () => setPermArr(allChecked ? permArr.filter(c => !groupCodes.includes(c)) : [...new Set([...permArr, ...groupCodes])]);
+                  return (
+                    <div key={g.group} style={{ marginBottom: 14 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 6, color: '#1890ff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={allChecked} onChange={toggleGroup} />
+                          {g.group}
+                        </label>
+                        <span style={{ color: '#999', fontSize: 12, fontWeight: 400 }}>({groupCodes.filter(c => (permArr || []).includes(c)).length}/{groupCodes.length})</span>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, paddingLeft: 20 }}>
+                        {g.items.map(i => (
+                          <label key={i.code} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, minWidth: 120 }}>
+                            <input type="checkbox" checked={(permArr || []).includes(i.code)} onChange={e => {
+                              const next = e.target.checked ? [...permArr, i.code] : permArr.filter((c: string) => c !== i.code);
+                              setPermArr(next);
+                            }} />
+                            {i.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div style={{ marginTop: 16 }}>

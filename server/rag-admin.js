@@ -1273,6 +1273,10 @@ router.put('/personnel/:id/reset-password', (req, res) => {
 });
 
 // ============ 基础信息：权限管理 ============
+router.get('/permissions/catalog', (req, res) => {
+  try { res.json({ success: true, data: data.PERMISSION_CATALOG }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/permissions', (req, res) => {
   try { res.json(loadPermissions()); } catch (err) { res.status(500).json({ error: err.message }); }
 });

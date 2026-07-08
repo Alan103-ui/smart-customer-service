@@ -99,6 +99,59 @@ function savePersonnel(data) {
 }
 
 // ============ 权限管理 ============
+// 权限目录（后端权威定义）：覆盖所有后端功能模块。
+// 前端权限管理 UI 通过 GET /api/admin/permissions/catalog 拉取此目录动态渲染。
+const PERMISSION_CATALOG = [
+  { group: '知识库', items: [
+    { code: 'faq:read', label: 'FAQ查看' },
+    { code: 'faq:write', label: 'FAQ编辑' },
+    { code: 'faq:delete', label: 'FAQ删除' },
+    { code: 'category:manage', label: '分类管理' },
+  ]},
+  { group: '基础信息', items: [
+    { code: 'org:manage', label: '组织管理' },
+    { code: 'personnel:manage', label: '人员管理' },
+    { code: 'user:manage', label: '用户账号管理' },
+    { code: 'permission:manage', label: '权限管理' },
+  ]},
+  { group: 'RAG引擎', items: [
+    { code: 'rag:manage', label: 'RAG配置' },
+    { code: 'rag:test', label: '检索测试' },
+    { code: 'rag:eval', label: '批量评估' },
+    { code: 'vector:rebuild', label: '向量库重建' },
+  ]},
+  { group: '答案与意图', items: [
+    { code: 'rewrite:manage', label: '答案改写' },
+    { code: 'intent:manage', label: '意图识别' },
+  ]},
+  { group: '对话与记忆', items: [
+    { code: 'conversation:view', label: '对话查看' },
+    { code: 'conversation:delete', label: '对话删除' },
+    { code: 'memory:view', label: '记忆查看' },
+  ]},
+  { group: '数据统计', items: [
+    { code: 'stats:view', label: '数据统计' },
+    { code: 'feedback:view', label: '满意度查看' },
+  ]},
+  { group: '日志', items: [
+    { code: 'log:view', label: '日志查看' },
+    { code: 'log:clean', label: '日志清理' },
+  ]},
+  { group: '致远OA', items: [
+    { code: 'oa:manage', label: 'OA对接管理' },
+    { code: 'oa:sso', label: 'OA单点登录' },
+  ]},
+  { group: '系统', items: [
+    { code: 'upload:manage', label: '文件上传' },
+    { code: 'model:manage', label: '模型管理' },
+    { code: 'a8:config', label: 'A8配置' },
+  ]},
+  { group: '前端', items: [
+    { code: 'chat:access', label: '前端聊天' },
+  ]},
+];
+const ALL_PERMISSION_CODES = PERMISSION_CATALOG.flatMap(g => g.items.map(i => i.code));
+
 function loadPermissions() {
   if (!fs.existsSync(PERMISSIONS_PATH)) {
     // 种子数据：管理员 + 普通用户
@@ -109,7 +162,7 @@ function loadPermissions() {
         roleKey: 'admin',
         categoryId: null,
         categoryName: '全部',
-        permissions: ['faq:read','faq:write','faq:delete','category:manage','personnel:manage','org:manage','permission:manage','a8:config'],
+        permissions: [...ALL_PERMISSION_CODES],
         isSystem: true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -218,6 +271,8 @@ module.exports = {
   // 权限
   loadPermissions,
   savePermissions,
+  PERMISSION_CATALOG,
+  ALL_PERMISSION_CODES,
   
   // A8配置
   loadA8Config,
