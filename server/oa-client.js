@@ -40,22 +40,49 @@ function loadOAConfig() {
   } catch (e) {
     local = {};
   }
+  const localSso = (local && local.sso) || {};
+  const envSsoMode = process.env.OA_SSO_MODE;
+  const envRequireSign = process.env.OA_SSO_REQUIRE_SIGN;
+  const envSignSecret = process.env.OA_SSO_SECRET;
+  const envTrustedIps = process.env.OA_SSO_TRUSTED_IPS;
+  const sso = {
+    mode: envSsoMode || localSso.mode || 'whitelist', // 'whitelist' | 'open'
+    requireSign: envRequireSign != null ? envRequireSign === '1' : !!localSso.requireSign,
+    signSecret: envSignSecret || localSso.signSecret || '',
+    trustedIps: envTrustedIps
+      ? String(envTrustedIps).split(',').map(s => s.trim()).filter(Boolean)
+      : (Array.isArray(localSso.trustedIps) ? localSso.trustedIps : []),
+    whitelist: Array.isArray(localSso.whitelist) ? localSso.whitelist : [],
+  };
   return {
     enabled: env.enabled || !!local.enabled,
     baseUrl: env.baseUrl || local.baseUrl || '',
     username: env.username || local.username || '',
     secret: env.secret || local.secret || '',
     fixedToken: env.fixedToken || local.fixedToken || '',
+    sso,
   };
 }
 
 function saveOAConfig(cfg) {
+  const ssoIn = (cfg && cfg.sso) || {};
   const safe = {
     enabled: !!cfg.enabled,
     baseUrl: (cfg.baseUrl || '').trim(),
     username: (cfg.username || '').trim(),
     secret: cfg.secret || '',
     fixedToken: cfg.fixedToken || '',
+    sso: {
+      mode: ssoIn.mode === 'open' ? 'open' : 'whitelist',
+      requireSign: !!ssoIn.requireSign,
+      signSecret: ssoIn.signSecret || '',
+      trustedIps: Array.isArray(ssoIn.trustedIps)
+        ? ssoIn.trustedIps.map(String).map(s => s.trim()).filter(Boolean)
+        : [],
+      whitelist: Array.isArray(ssoIn.whitelist)
+        ? ssoIn.whitelist.map(String).map(s => s.trim()).filter(Boolean)
+        : [],
+    },
   };
   fs.writeFileSync(OA_CONFIG_PATH, JSON.stringify(safe, null, 2));
   return safe;

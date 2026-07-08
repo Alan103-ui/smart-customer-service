@@ -83,6 +83,13 @@ export default function BasicInfoManagement() {
   const [oaBatchIds, setOaBatchIds] = useState('');
   const [oaBatchResult, setOaBatchResult] = useState<any>(null);
 
+  // 致远 OA SSO 白名单
+  const [oaSso, setOaSso] = useState<any>({ mode: 'whitelist', requireSign: false, hasSignSecret: false, signSecretMasked: '', trustedIps: [], whitelist: [], count: 0, ssoUrl: '/api/auth/sso/oa' });
+  const [oaSsoSecret, setOaSsoSecret] = useState('');
+  const [oaSsoNewIp, setOaSsoNewIp] = useState('');
+  const [oaSsoNewId, setOaSsoNewId] = useState('');
+  const [oaSsoMsg, setOaSsoMsg] = useState('');
+
   // ==================== 数据获取 ====================
   const loadOrg = () => safeFetch<any[]>(API + '/org').then(setOrgList).catch(e => { console.error('加载组织失败:', e); setOrgList([]); });
   const loadP = () => safeFetch<any[]>(API + '/personnel').then(setPList).catch(e => { console.error('加载人员失败:', e); setPList([]); });
@@ -93,7 +100,7 @@ export default function BasicInfoManagement() {
     if (subTab === 'org') loadOrg();
     if (subTab === 'personnel') loadP();
     if (subTab === 'permissions') loadPerm();
-    if (subTab === 'oa') loadOA();
+    if (subTab === 'oa') { loadOA(); loadSSO(); }
   }, [subTab]);
 
   // ==================== 组织架构保存 ====================
@@ -202,6 +209,34 @@ export default function BasicInfoManagement() {
       setOaMsg(r.success ? r.message : ('批量导入失败：' + (r.error || '')));
       if (r.success) loadP();
     } catch (e) { setOaMsg('请求异常：' + String(e)); }
+  };
+
+  // ==================== 致远 OA SSO 白名单 ====================
+  const loadSSO = () => fetch(API + '/oa/whitelist', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => {
+    if (d && d.whitelist) setOaSso({ mode: d.mode || 'whitelist', requireSign: !!d.requireSign, hasSignSecret: !!d.hasSignSecret, signSecretMasked: d.signSecretMasked || '', trustedIps: d.trustedIps || [], whitelist: d.whitelist || [], count: d.count || 0, ssoUrl: d.ssoUrl || '/api/auth/sso/oa' });
+  }).catch(() => {});
+  const saveSSO = async (patch: any) => {
+    const r = await fetch(API + '/oa/whitelist', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(patch) }).then(r => r.json());
+    if (r.success) { setOaSsoMsg('已保存'); setOaSso(s => ({ ...s, ...patch, count: r.count != null ? r.count : s.count, whitelist: r.whitelist || s.whitelist })); }
+    else setOaSsoMsg('保存失败：' + (r.error || ''));
+  };
+  const addSsoId = async () => {
+    const e = oaSsoNewId.trim();
+    if (!e) return;
+    const r = await fetch(API + '/oa/whitelist', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ employeeId: e }) }).then(r => r.json());
+    if (r.success) { setOaSsoNewId(''); setOaSso(s => ({ ...s, count: r.count, whitelist: r.whitelist })); setOaSsoMsg('已添加 ' + e); }
+    else setOaSsoMsg('添加失败：' + (r.error || ''));
+  };
+  const removeSsoId = async (e: string) => {
+    const r = await fetch(API + '/oa/whitelist/' + encodeURIComponent(e), { method: 'DELETE', headers: getAuthHeaders() }).then(r => r.json());
+    if (r.success) { setOaSso(s => ({ ...s, count: r.count, whitelist: s.whitelist.filter((x: string) => x !== e) })); setOaSsoMsg('已移除 ' + e); }
+    else setOaSsoMsg('移除失败：' + (r.error || ''));
+  };
+  const syncAllSso = async () => {
+    if (!confirm('确定将 OA 同步的全部人员工号导入到 SSO 白名单？')) return;
+    const r = await fetch(API + '/oa/whitelist/sync-all', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json());
+    if (r.success) { setOaSso(s => ({ ...s, count: r.count, whitelist: s.whitelist })); setOaSsoMsg('已导入 ' + (r.added || 0) + ' 个工号'); }
+    else setOaSsoMsg('导入失败：' + (r.error || ''));
   };
 
   // ==================== 渲染 ====================
@@ -354,6 +389,67 @@ export default function BasicInfoManagement() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* SSO 单点登录白名单 */}
+          <div style={{ marginTop: 16, padding: 12, border: '1px solid #1677ff', borderRadius: 6, background: '#f0f7ff' }}>
+            <h4 style={{ margin: '0 0 8px' }}>🔑 OA 单点登录（SSO）白名单</h4>
+            <div style={{ fontSize: 13, color: '#555', marginBottom: 10 }}>
+              OA 在用户登录后调用下方接口，RAG 校验工号是否在清单中，在则放行、不在则拒绝。<br />
+              提供给 OA 的接口地址：<code style={{ background: '#fff', padding: '2px 6px', borderRadius: 4 }}>{oaSso.ssoUrl}</code>
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              模式：
+              <select value={oaSso.mode} onChange={e => { const mode = e.target.value; setOaSso(s => ({ ...s, mode })); saveSSO({ mode }); }}>
+                <option value="whitelist">白名单模式（仅允许清单内工号）</option>
+                <option value="open">放开模式（允许任意已同步 OA 人员）</option>
+              </select>
+              <label style={{ marginLeft: 16 }}>
+                <input type="checkbox" checked={oaSso.requireSign} onChange={e => { const requireSign = e.target.checked; setOaSso(s => ({ ...s, requireSign })); saveSSO({ requireSign }); }} /> 启用签名校验（HMAC-SHA256，防伪造）
+              </label>
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              签名密钥（与 OA 共享）：
+              <input type="password" value={oaSsoSecret} onChange={e => setOaSsoSecret(e.target.value)} placeholder={oaSso.hasSignSecret ? ('已配置（' + (oaSso.signSecretMasked || '') + '），留空不改') : '未配置'} style={{ width: 280, marginLeft: 6 }} />
+              <button style={{ marginLeft: 8 }} onClick={async () => { await saveSSO({ signSecret: oaSsoSecret }); setOaSsoSecret(''); }}>保存密钥</button>
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ marginBottom: 4 }}>信任来源 IP（留空=信任全部，建议填 OA 服务器 IP）：</div>
+              {(oaSso.trustedIps || []).map((ip: string) => (
+                <span key={ip} style={{ display: 'inline-block', background: '#fff', border: '1px solid #ccc', borderRadius: 4, padding: '2px 8px', margin: '0 6px 6px 0' }}>
+                  {ip} <span style={{ cursor: 'pointer', color: '#f5222d' }} onClick={async () => { const ips = oaSso.trustedIps.filter((x: string) => x !== ip); await saveSSO({ trustedIps: ips }); setOaSso(s => ({ ...s, trustedIps: ips })); }}>✕</span>
+                </span>
+              ))}
+              <input value={oaSsoNewIp} onChange={e => setOaSsoNewIp(e.target.value)} placeholder="如 172.17.6.4" style={{ width: 160 }} />
+              <button style={{ marginLeft: 6 }} onClick={async () => { const ip = oaSsoNewIp.trim(); if (!ip) return; const ips = [...(oaSso.trustedIps || []), ip]; await saveSSO({ trustedIps: ips }); setOaSso(s => ({ ...s, trustedIps: ips })); setOaSsoNewIp(''); }}>添加IP</button>
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ marginBottom: 6 }}>允许登录工号清单（{oaSso.count || 0} 个）：
+                <button style={{ marginLeft: 8 }} onClick={syncAllSso}>一键导入全部 OA 人员工号</button>
+              </div>
+              <div style={{ maxHeight: 180, overflow: 'auto', background: '#fff', border: '1px solid #e0e0e0', borderRadius: 4, padding: 6 }}>
+                {(oaSso.whitelist || []).length === 0 && <span style={{ color: '#999' }}>清单为空，所有工号均无法 SSO 登录（请添加或一键导入）</span>}
+                {(oaSso.whitelist || []).map((id: string) => (
+                  <div key={id} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #f0f0f0' }}>
+                    <span style={{ fontFamily: 'monospace' }}>{id}</span>
+                    <span style={{ cursor: 'pointer', color: '#f5222d' }} onClick={() => removeSsoId(id)}>移除</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <input value={oaSsoNewId} onChange={e => setOaSsoNewId(e.target.value)} placeholder="输入工号后点击添加" style={{ width: 240 }} onKeyDown={e => { if (e.key === 'Enter') addSsoId(); }} />
+                <button style={{ marginLeft: 8 }} onClick={addSsoId}>添加工号</button>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, color: '#888' }}>
+              签名算法（供 OA 侧配置）：HMAC-SHA256，消息 = <code>工号|时间戳(秒)</code>，密钥 = 上方签名密钥；RAG 校验签名且时间戳 5 分钟内有效。
+            </div>
+            {oaSsoMsg && <div style={{ marginTop: 8, color: '#1677ff' }}>{oaSsoMsg}</div>}
           </div>
 
           {oaMsg && <div style={{ marginTop: 12, color: '#1890ff' }}>{oaMsg}</div>}

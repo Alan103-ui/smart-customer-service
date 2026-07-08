@@ -42,6 +42,7 @@ function savePersonnel(list) {
 router.get('/config', (req, res) => {
   try {
     const cfg = oa.loadOAConfig();
+    const sso = cfg.sso || {};
     res.json({
       enabled: cfg.enabled,
       baseUrl: cfg.baseUrl,
@@ -50,6 +51,15 @@ router.get('/config', (req, res) => {
       hasFixedToken: !!cfg.fixedToken,
       secretMasked: oa.maskCredential(cfg.secret),
       fixedTokenMasked: oa.maskCredential(cfg.fixedToken),
+      sso: {
+        mode: sso.mode || 'whitelist',
+        requireSign: !!sso.requireSign,
+        hasSignSecret: !!sso.signSecret,
+        signSecretMasked: oa.maskCredential(sso.signSecret || ''),
+        trustedIps: Array.isArray(sso.trustedIps) ? sso.trustedIps : [],
+        whitelist: Array.isArray(sso.whitelist) ? sso.whitelist : [],
+        count: Array.isArray(sso.whitelist) ? sso.whitelist.length : 0,
+      },
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -69,6 +79,8 @@ router.post('/config', (req, res) => {
       secret: secret && String(secret).trim() ? String(secret).trim() : existing.secret,
       fixedToken:
         fixedToken && String(fixedToken).trim() ? String(fixedToken).trim() : existing.fixedToken,
+      // 保留已有 SSO 白名单配置，避免保存连接信息时误清空
+      sso: existing.sso,
     });
     oa.clearTokenCache(); // 配置变更后强制刷新 token
     res.json({
@@ -83,6 +95,87 @@ router.post('/config', (req, res) => {
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ============ SSO 单点登录白名单管理 ============
+// 读取白名单配置（脱敏签名密钥）
+router.get('/whitelist', (req, res) => {
+  try {
+    const cfg = oa.loadOAConfig();
+    const sso = cfg.sso || {};
+    res.json({
+      mode: sso.mode || 'whitelist',
+      requireSign: !!sso.requireSign,
+      hasSignSecret: !!sso.signSecret,
+      signSecretMasked: oa.maskCredential(sso.signSecret || ''),
+      trustedIps: Array.isArray(sso.trustedIps) ? sso.trustedIps : [],
+      whitelist: Array.isArray(sso.whitelist) ? sso.whitelist : [],
+      count: Array.isArray(sso.whitelist) ? sso.whitelist.length : 0,
+      ssoUrl: '/api/auth/sso/oa',
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 新增白名单条目（单个/批量/整体覆盖）或修改模式、签名、IP 白名单
+router.post('/whitelist', (req, res) => {
+  try {
+    const cfg = oa.loadOAConfig();
+    const sso = cfg.sso || {};
+    const { employeeId, employeeIds, mode, requireSign, signSecret, trustedIps, whitelist } = req.body || {};
+    if (mode) sso.mode = mode === 'open' ? 'open' : 'whitelist';
+    if (typeof requireSign === 'boolean') sso.requireSign = requireSign;
+    if (signSecret && String(signSecret).trim()) sso.signSecret = String(signSecret).trim();
+    if (Array.isArray(trustedIps)) sso.trustedIps = trustedIps.map(String).map(s => s.trim()).filter(Boolean);
+    let list = Array.isArray(sso.whitelist) ? sso.whitelist.slice() : [];
+    if (Array.isArray(whitelist)) {
+      list = Array.from(new Set(list.concat(whitelist.map(String).map(s => s.trim()).filter(Boolean))));
+    }
+    if (employeeId) {
+      const e = String(employeeId).trim();
+      if (e && !list.includes(e)) list.push(e);
+    }
+    if (Array.isArray(employeeIds)) {
+      for (const e of employeeIds) { const s = String(e).trim(); if (s && !list.includes(s)) list.push(s); }
+    }
+    sso.whitelist = list;
+    oa.saveOAConfig(Object.assign({}, cfg, { sso }));
+    res.json({ success: true, count: list.length, whitelist: list });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 删除白名单条目
+router.delete('/whitelist/:employeeId', (req, res) => {
+  try {
+    const cfg = oa.loadOAConfig();
+    const sso = cfg.sso || {};
+    const e = decodeURIComponent(req.params.employeeId);
+    const list = (Array.isArray(sso.whitelist) ? sso.whitelist : []).filter(x => String(x) !== e);
+    sso.whitelist = list;
+    oa.saveOAConfig(Object.assign({}, cfg, { sso }));
+    res.json({ success: true, count: list.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 一键导入全部 OA 同步人员工号到白名单
+router.post('/whitelist/sync-all', async (req, res) => {
+  try {
+    const members = await oa.getAllOrgMembers();
+    const ids = (members || []).map(m => m.code).filter(Boolean).map(String).map(s => s.trim());
+    const cfg = oa.loadOAConfig();
+    const sso = cfg.sso || {};
+    const before = Array.isArray(sso.whitelist) ? sso.whitelist.length : 0;
+    sso.whitelist = Array.from(new Set((sso.whitelist || []).concat(ids)));
+    oa.saveOAConfig(Object.assign({}, cfg, { sso }));
+    res.json({ success: true, count: sso.whitelist.length, added: sso.whitelist.length - before });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
   }
 });
 

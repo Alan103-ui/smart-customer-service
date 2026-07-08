@@ -580,6 +580,133 @@ function setupAuthRoutes(app) {
     }
   });
 
+  // ============ 致远OA 单点登录（OA 调用 RAG 接口，按工号白名单放行）============
+  /**
+   * OA 在用户登录后调用本接口完成 SSO：携带登录工号，RAG 校验是否在允许清单（白名单）中，
+   * 在则签发 JWT 放行，不在则拒绝。
+   *   GET  /api/auth/sso/oa  —— OA 将用户浏览器重定向到本地址（门户单点跳转），写 localStorage 后进入应用
+   *   POST /api/auth/sso/oa  —— OA 后端服务间调用，返回 JSON {allowed, token, user}
+   * 安全加固（可选）：HMAC 签名（与 OA 共享 signSecret）+ 来源 IP 白名单（trustedIps）。
+   */
+  function getClientIp(req) {
+    const xff = req.headers['x-forwarded-for'];
+    if (xff) return String(xff).split(',')[0].trim();
+    return (req.socket && req.socket.remoteAddress) || '';
+  }
+  function computeOASSOSign(employeeId, ts, secret) {
+    return crypto.createHmac('sha256', secret).update(`${employeeId}|${ts}`).digest('hex');
+  }
+  async function resolvePersonByEmployeeId(employeeId, name) {
+    // 1) personnel.json 中已有记录（忽略 isActive，SSO 以白名单为准）
+    const personnel = loadPersonnel();
+    let person = personnel.find(p => p.username === employeeId);
+    if (person) return person;
+    // 2) 尝试从 OA 同步该人员档案（按工号 code 匹配）
+    try {
+      const members = await oa.getAllOrgMembers();
+      const m = (members || []).find(mm => mm.code && String(mm.code).trim() === String(employeeId));
+      if (m) {
+        const rec = oa.oaMemberToPersonnel(m);
+        return Object.assign({ id: 'user_oa_' + m.oaId, passwordHash: null }, rec);
+      }
+    } catch (e) { /* OA 不可达时降级为最小记录 */ }
+    // 3) 最小记录
+    return {
+      id: 'user_oa_' + employeeId,
+      oaId: null,
+      username: employeeId,
+      name: name || employeeId,
+      roleId: 'perm_003',
+      roleName: '普通用户',
+      email: '',
+      phone: '',
+      orgName: '',
+      postName: '',
+      levelName: '',
+      isActive: true,
+      source: 'oa',
+      passwordHash: null,
+      createdAt: new Date().toISOString(),
+    };
+  }
+  async function handleOASSO(req, res, format) {
+    const cfg = oa.loadOAConfig();
+    const sso = cfg.sso || {};
+    const q = req.query || {};
+    const b = req.body || {};
+    const employeeId = String(b.employeeId != null ? b.employeeId : (q.employeeId || '')).trim();
+    const name = String(b.name != null ? b.name : (q.name || '')).trim();
+    const ts = String(b.ts != null ? b.ts : (q.ts || '')).trim();
+    const sign = String(b.sign != null ? b.sign : (q.sign || '')).trim();
+    const redirect = String(q.redirect || b.redirect || '/').trim() || '/';
+
+    const deny = (error) => {
+      if (format === 'json') return res.status(403).json({ allowed: false, error });
+      const html = `<!doctype html><html><body style="font-family:sans-serif;padding:40px"><h2>单点登录被拒绝</h2><p>${error}</p><p><a href="/">返回首页</a></p></body></html>`;
+      return res.status(403).type('html').send(html);
+    };
+    const allow = (token, user) => {
+      if (format === 'json') return res.json({ allowed: true, token, user });
+      // 浏览器跳转：仅写入 cs_token，前端启动时会自动拉取 /api/auth/me 补全用户信息
+      const html = `<!doctype html><html><body><script>try{localStorage.setItem('cs_token',${JSON.stringify(token)});}catch(e){}location.href=${JSON.stringify(redirect)};</script></body></html>`;
+      return res.type('html').send(html);
+    };
+
+    if (!employeeId) return deny('缺少工号(employeeId)');
+
+    // 1) 来源 IP 白名单
+    const trustedIps = Array.isArray(sso.trustedIps) ? sso.trustedIps : [];
+    if (trustedIps.length > 0) {
+      const ip = getClientIp(req);
+      if (!trustedIps.includes(ip)) return deny(`来源 IP(${ip}) 不在信任列表`);
+    }
+
+    // 2) HMAC 签名校验
+    if (sso.requireSign) {
+      if (!sso.signSecret) return deny('SSO 签名密钥未配置');
+      if (!sign) return deny('缺少签名(sign)');
+      const expected = computeOASSOSign(employeeId, ts, sso.signSecret);
+      let ok = false;
+      try { ok = crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sign)); } catch (e) { ok = false; }
+      if (!ok) return deny('签名无效');
+      if (ts) {
+        const diff = Math.abs(Date.now() - Number(ts) * 1000);
+        if (Number.isNaN(diff) || diff > 5 * 60 * 1000) return deny('签名已过期');
+      }
+    }
+
+    // 3) 工号白名单校验
+    if (sso.mode === 'open') {
+      let exists = !!findPersonnelByUsername(employeeId);
+      if (!exists) {
+        try { exists = (await oa.getAllOrgMembers() || []).some(m => m.code && String(m.code).trim() === employeeId); } catch (e) {}
+      }
+      if (!exists) return deny('该工号未同步自 OA，不在允许范围');
+    } else {
+      const list = Array.isArray(sso.whitelist) ? sso.whitelist.map(String) : [];
+      if (!list.includes(employeeId)) return deny('工号不在允许清单中');
+    }
+
+    // 4) 放行：关联/创建人员并签发 JWT
+    try {
+      const person = await resolvePersonByEmployeeId(employeeId, name);
+      person.lastLoginAt = new Date().toISOString();
+      person.isActive = true;
+      const personnel = loadPersonnel();
+      const idx = personnel.findIndex(p => p.id === person.id);
+      if (idx >= 0) personnel[idx] = Object.assign(personnel[idx], person); else personnel.push(person);
+      savePersonnel(personnel);
+      const role = person.roleName === '管理员' ? 'admin' : 'user';
+      const user = { id: person.id, username: person.username, name: person.name, role };
+      const token = generateToken(user);
+      return allow(token, user);
+    } catch (e) {
+      return deny('登录处理失败：' + e.message);
+    }
+  }
+  app.get('/api/auth/sso/oa', (req, res) => handleOASSO(req, res, 'redirect'));
+  app.post('/api/auth/sso/oa', (req, res) => handleOASSO(req, res, 'json'));
+
   // ============ SSO单点登录（A8/OA系统对接）============
   
   /**
