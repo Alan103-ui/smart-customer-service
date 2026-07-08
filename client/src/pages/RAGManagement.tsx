@@ -12,7 +12,7 @@ let toastIdCounter = 0;
 
 // ==================== RAG 管理组件 ====================
 export default function RAGManagement() {
-  const [activeTab, setActiveTab] = useState<'stats' | 'test' | 'eval' | 'intent' | 'rewrite' | 'performance'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'test' | 'eval' | 'intent' | 'rewrite' | 'performance' | 'memory'>('stats');
   const [loading, setLoading] = useState(false);
   
   // Toast 通知
@@ -54,6 +54,10 @@ export default function RAGManagement() {
   const [performanceReport, setPerformanceReport] = useState<any>(null);
   const [selectedPerfType, setSelectedPerfType] = useState<'embedding' | 'reranker'>('embedding');
   const [perfRefreshTimer, setPerfRefreshTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // 记忆管理
+  const [memoryStats, setMemoryStats] = useState<any>(null);
+  const [memoryLoading, setMemoryLoading] = useState(false);
   
   const API_BASE = '/api/admin';
 
@@ -65,6 +69,22 @@ export default function RAGManagement() {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 4000);
   };
+
+  // ==================== 获取记忆统计 ====================
+  const fetchMemoryStats = async () => {
+    if (memoryLoading) return;
+    setMemoryLoading(true);
+    try {
+      const res = await fetch('/api/chat/memory-stats', { headers: getAuthHeaders() });
+      if (!res.ok) { showToast('获取记忆统计失败: ' + res.status, 'error'); setMemoryStats(null); }
+      else { setMemoryStats(await res.json()); }
+    } catch (err: any) { showToast('获取记忆统计失败: ' + (err?.message || '未知错误'), 'error'); setMemoryStats(null); }
+    finally { setMemoryLoading(false); }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'memory') fetchMemoryStats();
+  }, [activeTab]);
 
   // ==================== 获取统计信息 ====================
   const fetchStats = async () => {
@@ -349,11 +369,11 @@ export default function RAGManagement() {
       fetchModelStatus();
       fetchPerformanceReport(selectedPerfType);
       
-      // 每30秒自动刷新
+      // 每120秒自动刷新
       const timer = setInterval(() => {
         fetchModelStatus();
         fetchPerformanceReport(selectedPerfType);
-      }, 30000);
+      }, 120000);
       
       return () => clearInterval(timer);
     }
@@ -384,7 +404,8 @@ export default function RAGManagement() {
           { key: 'eval', label: '📈 效果评估' },
           { key: 'intent', label: '🧠 意图理解' },
           { key: 'rewrite', label: '✏️ 答案改写' },
-          { key: 'performance', label: '⚡ 性能监控' }
+          { key: 'performance', label: '⚡ 性能监控' },
+          { key: 'memory', label: '🧠 记忆管理' }
         ].map(tab => (
           <button
             key={tab.key}
@@ -1112,6 +1133,65 @@ export default function RAGManagement() {
           )}
         </div>
       )}
+
+          {activeTab === 'memory' && (
+            <div className="rag-tab-content">
+              <div className="faq-toolbar">
+                <h3>🧠 记忆管理</h3>
+                <button className="btn-primary" onClick={fetchMemoryStats} disabled={memoryLoading}>
+                  刷新统计
+                </button>
+              </div>
+
+              {memoryLoading ? (
+                <div className="rag-loading">加载中...</div>
+              ) : memoryStats ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, padding: 16 }}>
+                  <div style={{ background: '#e6f7ff', padding: 20, borderRadius: 8, borderLeft: '4px solid #1890ff' }}>
+                    <h4>📊 总体统计</h4>
+                    <p><strong>总记忆数：</strong>{memoryStats.total_memories || 0}</p>
+                    <p><strong>活跃会话：</strong>{memoryStats.active_sessions || 0}</p>
+                    <p><strong>记忆命中率：</strong>{((memoryStats.hit_rate || 0) * 100).toFixed(1)}%</p>
+                  </div>
+
+                  <div style={{ background: '#f6ffed', padding: 20, borderRadius: 8, borderLeft: '4px solid #52c41a' }}>
+                    <h4>👤 用户记忆</h4>
+                    {(() => {
+                      const list = memoryStats.user_memories_list && memoryStats.user_memories_list.length > 0
+                        ? memoryStats.user_memories_list
+                        : (memoryStats.user_memories && Object.keys(memoryStats.user_memories).length > 0
+                          ? Object.entries(memoryStats.user_memories).map(([userId, count]: [string, any]) => ({ userId, user_name: userId, username: '', count }))
+                          : []);
+                      if (list.length === 0) {
+                        return <div style={{ color: '#999', padding: '4px 0' }}>暂无用户记忆</div>;
+                      }
+                      return list.map((u: any) => (
+                        <div key={u.userId} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                          <span>
+                            {u.user_name}
+                            {u.username && u.username !== u.user_name ? `（${u.username}）` : ''}
+                          </span>
+                          <span>{u.count} 条记忆</span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+
+                  <div style={{ background: '#fff7e6', padding: 20, borderRadius: 8, borderLeft: '4px solid #fa8c16' }}>
+                    <h4>🏷️ 记忆类型分布</h4>
+                    {memoryStats.memory_types && Object.entries(memoryStats.memory_types).map(([type, count]: [string, any]) => (
+                      <div key={type} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                        <span>{type}</span>
+                        <span>{count} 条</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rag-empty">暂无数据，点击"刷新统计"按钮加载</div>
+              )}
+            </div>
+          )}
 
     </div>
   );

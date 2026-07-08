@@ -155,10 +155,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
 
-  // 记忆管理状态
-  const [memoryStats, setMemoryStats] = useState<any>(null);
-  const [memoryLoading, setMemoryLoading] = useState(false);
-
   // 日志管理状态
   const [logFiles, setLogFiles] = useState<any[]>([]);
   const [logEntries, setLogEntries] = useState<any[]>([]);
@@ -256,17 +252,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       setConversations(Array.isArray(data) ? data : []);
       setLoading(false);
     } catch (err) { console.error('获取对话列表失败', err); setConversations([]); setLoading(false); }
-  };
-
-  // 获取记忆统计
-  const fetchMemoryStats = async () => {
-    setMemoryLoading(true);
-    try {
-      const res = await fetch(`/api/chat/memory-stats`, { headers: getAuthHeaders() });
-      if (!res.ok) { console.error('获取记忆统计失败:', res.status); setMemoryStats(null); }
-      else { setMemoryStats(await res.json()); }
-    } catch (err) { console.error('获取记忆统计失败', err); setMemoryStats(null); }
-    finally { setMemoryLoading(false); }
   };
 
   // 获取日志文件列表（附带级别统计）
@@ -368,7 +353,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     if (tab === 'faq') { fetchFAQ(); fetchCategories(); fetchKnowledgeBases(); }
     if (tab === 'categories') { fetchCategories(); fetchKnowledgeBases(); }
     if (tab === 'conversations') { fetchConversations(); }
-    if (tab === 'rag') { fetchMemoryStats(); }
     if (tab === 'logs') { fetchLogs(); }
   }, [tab]);
 
@@ -837,70 +821,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
 
       {tab === 'basicInfo' && <BasicInfoManagement />}
 
-      {tab === 'rag' && (
-        <div>
-          <RAGManagement />
-          {/* 记忆管理（并入 RAG 管理） */}
-          <div className="memory-management" style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 20 }}>
-            <div className="faq-toolbar">
-              <h3>🧠 记忆管理</h3>
-              <button className="btn-primary" onClick={fetchMemoryStats} disabled={memoryLoading}>
-                刷新统计
-              </button>
-            </div>
-
-            {memoryLoading ? (
-              <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
-            ) : memoryStats ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, padding: 16 }}>
-                <div style={{ background: '#e6f7ff', padding: 20, borderRadius: 8, borderLeft: '4px solid #1890ff' }}>
-                  <h4>📊 总体统计</h4>
-                  <p><strong>总记忆数：</strong>{memoryStats.total_memories || 0}</p>
-                  <p><strong>活跃会话：</strong>{memoryStats.active_sessions || 0}</p>
-                  <p><strong>记忆命中率：</strong>{((memoryStats.hit_rate || 0) * 100).toFixed(1)}%</p>
-                </div>
-
-                <div style={{ background: '#f6ffed', padding: 20, borderRadius: 8, borderLeft: '4px solid #52c41a' }}>
-                  <h4>👤 用户记忆</h4>
-                  {(() => {
-                    const list = memoryStats.user_memories_list && memoryStats.user_memories_list.length > 0
-                      ? memoryStats.user_memories_list
-                      : (memoryStats.user_memories && Object.keys(memoryStats.user_memories).length > 0
-                        ? Object.entries(memoryStats.user_memories).map(([userId, count]: [string, any]) => ({ userId, user_name: userId, username: '', count }))
-                        : []);
-                    if (list.length === 0) {
-                      return <div style={{ color: '#999', padding: '4px 0' }}>暂无用户记忆</div>;
-                    }
-                    return list.map((u: any) => (
-                      <div key={u.userId} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                        <span>
-                          {u.user_name}
-                          {u.username && u.username !== u.user_name ? `（${u.username}）` : ''}
-                        </span>
-                        <span>{u.count} 条记忆</span>
-                      </div>
-                    ));
-                  })()}
-                </div>
-
-                <div style={{ background: '#fff7e6', padding: 20, borderRadius: 8, borderLeft: '4px solid #fa8c16' }}>
-                  <h4>🏷️ 记忆类型分布</h4>
-                  {memoryStats.memory_types && Object.entries(memoryStats.memory_types).map(([type, count]: [string, any]) => (
-                    <div key={type} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                      <span>{type}</span>
-                      <span>{count} 条</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
-                暂无数据，点击"刷新统计"按钮加载
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {tab === 'rag' && <RAGManagement />}
 
       {/* 对话管理 */}
       {tab === 'conversations' && (
