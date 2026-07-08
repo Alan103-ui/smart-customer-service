@@ -122,9 +122,11 @@ function errorLog(message, error = null, context = {}) {
 
 /**
  * 获取日志文件列表
- * @returns {Array} - 日志文件列表 [{filename, size, createdAt}]
+ * @param {object} options
+ * @param {boolean} options.summary - 是否附加级别统计（行数 + 各级别计数）
+ * @returns {Array} - 日志文件列表 [{filename, size, createdAt, modifiedAt, lines?, levelCounts?}]
  */
-function getLogFiles() {
+function getLogFiles({ summary = false } = {}) {
   try {
     const files = fs.readdirSync(LOGS_DIR);
     return files
@@ -132,12 +134,26 @@ function getLogFiles() {
       .map(f => {
         const filePath = path.join(LOGS_DIR, f);
         const stat = fs.statSync(filePath);
-        return {
+        const entry = {
           filename: f,
           size: stat.size,
           createdAt: stat.birthtime,
+          modifiedAt: stat.mtime,
           path: filePath
         };
+        if (summary) {
+          // 轻量统计：不逐行 JSON.parse，用正则计数，性能友好
+          const raw = fs.readFileSync(filePath, 'utf8');
+          const lines = raw.split('\n').filter(l => l.trim()).length;
+          const counts = { INFO: 0, WARN: 0, ERROR: 0, AUDIT: 0, PERF: 0 };
+          for (const lvl of Object.keys(counts)) {
+            const re = new RegExp('"level":"' + lvl + '"', 'g');
+            counts[lvl] = (raw.match(re) || []).length;
+          }
+          entry.lines = lines;
+          entry.levelCounts = counts;
+        }
+        return entry;
       })
       .sort((a, b) => b.filename.localeCompare(a.filename)); // 按日期降序
   } catch (e) {
@@ -151,9 +167,10 @@ function getLogFiles() {
  * @param {string} filename - 日志文件名（如 '2026-06-17.log'）
  * @param {number} limit - 返回行数限制（默认100）
  * @param {string} level - 按日志级别过滤（可选）
+ * @param {string} search - 按消息关键词过滤（可选，不区分大小写）
  * @returns {Array} - 日志条目数组
  */
-function readLogFile(filename, limit = 100, level = null) {
+function readLogFile(filename, limit = 100, level = null, search = null) {
   try {
     const filePath = path.join(LOGS_DIR, filename);
     if (!fs.existsSync(filePath)) {
@@ -169,7 +186,8 @@ function readLogFile(filename, limit = 100, level = null) {
         try {
           return JSON.parse(line);
         } catch (e) {
-          return null;
+          // 兼容纯文本日志（如 server.log）：作为原始文本条目
+          return { timestamp: null, level: 'RAW', message: line };
         }
       })
       .filter(log => log !== null);
@@ -177,6 +195,16 @@ function readLogFile(filename, limit = 100, level = null) {
     // 按级别过滤
     if (level) {
       logs = logs.filter(log => log.level === level);
+    }
+    
+    // 按关键词过滤
+    if (search) {
+      const s = String(search).toLowerCase();
+      logs = logs.filter(log => {
+        const msg = String(log.message || '').toLowerCase();
+        const meta = JSON.stringify(log).toLowerCase();
+        return msg.includes(s) || meta.includes(s);
+      });
     }
     
     // 返回最近的 limit 条

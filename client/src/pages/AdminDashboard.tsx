@@ -30,10 +30,82 @@ const createEditorConfig = (onChangeHtml: (html: string) => void): Partial<IEdit
   }
 });
 
+// ==================== 日志查看器辅助 ====================
+const LOG_LEVELS = [
+  { key: 'ALL', label: '全部', color: '#666', bg: '#f5f5f5' },
+  { key: 'ERROR', label: 'ERROR', color: '#cf1322', bg: '#fff1f0' },
+  { key: 'WARN', label: 'WARN', color: '#d46b08', bg: '#fff7e6' },
+  { key: 'INFO', label: 'INFO', color: '#0958d9', bg: '#e6f4ff' },
+  { key: 'AUDIT', label: 'AUDIT', color: '#531dab', bg: '#f9f0ff' },
+  { key: 'PERF', label: 'PERF', color: '#08979c', bg: '#e6fffb' },
+];
+const LOG_LEVEL_META: Record<string, { color: string; bg: string }> = LOG_LEVELS.reduce(
+  (acc, l) => { acc[l.key] = { color: l.color, bg: l.bg }; return acc; },
+  {} as Record<string, { color: string; bg: string }>
+);
+
+function fmtBytes(n: number): string {
+  if (!n && n !== 0) return '-';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function fmtTime(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  return d.toTimeString().slice(0, 8);
+}
+
+// 单条日志行（可展开查看详情）
+function LogRow({ entry }: { entry: any }) {
+  const [open, setOpen] = useState(false);
+  const meta = LOG_LEVEL_META[entry.level] || { color: '#666', bg: '#f5f5f5' };
+  const detail = { ...entry };
+  delete (detail as any).timestamp;
+  delete (detail as any).level;
+  delete (detail as any).message;
+  const detailKeys = Object.keys(detail);
+  return (
+    <div
+      style={{
+        borderLeft: `3px solid ${meta.color}`,
+        background: entry.level === 'ERROR' ? '#fff5f5' : (open ? '#fafafa' : '#fff'),
+        padding: '6px 10px',
+        borderBottom: '1px solid #f0f0f0',
+        fontFamily: 'monospace',
+        fontSize: 12.5,
+        cursor: detailKeys.length ? 'pointer' : 'default'
+      }}
+      onClick={() => detailKeys.length && setOpen(o => !o)}
+    >
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ background: meta.bg, color: meta.color, padding: '1px 6px', borderRadius: 3, fontWeight: 600, fontSize: 11, minWidth: 52, textAlign: 'center' }}>
+          {entry.level}
+        </span>
+        <span style={{ color: '#999', minWidth: 64 }}>{fmtTime(entry.timestamp)}</span>
+        <span style={{ color: '#333', flex: 1, wordBreak: 'break-all' }}>{entry.message}</span>
+        {detailKeys.length > 0 && (
+          <span style={{ color: '#bbb', fontSize: 11 }}>{open ? '▲' : '▼'}</span>
+        )}
+      </div>
+      {open && detailKeys.length > 0 && (
+        <pre style={{ margin: '6px 0 2px 70px', background: '#fff', border: '1px solid #eee', padding: 8, borderRadius: 4, fontSize: 11.5, color: '#555', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          {JSON.stringify(detail, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 // ==================== 类型定义 ====================
 interface Conversation {
   id: string;
   session_id: string;
+  user_id?: string | null;
+  user_name?: string;
+  username?: string;
   messages: Message[];
   intent: string | null;
   resolved: number;
@@ -88,10 +160,15 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const [memoryLoading, setMemoryLoading] = useState(false);
 
   // 日志管理状态
-  const [logFiles, setLogFiles] = useState<string[]>([]);
-  const [logContent, setLogContent] = useState<string>('');
+  const [logFiles, setLogFiles] = useState<any[]>([]);
+  const [logEntries, setLogEntries] = useState<any[]>([]);
   const [selectedLogFile, setSelectedLogFile] = useState<string>('');
   const [logLoading, setLogLoading] = useState(false);
+  const [logLevelFilter, setLogLevelFilter] = useState<string>('ALL');
+  const [logSearch, setLogSearch] = useState<string>('');
+  const [logLimit, setLogLimit] = useState<number>(200);
+  const [logAutoRefresh, setLogAutoRefresh] = useState<boolean>(false);
+  const logRefreshTimer = useRef<number | null>(null);
 
   // 知识库状态（供分类和FAQ选择使用）
   const [knowledgeBases, setKnowledgeBases] = useState<any[]>([]);
@@ -192,15 +269,14 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     finally { setMemoryLoading(false); }
   };
 
-  // 获取日志文件列表
+  // 获取日志文件列表（附带级别统计）
   const fetchLogs = async () => {
     setLogLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/logs`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/logs?summary=true`, { headers: getAuthHeaders() });
       if (!res.ok) { console.error('获取日志文件列表失败:', res.status); setLogFiles([]); }
       else {
         const result = await res.json();
-        // 后端返回 { success: true, data: [...] }
         const files = Array.isArray(result) ? result : (result.data || []);
         setLogFiles(files);
       }
@@ -208,21 +284,48 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     finally { setLogLoading(false); }
   };
 
-  // 读取日志文件内容
-  const fetchLogFileContent = async (filename: string) => {
+  // 读取日志文件内容（结构化条目，支持级别/搜索/条数过滤）
+  const fetchLogEntries = async (filename: string) => {
+    if (!filename) return;
     setLogLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/logs/${filename}`, { headers: getAuthHeaders() });
-      if (!res.ok) { console.error('读取日志文件失败:', res.status); setLogContent(''); }
+      const params = new URLSearchParams();
+      params.set('limit', String(logLimit));
+      if (logLevelFilter !== 'ALL') params.set('level', logLevelFilter);
+      if (logSearch.trim()) params.set('search', logSearch.trim());
+      const res = await fetch(`${API_BASE}/logs/${encodeURIComponent(filename)}?${params.toString()}`, { headers: getAuthHeaders() });
+      if (!res.ok) { console.error('读取日志文件失败:', res.status); setLogEntries([]); }
       else {
         const result = await res.json();
-        // 后端返回 { success: true, content: '...' }
-        setLogContent(result.content || '(空文件)');
+        setLogEntries(Array.isArray(result.data) ? result.data : []);
         setSelectedLogFile(filename);
       }
-    } catch (err) { console.error('读取日志文件失败', err); setLogContent(''); }
+    } catch (err) { console.error('读取日志文件失败', err); setLogEntries([]); }
     finally { setLogLoading(false); }
   };
+
+  // 切换文件/筛选条件变化时重新加载
+  const reloadLogEntries = () => {
+    if (selectedLogFile) fetchLogEntries(selectedLogFile);
+  };
+
+  // 实时刷新（每 3 秒轮询当前文件）
+  useEffect(() => {
+    if (logAutoRefresh && selectedLogFile) {
+      logRefreshTimer.current = window.setInterval(() => fetchLogEntries(selectedLogFile), 3000);
+      return () => {
+        if (logRefreshTimer.current) window.clearInterval(logRefreshTimer.current);
+      };
+    }
+  }, [logAutoRefresh, selectedLogFile, logLevelFilter, logSearch, logLimit]);
+
+  // 级别 / 条数筛选变化即重新查询（搜索需手动点“查询”，避免逐字请求）
+  useEffect(() => {
+    if (selectedLogFile && !logAutoRefresh) {
+      fetchLogEntries(selectedLogFile);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logLevelFilter, logLimit]);
 
   // 删除单个对话
   const deleteConversation = async (sessionId: string) => {
@@ -257,7 +360,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     fetchConversations();
     fetchCategories();
     fetchKnowledgeBases();
-    const timer = setInterval(() => { fetchStats(); fetchConversations(); }, 10000);
+    const timer = setInterval(() => { fetchStats(); fetchConversations(); }, 60000); // 60秒刷新一次
     return () => clearInterval(timer);
   }, []);
 
@@ -759,6 +862,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                 <tr style={{ background: '#fafafa' }}>
                   <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}><input type="checkbox" checked={selectedSessionIds.size > 0 && selectedSessionIds.size === conversations.length} onChange={(e) => { if (e.target.checked) setSelectedSessionIds(new Set(conversations.map((c: Conversation) => c.session_id))); else setSelectedSessionIds(new Set()); }} /></th>
                   <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>会话ID</th>
+                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>咨询人</th>
                   <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>消息数</th>
                   <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>状态</th>
                   <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>时间</th>
@@ -784,6 +888,10 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                         }} />
                       </td>
                       <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5', fontSize: 12, fontFamily: 'monospace' }}>{conv.session_id.substring(0, 16)}...</td>
+                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>
+                        <div style={{ fontWeight: 600 }}>{conv.user_name || conv.username || '匿名用户'}</div>
+                        {conv.username && <div style={{ fontSize: 12, color: '#999' }}>@{conv.username}</div>}
+                      </td>
                       <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>{msgCount}</td>
                       <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>{conv.resolved ? '✅ 已解决' : '⏳ 进行中'}</td>
                       <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5', fontSize: 12 }}>{new Date(conv.created_at).toLocaleString('zh-CN')}</td>
@@ -810,7 +918,12 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
             return (
               <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setSelectedSession(null)}>
                 <div style={{ background: '#fff', borderRadius: 8, maxWidth: 800, width: '90%', maxHeight: 500, display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
-                  <div style={{ padding: 16, borderBottom: '1px solid #f0f0f0', fontSize: 16, fontWeight: 600 }}>对话详情</div>
+                  <div style={{ padding: 16, borderBottom: '1px solid #f0f0f0', fontSize: 16, fontWeight: 600 }}>
+                    对话详情
+                    <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 400, color: '#1890ff' }}>
+                      👤 {conv.user_name || conv.username || '匿名用户'}{conv.username ? `（@${conv.username}）` : ''}
+                    </span>
+                  </div>
                   <div style={{ overflowY: 'auto', padding: 16, flex: 1 }}>
                     {msgs.length === 0 ? <div style={{ textAlign: 'center', color: '#999' }}>无消息</div> : msgs.map((m, i) => (
                       <div key={i} style={{ marginBottom: 12, padding: 10, borderRadius: 6, background: m.role === 'user' ? '#e6f7ff' : '#f6ffed', borderLeft: m.role === 'user' ? '4px solid #1890ff' : '4px solid #52c41a' }}>
@@ -852,12 +965,25 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
 
               <div style={{ background: '#f6ffed', padding: 20, borderRadius: 8, borderLeft: '4px solid #52c41a' }}>
                 <h4>👤 用户记忆</h4>
-                {memoryStats.user_memories && Object.entries(memoryStats.user_memories).map(([userId, count]: [string, any]) => (
-                  <div key={userId} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                    <span>{userId}</span>
-                    <span>{count} 条记忆</span>
-                  </div>
-                ))}
+                {(() => {
+                  const list = memoryStats.user_memories_list && memoryStats.user_memories_list.length > 0
+                    ? memoryStats.user_memories_list
+                    : (memoryStats.user_memories && Object.keys(memoryStats.user_memories).length > 0
+                      ? Object.entries(memoryStats.user_memories).map(([userId, count]: [string, any]) => ({ userId, user_name: userId, username: '', count }))
+                      : []);
+                  if (list.length === 0) {
+                    return <div style={{ color: '#999', padding: '4px 0' }}>暂无用户记忆</div>;
+                  }
+                  return list.map((u: any) => (
+                    <div key={u.userId} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                      <span>
+                        {u.user_name}
+                        {u.username && u.username !== u.user_name ? `（${u.username}）` : ''}
+                      </span>
+                      <span>{u.count} 条记忆</span>
+                    </div>
+                  ));
+                })()}
               </div>
 
               <div style={{ background: '#fff7e6', padding: 20, borderRadius: 8, borderLeft: '4px solid #fa8c16' }}>
@@ -880,26 +1006,112 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
 
       {/* 日志管理 */}
       {tab === 'logs' && (
-        <div style={{ padding: 20, background: '#fff', minHeight: 300 }}>
-          <h3 style={{ margin: '0 0 16px' }}>📝 日志管理</h3>
-          <p style={{ color: '#666' }}>
-            日志文件列表功能已就绪（共 {logFiles.length} 个文件）。
-            <br />
-            <button
-              onClick={fetchLogs}
-              style={{ marginTop: 8, padding: '6px 16px', cursor: 'pointer' }}
-            >
-              刷新列表
+        <div style={{ padding: 16, background: '#fff', minHeight: 300 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ margin: 0 }}>📝 日志管理</h3>
+            <button onClick={fetchLogs} disabled={logLoading}
+              style={{ padding: '5px 14px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff' }}>
+              {logLoading ? '加载中…' : '↻ 刷新列表'}
             </button>
-          </p>
-          <div style={{ marginTop: 12, maxHeight: 400, overflow: 'auto' }}>
-            {logFiles.map((f) => (
-              <div key={String(f.filename || f)} style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0', fontFamily: 'monospace', fontSize: 13 }}>
-                {typeof f === 'string' ? f : f.filename}
-                {' '}
-                {typeof f !== 'string' && f.size && '(' + f.size + ')'}
-              </div>
-            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+            {/* 左侧：文件列表 */}
+            <div style={{ width: 340, flexShrink: 0, border: '1px solid #eee', borderRadius: 6, maxHeight: 620, overflow: 'auto' }}>
+              {logFiles.length === 0 && (
+                <div style={{ padding: 20, color: '#999', textAlign: 'center' }}>暂无日志文件</div>
+              )}
+              {logFiles.map((f) => {
+                const active = f.filename === selectedLogFile;
+                const lc = f.levelCounts || {};
+                const total = (lc.ERROR || 0) + (lc.WARN || 0) + (lc.INFO || 0) + (lc.AUDIT || 0) + (lc.PERF || 0);
+                return (
+                  <div
+                    key={f.filename}
+                    onClick={() => fetchLogEntries(f.filename)}
+                    style={{
+                      padding: '10px 12px',
+                      borderBottom: '1px solid #f0f0f0',
+                      cursor: 'pointer',
+                      background: active ? '#e6f4ff' : '#fff',
+                      borderLeft: active ? '3px solid #0958d9' : '3px solid transparent'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, color: '#222' }}>{f.filename}</span>
+                      <span style={{ color: '#999', fontSize: 11 }}>{fmtBytes(f.size)}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ color: '#999', fontSize: 11 }}>{(f.lines ?? total) || 0} 行</span>
+                      {lc.ERROR > 0 && <span style={{ background: '#fff1f0', color: '#cf1322', fontSize: 11, padding: '0 6px', borderRadius: 3 }}>ERROR {lc.ERROR}</span>}
+                      {lc.WARN > 0 && <span style={{ background: '#fff7e6', color: '#d46b08', fontSize: 11, padding: '0 6px', borderRadius: 3 }}>WARN {lc.WARN}</span>}
+                      {lc.INFO > 0 && <span style={{ background: '#e6f4ff', color: '#0958d9', fontSize: 11, padding: '0 6px', borderRadius: 3 }}>INFO {lc.INFO}</span>}
+                      {lc.AUDIT > 0 && <span style={{ background: '#f9f0ff', color: '#531dab', fontSize: 11, padding: '0 6px', borderRadius: 3 }}>AUDIT {lc.AUDIT}</span>}
+                      {lc.PERF > 0 && <span style={{ background: '#e6fffb', color: '#08979c', fontSize: 11, padding: '0 6px', borderRadius: 3 }}>PERF {lc.PERF}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 右侧：日志内容 */}
+            <div style={{ flex: 1, minWidth: 0, border: '1px solid #eee', borderRadius: 6, overflow: 'hidden' }}>
+              {!selectedLogFile ? (
+                <div style={{ padding: 60, color: '#bbb', textAlign: 'center' }}>← 从左侧选择一个日志文件查看内容</div>
+              ) : (
+                <>
+                  {/* 工具栏 */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 12px', borderBottom: '1px solid #eee', background: '#fafafa' }}>
+                    <strong style={{ fontSize: 13 }}>{selectedLogFile}</strong>
+                    <span style={{ color: '#999', fontSize: 12 }}>共 {logEntries.length} 条</span>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {LOG_LEVELS.map(l => (
+                        <button key={l.key} onClick={() => setLogLevelFilter(l.key)}
+                          style={{
+                            fontSize: 11, padding: '3px 9px', cursor: 'pointer', borderRadius: 12, border: '1px solid',
+                            borderColor: logLevelFilter === l.key ? l.color : '#d9d9d9',
+                            background: logLevelFilter === l.key ? l.bg : '#fff',
+                            color: logLevelFilter === l.key ? l.color : '#666'
+                          }}>
+                          {l.label}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      placeholder="搜索关键词…"
+                      value={logSearch}
+                      onChange={e => setLogSearch(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') reloadLogEntries(); }}
+                      style={{ flex: 1, minWidth: 120, padding: '5px 10px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }}
+                    />
+                    <select value={logLimit} onChange={e => setLogLimit(Number(e.target.value))}
+                      style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }}>
+                      <option value={100}>最近100</option>
+                      <option value={200}>最近200</option>
+                      <option value={500}>最近500</option>
+                      <option value={1000}>最近1000</option>
+                      <option value={999999}>全部</option>
+                    </select>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#666', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={logAutoRefresh} onChange={e => setLogAutoRefresh(e.target.checked)} />
+                      实时
+                    </label>
+                    <button onClick={reloadLogEntries} disabled={logLoading}
+                      style={{ padding: '5px 12px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff', fontSize: 12 }}>
+                      {logLoading ? '…' : '查询'}
+                    </button>
+                  </div>
+                  {/* 日志条目 */}
+                  <div style={{ maxHeight: 560, overflow: 'auto' }}>
+                    {logEntries.length === 0 ? (
+                      <div style={{ padding: 40, color: '#999', textAlign: 'center' }}>无匹配日志</div>
+                    ) : (
+                      logEntries.map((entry, i) => <LogRow key={i} entry={entry} />)
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

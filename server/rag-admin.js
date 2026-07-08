@@ -891,10 +891,11 @@ router.post('/upload-media', uploadMedia.single('file'), (req, res) => {
 
 
 // ============ 九、日志管理 API ============
-// 获取日志文件列表
+// 获取日志文件列表（?summary=true 附带行数 + 各级别计数）
 router.get('/logs', (req, res) => {
   try {
-    const files = getLogFiles();
+    const summary = req.query.summary === 'true' || req.query.summary === '1';
+    const files = getLogFiles({ summary });
     res.json({ success: true, data: files });
   } catch (err) {
     errorLog('获取日志文件列表失败', err);
@@ -902,12 +903,12 @@ router.get('/logs', (req, res) => {
   }
 });
 
-// 读取日志文件内容
+// 读取日志文件内容（支持 limit / level / search 过滤）
 router.get('/logs/:filename', (req, res) => {
   try {
     const { filename } = req.params;
-    const { limit = 100, level = null } = req.query;
-    const logs = readLogFile(filename, Number(limit), level);
+    const { limit = 100, level = null, search = null } = req.query;
+    const logs = readLogFile(filename, Number(limit), level, search);
     res.json({ success: true, data: logs, total: logs.length });
   } catch (err) {
     errorLog('读取日志文件失败', err, { filename: req.params.filename });
@@ -949,13 +950,30 @@ function writeDB(data) {
   fs.writeFileSync(fp, JSON.stringify(data, null, 2));
 }
 
+// 将对话记录的 user_id 关联出用户姓名（用于后台对话管理展示咨询人）
+function enrichConversation(conv) {
+  const result = {
+    ...conv,
+    messages: typeof conv.messages === 'string' ? JSON.parse(conv.messages || '[]') : conv.messages
+  };
+  if (conv.user_id) {
+    const u = auth.findUserById(conv.user_id);
+    result.user_name = u ? (u.name || u.username) : '未知用户';
+    result.username = u ? u.username : '';
+  } else {
+    result.user_name = '匿名用户';
+    result.username = '';
+  }
+  return result;
+}
+
 // 获取对话列表（分页）
 router.get('/conversations', (req, res) => {
   try {
     const db = readDB();
     const { limit = 100, offset = 0 } = req.query;
     const slice = db.conversations.slice(Number(offset), Number(offset) + Number(limit));
-    res.json(slice.map(c => ({ ...c, messages: JSON.parse(c.messages) })));
+    res.json(slice.map(c => enrichConversation(c)));
   } catch (err) {
     errorLog('获取对话列表失败', err);
     res.status(500).json({ error: err.message });
@@ -968,7 +986,7 @@ router.get('/conversations/:sessionId', (req, res) => {
     const db = readDB();
     const conv = db.conversations.find(c => c.session_id === req.params.sessionId);
     if (!conv) return res.status(404).json({ error: 'Not found' });
-    res.json({ ...conv, messages: JSON.parse(conv.messages) });
+    res.json(enrichConversation(conv));
   } catch (err) {
     errorLog('获取对话详情失败', err);
     res.status(500).json({ error: err.message });
@@ -1040,6 +1058,35 @@ router.post('/memory/enhance-query', (req, res) => {
 router.get('/memory/stats', (req, res) => {
   try {
     const stats = getMemoryStats();
+    // 关联用户姓名（sessionId 实际为 userId）
+    const nameCache = {};
+    const getName = (uid) => {
+      if (!uid) return { user_name: '匿名用户', username: '' };
+      if (nameCache[uid]) return nameCache[uid];
+      let info;
+      const u = auth.findUserById(uid);
+      if (u) {
+        info = { user_name: u.name || u.username, username: u.username };
+      } else if (uid.startsWith('user')) {
+        info = { user_name: uid, username: '' };
+      } else {
+        info = { user_name: '匿名会话', username: uid };
+      }
+      nameCache[uid] = info;
+      return info;
+    };
+    if (Array.isArray(stats.sessions)) {
+      stats.sessions = stats.sessions.map(s => {
+        const { user_name, username } = getName(s.sessionId);
+        return { ...s, user_name, username };
+      });
+    }
+    if (stats.user_memories && typeof stats.user_memories === 'object') {
+      stats.user_memories_list = Object.entries(stats.user_memories).map(([uid, count]) => {
+        const { user_name, username } = getName(uid);
+        return { userId: uid, user_name, username, count };
+      });
+    }
     res.json({ success: true, stats });
   } catch (err) {
     res.status(500).json({ error: err.message });
