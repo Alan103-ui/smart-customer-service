@@ -12,6 +12,12 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // 致远OA 账号登录（账号打通式 SSO）
+  const [oaU, setOaU] = useState('');
+  const [oaN, setOaN] = useState('');
+  const [oaLoading, setOaLoading] = useState(false);
+  const [oaError, setOaError] = useState('');
+
   // 如果已登录，自动回调 onLogin（由 App.tsx 处理跳转）
   React.useEffect(() => {
     const token = localStorage.getItem('cs_token');
@@ -54,10 +60,38 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     }
   };
 
-  // SSO 登录（跳转 OA 系统）
+  // SSO 登录（跳转 OA 系统，需 A8 开启 CAS/OAuth 端点）
   const handleSSOLogin = () => {
-    // 跳转到后端SSO登录接口，由后端重定向到OA系统
     window.location.href = `${API_BASE}/api/auth/sso/login`;
+  };
+
+  // 致远OA 账号登录（账号打通：工号 + 姓名，适配未开放 CAS/OAuth 的 A8）
+  const handleOALogin = async () => {
+    setOaError('');
+    if (!oaU.trim()) {
+      setOaError('请输入 OA 工号');
+      return;
+    }
+    setOaLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/sso/oa-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: oaU.trim(), name: oaN.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setOaError(data.error || 'OA 登录失败');
+        return;
+      }
+      localStorage.setItem('cs_token', data.token);
+      localStorage.setItem('cs_user', JSON.stringify(data.user));
+      onLogin(data.user);
+    } catch (err: any) {
+      setOaError('网络错误，请稍后重试');
+    } finally {
+      setOaLoading(false);
+    }
   };
 
   // 检查URL中是否有SSO回调的token（SSO登录成功后后端重定向带回token）
@@ -67,7 +101,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     if (token) {
       // 移除URL中的token参数（安全考虑）
       window.history.replaceState({}, document.title, window.location.pathname);
-      
+
       // 用token获取用户信息并自动登录
       fetch(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -153,6 +187,37 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         >
           🔐 通过 OA 系统单点登录
         </button>
+
+        {/* 致远OA 账号登录（账号打通式 SSO，适配未开放 CAS/OAuth 的 A8） */}
+        <div className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+          <div className="text-sm text-gray-600 mb-2">使用致远OA账号登录（工号 + 姓名）</div>
+          {oaError && (
+            <div className="p-2 mb-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded">
+              ❌ {oaError}
+            </div>
+          )}
+          <input
+            type="text"
+            value={oaU}
+            onChange={e => setOaU(e.target.value)}
+            placeholder="OA 工号，如 GK88888"
+            className="w-full px-3 py-2 mb-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500"
+          />
+          <input
+            type="text"
+            value={oaN}
+            onChange={e => setOaN(e.target.value)}
+            placeholder="姓名（校验用，防止冒用）"
+            className="w-full px-3 py-2 mb-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500"
+          />
+          <button
+            onClick={handleOALogin}
+            disabled={oaLoading}
+            className="w-full py-2 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
+          >
+            {oaLoading ? '登录中...' : '使用 OA 账号登录'}
+          </button>
+        </div>
 
         {/* 底部提示 */}
         <p className="text-center text-xs text-gray-400">

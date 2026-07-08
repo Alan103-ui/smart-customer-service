@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const oa = require('./oa-client'); // 致远OA REST 客户端（rest/token + rest/orgMembers）
 
 // ============ 配置 ============
 const JWT_SECRET = process.env.JWT_SECRET || 'smart-cs-secret-key-2026';
@@ -269,6 +270,37 @@ async function verifySSOTicketGeneric(ticket) {
   }
 }
 
+// ============ 致远OA REST 账号验证（账号打通式 SSO）============
+/**
+ * 基于致远OA REST 接口（rest/token + rest/orgMembers）验证账号。
+ * 该 A8 版本未开放标准 CAS/OAuth 端点，采用"账号打通"：
+ * 用户提交 OA 工号（及可选姓名），后端用集成凭证拉 OA 全量人员并匹配。
+ */
+async function verifyOARestAccount({ username, name } = {}) {
+  const u = (username || '').toString().trim();
+  if (!u) throw new Error('请输入 OA 工号');
+  let members;
+  try {
+    members = await oa.getAllOrgMembers();
+  } catch (e) {
+    throw new Error('无法连接致远OA，请检查 OA 配置或服务：' + e.message);
+  }
+  if (!Array.isArray(members) || members.length === 0) {
+    throw new Error('未从 OA 获取到人员数据');
+  }
+  let m = members.find(mm => mm.code && String(mm.code).trim() === u);
+  if (!m) m = members.find(mm => mm.name && mm.name === u);
+  if (!m) throw new Error('OA 中未找到该工号/姓名对应的人员');
+  if (m.enabled === false) throw new Error('该 OA 账号已被禁用');
+  const n = (name || '').toString().trim();
+  if (n) {
+    if (!m.name || m.name !== n) {
+      throw new Error('姓名与 OA 记录不匹配，请核对');
+    }
+  }
+  return m;
+}
+
 // ============ 人员数据操作（合并用户管理到人员信息） ============
 
 function loadPersonnel() {
@@ -506,6 +538,45 @@ function setupAuthRoutes(app) {
       });
     } catch (err) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============ 致远OA 账号登录（账号打通式 SSO，适配未开放CAS/OAuth的A8）============
+  /**
+   * POST /api/auth/sso/oa-login
+   * 用户提交 OA 工号（及可选姓名），后端用集成凭证校验 OA 人员后签发本系统 JWT。
+   * 自动关联 personnel.json 中已有 OA 人员记录（按 oaId/username），否则自动创建。
+   */
+  app.post('/api/auth/sso/oa-login', async (req, res) => {
+    try {
+      const { username, name } = req.body || {};
+      const m = await verifyOARestAccount({ username, name });
+
+      const personnel = loadPersonnel();
+      let person = personnel.find(p =>
+        (p.oaId != null && String(p.oaId) === String(m.oaId)) ||
+        (p.username && p.username === (m.code || m.name))
+      );
+      if (!person) {
+        const rec = oa.oaMemberToPersonnel(m);
+        person = Object.assign({ id: 'user_oa_' + m.oaId, passwordHash: null }, rec);
+        personnel.push(person);
+      }
+      person.lastLoginAt = new Date().toISOString();
+      const idx = personnel.findIndex(p => p.id === person.id);
+      if (idx >= 0) personnel[idx] = person; else personnel.push(person);
+      savePersonnel(personnel);
+
+      const role = person.roleName === '管理员' ? 'admin' : 'user';
+      const user = { id: person.id, username: person.username, name: person.name, role };
+      const token = generateToken(user);
+      res.json({
+        success: true,
+        token,
+        user: { id: user.id, username: user.username, name: user.name, role: user.role }
+      });
+    } catch (e) {
+      res.status(401).json({ success: false, error: e.message });
     }
   });
 
