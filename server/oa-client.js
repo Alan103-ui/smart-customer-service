@@ -221,6 +221,7 @@ function mapRawMember(m) {
     oaAccountId: String(m.orgAccountId),
     name: m.name || '',
     code: m.code || '', // 工号
+    loginName: m.loginName || (p && p.loginName) || '', // 登录名（致远OA人员字段，优先于工号作为账号）
     orgDepartmentId: m.orgDepartmentId != null ? String(m.orgDepartmentId) : null,
     orgPostId: m.orgPostId != null ? String(m.orgPostId) : null,
     email: m.emailAddress || p.emailaddress || '',
@@ -272,7 +273,9 @@ async function getOrgMember(memberId) {
 
 // 将 OA 人员映射为系统 personnel 记录（不含密码，登录走 SSO 或管理员重置）
 function oaMemberToPersonnel(m) {
-  const username = (m.code && String(m.code).trim()) || 'oa_' + m.oaId;
+  // 优先取 OA 登录名 loginName，回退工号 code，再回退 oa_<oaId>
+  const loginName = (m.loginName && String(m.loginName).trim()) || '';
+  const username = loginName || (m.code && String(m.code).trim()) || 'oa_' + m.oaId;
   // 从 raw 中提取更丰富的组织信息（OA 返回的原始字段）
   const raw = m.raw || {};
   return {

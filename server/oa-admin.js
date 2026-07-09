@@ -306,6 +306,8 @@ router.post('/import-member', async (req, res) => {
         phone: rec.phone,
         isActive: rec.isActive,
         oaAccountId: rec.oaAccountId,
+        // 仅当 OA 返回有效登录名（非 oa_ 兜底）时才更新，避免把已有真实账号退化回兜底名
+        username: (rec.username && !String(rec.username).startsWith('oa_')) ? rec.username : exist.username,
         updatedAt: rec.updatedAt,
       });
       savePersonnel(local);
@@ -354,6 +356,8 @@ router.post('/batch-import', async (req, res) => {
           phone: rec.phone,
           isActive: rec.isActive,
           oaAccountId: rec.oaAccountId,
+          // 仅当 OA 返回有效登录名（非 oa_ 兜底）时才更新，避免把已有真实账号退化回兜底名
+          username: (rec.username && !String(rec.username).startsWith('oa_')) ? rec.username : exist.username,
           updatedAt: rec.updatedAt,
         });
         updated++;
@@ -421,6 +425,8 @@ router.post('/sync-members', async (req, res) => {
           phone: rec.phone,
           isActive: rec.isActive,
           oaAccountId: rec.oaAccountId,
+          // 仅当 OA 返回有效登录名（非 oa_ 兜底）时才更新，避免把已有真实账号退化回兜底名
+          username: (rec.username && !String(rec.username).startsWith('oa_')) ? rec.username : exist.username,
           updatedAt: rec.updatedAt,
         });
         updated++;
