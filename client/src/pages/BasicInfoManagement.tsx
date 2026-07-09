@@ -16,7 +16,7 @@ async function safeFetch<T>(url: string): Promise<T> {
   return [] as unknown as T;
 }
 
-type SubTab = 'org' | 'personnel' | 'permissions' | 'oa' | 'software' | 'config' | 'sso' | 'dict' | 'dept' | 'announcement' | 'audit';
+type SubTab = 'org' | 'personnel' | 'permissions' | 'oa' | 'software' | 'config' | 'sso' | 'dict' | 'announcement';
 
 // 权限目录（本地兜底，后端 /api/admin/permissions/catalog 返回权威版本）
 const PERM_GROUPS_LOCAL: { group: string; items: { code: string; label: string }[] }[] = [
@@ -234,18 +234,10 @@ export default function BasicInfoManagement() {
     if (d.success) { setAnnMsg('公告已保存'); loadAnnouncement(); } else setAnnMsg('保存失败：' + (d.error || ''));
   };
 
-  // ==================== 操作审计 ====================
-  const [auditList, setAuditList] = useState<any[]>([]);
-  const [auditTotal, setAuditTotal] = useState(0);
-  const [auditOp, setAuditOp] = useState('');
-  const [auditOpInput, setAuditOpInput] = useState('');
-  const loadAudit = (op = auditOp) => {
-    const q = op ? ('?operation=' + encodeURIComponent(op)) : '';
-    fetch(API + '/audit-logs' + q, { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { data: [], total: 0 }).then((d: any) => { setAuditList(Array.isArray(d.data) ? d.data : []); setAuditTotal(d.total || 0); }).catch(() => {});
-  };
+  // 操作审计已迁移至「日志管理」标签页（见 AdminDashboard 日志管理子页）
 
   useEffect(() => {
-    if (subTab === 'org') loadOrg();
+    if (subTab === 'org') { loadOrg(); loadDepts(); }
     if (subTab === 'personnel') loadP();
     if (subTab === 'permissions') loadPerm();
     if (subTab === 'oa') { loadOA(); loadSSO(); }
@@ -253,9 +245,7 @@ export default function BasicInfoManagement() {
     if (subTab === 'config') loadConfig();
     if (subTab === 'sso') loadSsoWhitelist();
     if (subTab === 'dict') loadDict();
-    if (subTab === 'dept') loadDepts();
     if (subTab === 'announcement') loadAnnouncement();
-    if (subTab === 'audit') loadAudit();
   }, [subTab]);
 
   // ==================== 组织架构保存 ====================
@@ -400,8 +390,8 @@ export default function BasicInfoManagement() {
     <div>
       <h2>基础信息管理</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {(['org', 'personnel', 'permissions', 'oa', 'software', 'config', 'sso', 'dict', 'dept', 'announcement', 'audit'] as SubTab[]).map(k => (
-          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织架构' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : k === 'dept' ? '部门管理' : k === 'announcement' ? '系统公告' : '操作审计'}</button>
+        {(['org', 'personnel', 'permissions', 'oa', 'software', 'config', 'sso', 'dict', 'announcement'] as SubTab[]).map(k => (
+          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织架构（含部门）' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : '系统公告'}</button>
         ))}
       </div>
 
@@ -423,6 +413,21 @@ export default function BasicInfoManagement() {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+
+          <h3 style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 16 }}>部门管理（多部门隔离基础）</h3>
+          <div>名称：<input value={deptName} onChange={e => setDeptName(e.target.value)} />
+            编码：<input value={deptCode} onChange={e => setDeptCode(e.target.value)} />
+            上级：<select value={deptParent} onChange={e => setDeptParent(e.target.value)}><option value="">-- 无 --</option>{deptList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
+            <button style={{ marginLeft: 8 }} onClick={saveDept}>添加部门</button>
+          </div>
+          {deptMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{deptMsg}</div>}
+          <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th>名称</th><th>编码</th><th>上级</th><th>操作</th></tr></thead>
+            <tbody>
+              {deptList.map((d: any) => (<tr key={d.id}><td>{d.name}</td><td>{d.code || '-'}</td><td>{deptList.find(x => x.id === d.parentId)?.name || '-'}</td><td><button onClick={() => delDept(d.id)}>删除</button></td></tr>))}
+              {deptList.length === 0 && <tr><td colSpan={4}>暂无部门</td></tr>}
             </tbody>
           </table>
         </div>
@@ -726,26 +731,6 @@ export default function BasicInfoManagement() {
         </div>
       )}
 
-      {/* 部门管理 */}
-      {subTab === 'dept' && (
-        <div>
-          <h3>部门管理（多部门隔离基础）</h3>
-          <div>名称：<input value={deptName} onChange={e => setDeptName(e.target.value)} />
-            编码：<input value={deptCode} onChange={e => setDeptCode(e.target.value)} />
-            上级：<select value={deptParent} onChange={e => setDeptParent(e.target.value)}><option value="">-- 无 --</option>{deptList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
-            <button style={{ marginLeft: 8 }} onClick={saveDept}>添加部门</button>
-          </div>
-          {deptMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{deptMsg}</div>}
-          <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><th>名称</th><th>编码</th><th>上级</th><th>操作</th></tr></thead>
-            <tbody>
-              {deptList.map((d: any) => (<tr key={d.id}><td>{d.name}</td><td>{d.code || '-'}</td><td>{deptList.find(x => x.id === d.parentId)?.name || '-'}</td><td><button onClick={() => delDept(d.id)}>删除</button></td></tr>))}
-              {deptList.length === 0 && <tr><td colSpan={4}>暂无部门</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      )}
-
       {/* 系统公告 */}
       {subTab === 'announcement' && (
         <div>
@@ -760,27 +745,6 @@ export default function BasicInfoManagement() {
           <div style={{ marginTop: 8 }}>内容：<br /><textarea value={ann.content} onChange={e => setAnn({ ...ann, content: e.target.value })} rows={4} style={{ width: '100%', maxWidth: 600 }} /></div>
           <div style={{ marginTop: 12 }}><button onClick={saveAnnouncement}>保存公告</button></div>
           {annMsg && <div style={{ marginTop: 8, color: '#52c41a' }}>{annMsg}</div>}
-        </div>
-      )}
-
-      {/* 操作审计 */}
-      {subTab === 'audit' && (
-        <div>
-          <h3>操作审计日志</h3>
-          <div>操作筛选：<input value={auditOpInput} onChange={e => setAuditOpInput(e.target.value)} placeholder="如 新增 / 删除 / 更新" />
-            <button style={{ marginLeft: 8 }} onClick={() => { setAuditOp(auditOpInput.trim()); loadAudit(auditOpInput.trim()); }}>查询</button>
-            <button style={{ marginLeft: 8 }} onClick={() => { setAuditOp(''); setAuditOpInput(''); loadAudit(''); }}>全部</button>
-          </div>
-          <p style={{ color: '#999', fontSize: 12 }}>共 {auditTotal} 条</p>
-          <table border={1} cellPadding={6} style={{ marginTop: 8, width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead><tr><th>时间</th><th>操作</th><th>操作人</th><th>详情</th></tr></thead>
-            <tbody>
-              {auditList.map((a: any, i: number) => (
-                <tr key={i}><td>{a.timestamp ? a.timestamp.slice(0, 19).replace('T', ' ') : '-'}</td><td>{a.operation || '-'}</td><td>{a.operator || '-'}</td><td style={{ maxWidth: 400, wordBreak: 'break-all' }}>{a.details ? JSON.stringify(a.details) : ''}</td></tr>
-              ))}
-              {auditList.length === 0 && <tr><td colSpan={4}>暂无记录</td></tr>}
-            </tbody>
-          </table>
         </div>
       )}
 
