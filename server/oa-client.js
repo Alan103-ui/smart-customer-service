@@ -261,16 +261,6 @@ async function getAllOrgMembers() {
 }
 
 // 兼容旧调用：按人员ID/工号查找（拉全量后本地过滤）
-async function getOrgMember(memberId) {
-  if (memberId === undefined || memberId === null || String(memberId).trim() === '') {
-    throw new Error('缺少人员 ID');
-  }
-  const all = await getAllOrgMembers();
-  const m = all.find((x) => String(x.oaId) === String(memberId) || (x.code && String(x.code) === String(memberId)));
-  if (!m) throw new Error('未找到该 OA 人员');
-  return m;
-}
-
 // 将 OA 人员映射为系统 personnel 记录（不含密码，登录走 SSO 或管理员重置）
 function oaMemberToPersonnel(m) {
   // 优先取 OA 登录名 loginName，回退工号 code，再回退 oa_<oaId>
@@ -298,31 +288,6 @@ function oaMemberToPersonnel(m) {
     updatedAt: new Date().toISOString(),
     lastLoginAt: null,
   };
-}
-
-// ============ 批量人员拉取 ============
-/**
- * 按人员ID/工号列表，从 OA 全量人员中筛选（该 OA 无单人接口，先拉全量再本地过滤）。
- * @param {string[]} memberIds - OA 人员ID或工号列表
- * @returns {{successes: object[], failures: object[]}}
- */
-async function batchGetMembers(memberIds) {
-  if (!Array.isArray(memberIds) || memberIds.length === 0) {
-    throw new Error('memberIds 必须为非空数组');
-  }
-  const idSet = new Set(memberIds.map((id) => String(id).trim()).filter(Boolean));
-  if (idSet.size === 0) throw new Error('无有效的人员 ID');
-  const all = await getAllOrgMembers();
-  const successes = all.filter(
-    (m) => idSet.has(m.oaId) || (m.code && idSet.has(m.code))
-  );
-  const foundKeys = new Set(
-    successes.map((m) => m.oaId).concat(successes.map((m) => (m.code ? String(m.code) : ''))).filter(Boolean)
-  );
-  const failures = memberIds
-    .filter((id) => !foundKeys.has(String(id).trim()))
-    .map((id) => ({ memberId: id, error: '未找到该 OA 人员' }));
-  return { successes, failures };
 }
 
 // 拉取 OA 全量人员（所有组织单位），返回原始成员数组与按单位统计
@@ -353,7 +318,5 @@ module.exports = {
   getOrgMembersByAccount,
   getAllOrgMembers,
   fetchAllMembers,
-  getOrgMember,
   oaMemberToPersonnel,
-  batchGetMembers,
 };
