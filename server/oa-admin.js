@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 const oa = require('./oa-client');
+const auth = require('./auth');
 
 // ---- 本地数据存储（自包含，避免依赖 data.js 的导出细节）----
 const DATA_DIR = path.join(__dirname, '../data');
@@ -37,6 +38,11 @@ function loadPersonnel() {
 function savePersonnel(list) {
   fs.writeFileSync(PERSONNEL_PATH, JSON.stringify(list, null, 2));
 }
+
+// ============ 认证中间件 ============
+// 所有 OA 管理路由都需要认证 + 管理员权限（修复未授权访问漏洞）
+router.use(auth.authMiddleware);
+router.use(auth.adminOnly);
 
 // ============ 配置读取（脱敏）============
 router.get('/config', (req, res) => {

@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
+const auth = require('./auth');
 
 const FAQ_PATH = path.join(__dirname, '../data/faq.json');
 const FAQ_ATTACHMENTS_DIR = path.join(__dirname, 'uploads/faq_attachments');
@@ -57,6 +58,11 @@ function getFAQ() {
   try { return JSON.parse(fs.readFileSync(FAQ_PATH, 'utf8')); } catch (e) { return []; }
 }
 function saveFAQ(data) { fs.writeFileSync(FAQ_PATH, JSON.stringify(data, null, 2)); }
+
+// ============ 认证中间件 ============
+// 所有上传管理路由都需要认证 + 管理员权限（修复未授权访问漏洞）
+router.use(auth.authMiddleware);
+router.use(auth.adminOnly);
 
 // ============ 上传 API ============
 
