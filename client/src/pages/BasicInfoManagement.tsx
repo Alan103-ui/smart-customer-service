@@ -120,11 +120,6 @@ export default function BasicInfoManagement() {
   const [oa, setOa] = useState<any>({ enabled: false, baseUrl: '', username: '', secret: '', fixedToken: '' });
   const [oaTest, setOaTest] = useState<any>(null);
   const [oaMsg, setOaMsg] = useState('');
-  const [oaMemberId, setOaMemberId] = useState('');
-  const [oaMember, setOaMember] = useState<any>(null);
-  const [oaBatchIds, setOaBatchIds] = useState('');
-  const [oaBatchResult, setOaBatchResult] = useState<any>(null);
-
   // 软件信息（可编辑品牌/名称/欢迎语/界面图片）
   const [software, setSoftware] = useState<any>({ companyName: '', softwareName: '', assistantName: '', knowledgeBaseName: '', welcomeMessage: '', loginImage: '', chatImage: '' });
   const [softwareMsg, setSoftwareMsg] = useState('');
@@ -259,40 +254,12 @@ export default function BasicInfoManagement() {
     setOaMsg(r.success ? r.message : ('同步失败：' + (r.error || '')));
     if (r.success) loadOrg();
   };
-  const queryOAMember = async () => {
-    if (!oaMemberId.trim()) { setOaMsg('请输入 OA 人员 ID'); return; }
-    const r = await fetch(API + '/oa/member?memberId=' + encodeURIComponent(oaMemberId.trim()), { headers: getAuthHeaders() }).then(r => r.json());
-    if (r.success) setOaMember(r.data); else { setOaMember(null); setOaMsg('查询失败：' + (r.error || '')); }
-  };
-  const importOAMember = async () => {
-    if (!oaMember) return;
-    const r = await fetch(API + '/oa/import-member', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ memberId: oaMemberId.trim() }) }).then(r => r.json());
-    setOaMsg(r.success ? r.message : ('导入失败：' + (r.error || '')));
-    if (r.success) loadP();
-  };
   const syncOAMembers = async () => {
     if (!confirm('确定从致远OA同步全部人员到本地？将拉取所有组织单位的人员档案（可能数百人，请耐心等待）。')) return;
-    setOaMsg('正在从 OA 拉取全部人员，请稍候...'); setOaBatchResult(null);
+    setOaMsg('正在从 OA 拉取全部人员，请稍候...');
     try {
       const r = await fetch(API + '/oa/sync-members', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({}) }).then(r => r.json());
-      setOaBatchResult(r);
       setOaMsg(r.success ? r.message : ('同步失败：' + (r.error || '')));
-      if (r.success) loadP();
-    } catch (e) { setOaMsg('请求异常：' + String(e)); }
-  };
-  const batchImportOA = async () => {
-    const ids = oaBatchIds.split(/[\n,，;；\s]+/).map(s => s.trim()).filter(Boolean);
-    if (ids.length === 0) { setOaMsg('请输入至少一个 OA 人员 ID 或工号（每行一个）'); return; }
-    if (!confirm(`确定导入 ${ids.length} 个指定人员？`)) return;
-    setOaMsg('正在导入指定人员，请稍候...'); setOaBatchResult(null);
-    try {
-      const r = await fetch(API + '/oa/batch-import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ memberIds: ids }),
-      }).then(r => r.json());
-      setOaBatchResult(r);
-      setOaMsg(r.success ? r.message : ('批量导入失败：' + (r.error || '')));
       if (r.success) loadP();
     } catch (e) { setOaMsg('请求异常：' + String(e)); }
   };
@@ -429,55 +396,6 @@ export default function BasicInfoManagement() {
             <button onClick={testOA} style={{ marginLeft: 8 }}>测试连接</button>
             <button onClick={syncOAOrg} style={{ marginLeft: 8 }}>同步组织架构</button>
             <button onClick={syncOAMembers} style={{ marginLeft: 8, background: '#52c41a', color: '#fff', border: 'none' }}>🔄 同步全部人员</button>
-          </div>
-
-          <div style={{ marginTop: 16, padding: 12, border: '1px solid #e8e8e8', borderRadius: 6 }}>
-            <h4 style={{ margin: '0 0 8px' }}>按 OA ID 查询 / 导入人员</h4>
-            <div>人员ID：<input value={oaMemberId} onChange={e => setOaMemberId(e.target.value)} placeholder="如 240467409362108676" style={{ width: 280 }} />
-              <button onClick={queryOAMember} style={{ marginLeft: 8 }}>查询</button>
-              {oaMember && <button onClick={importOAMember} style={{ marginLeft: 8 }}>导入到本地</button>}
-            </div>
-            {oaMember && (
-              <div style={{ marginTop: 8, fontSize: 13 }}>
-                姓名：{oaMember.name} ｜ 工号：{oaMember.code} ｜ 邮箱：{oaMember.email || '-'} ｜ OA ID：{oaMember.oaId}
-              </div>
-            )}
-          </div>
-
-          {/* 批量按 ID 导入（可选） */}
-          <div style={{ marginTop: 12, padding: 12, border: '1px solid #d4b106', borderRadius: 6, background: '#fffbe6' }}>
-            <h4 style={{ margin: '0 0 8px' }}>📋 按人员ID/工号选择性导入（可选）</h4>
-            <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
-              只导入部分人员时，每行输入一个 OA 人员ID或工号（从"同步全部人员"结果中挑选）。留空则可直接点上方「同步全部人员」。
-            </div>
-            <textarea
-              value={oaBatchIds}
-              onChange={e => setOaBatchIds(e.target.value)}
-              placeholder={'工号如 GK88888\n或 OA 人员ID\n...'}
-              rows={5}
-              style={{ width: '100%', maxWidth: 500, fontFamily: 'monospace', fontSize: 13, padding: 6 }}
-            />
-            <div style={{ marginTop: 8 }}>
-              <button onClick={batchImportOA}>批量导入 ({oaBatchIds.split(/[\n,，;；\s]+/).filter(s => s.trim()).length} 个)</button>
-            </div>
-            {oaBatchResult && (
-              <div style={{ marginTop: 10, fontSize: 13 }}>
-                <div style={{ color: '#52c41a' }}>
-                  ✅ 成功：{oaBatchResult.summary?.successCount || 0} 个（新增 {oaBatchResult.summary?.added || 0}、更新 {oaBatchResult.summary?.updated || 0}）
-                  ｜ ❌ 失败：{oaBatchResult.summary?.failCount || 0} 个
-                </div>
-                {(oaBatchResult.imported || []).length > 0 && (
-                  <div style={{ maxHeight: 200, overflow: 'auto', background: '#f9f9f9', padding: 6, marginTop: 6, borderRadius: 4 }}>
-                    {oaBatchResult.imported.map((item: any) => (
-                      <div key={item.username}>{item.action === 'added' ? '➕' : '🔄'} {item.name}（{item.username}）{item.action === 'updated' ? ' 已更新' : ' 已新增'}</div>
-                    ))}
-                  </div>
-                )}
-                {(oaBatchResult.failures || []).map((f: any) => (
-                  <div key={f.memberId} style={{ color: '#f5222d' }}>❌ {f.memberId}: {f.error}</div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* SSO 单点登录白名单 */}
