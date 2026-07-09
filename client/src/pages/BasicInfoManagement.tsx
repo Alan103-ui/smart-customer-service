@@ -149,7 +149,7 @@ export default function BasicInfoManagement() {
       .catch(() => {});
   };
   const loadOA = () => fetch(API + '/oa/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: '', fixedToken: '' })).catch(() => {});
-  const loadSoftware = () => fetch(API + '/software-info', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => setSoftware({ companyName: d.companyName || '', softwareName: d.softwareName || '', assistantName: d.assistantName || '', knowledgeBaseName: d.knowledgeBaseName || '', welcomeMessage: d.welcomeMessage || '' })).catch(() => {});
+  const loadSoftware = () => fetch(API + '/software-info', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => { const s = d.data || d; setSoftware({ companyName: s.companyName || '', softwareName: s.softwareName || '', assistantName: s.assistantName || '', knowledgeBaseName: s.knowledgeBaseName || '', welcomeMessage: s.welcomeMessage || '' }); }).catch(() => {});
 
   useEffect(() => {
     if (subTab === 'org') loadOrg();
@@ -531,17 +531,16 @@ export default function BasicInfoManagement() {
           <div style={{ background: '#fffbe6', padding: 12, borderRadius: 6, marginBottom: 12, fontSize: 13, color: '#666' }}>
             此处可自定义系统对外展示的公司名称、软件名称、助手名、知识库名称与欢迎语。保存后，前端聊天界面与标题将自动生效。
           </div>
-          <div style={{ marginTop: 8 }}>公司名称：<input value={software.companyName} onChange={e => setSoftware({ ...software, companyName: e.target.value })} placeholder="如 广康集团" style={{ width: 360 }} /></div>
-          <div style={{ marginTop: 8 }}>软件名称：<input value={software.softwareName} onChange={e => setSoftware({ ...software, softwareName: e.target.value })} placeholder="如 广康集团AI助手" style={{ width: 360 }} /></div>
-          <div style={{ marginTop: 8 }}>助手名称：<input value={software.assistantName} onChange={e => setSoftware({ ...software, assistantName: e.target.value })} placeholder="如 小智" style={{ width: 240 }} /></div>
-          <div style={{ marginTop: 8 }}>知识库名称：<input value={software.knowledgeBaseName} onChange={e => setSoftware({ ...software, knowledgeBaseName: e.target.value })} placeholder="如 广康集团知识库" style={{ width: 360 }} /></div>
+          <div style={{ marginTop: 8 }}>公司名称：<input value={software.companyName} onChange={e => setSoftware({ ...software, companyName: e.target.value })} style={{ width: 360 }} /></div>
+          <div style={{ marginTop: 8 }}>软件名称：<input value={software.softwareName} onChange={e => setSoftware({ ...software, softwareName: e.target.value })} style={{ width: 360 }} /></div>
+          <div style={{ marginTop: 8 }}>助手名称：<input value={software.assistantName} onChange={e => setSoftware({ ...software, assistantName: e.target.value })} style={{ width: 240 }} /></div>
+          <div style={{ marginTop: 8 }}>知识库名称：<input value={software.knowledgeBaseName} onChange={e => setSoftware({ ...software, knowledgeBaseName: e.target.value })} style={{ width: 360 }} /></div>
           <div style={{ marginTop: 8 }}>欢迎语：</div>
           <div style={{ marginTop: 4 }}>
             <textarea
               value={software.welcomeMessage}
               onChange={e => setSoftware({ ...software, welcomeMessage: e.target.value })}
               rows={3}
-              placeholder="如 您好！我是广康集团AI助手，很高兴为您服务😊"
               style={{ width: '100%', maxWidth: 560, fontSize: 14, padding: 6 }}
             />
           </div>
