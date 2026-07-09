@@ -89,6 +89,18 @@ function fmtMtime(iso?: string): string {
   return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) + ' ' + d.toTimeString().slice(0, 5);
 }
 
+// 日志文件类型识别
+function getLogType(filename: string): 'app' | 'server' | 'raw' {
+  if (filename.startsWith('server-')) return 'server';
+  if (/^\d{4}-\d{2}-\d{2}\.log$/.test(filename)) return 'app';
+  return 'raw';
+}
+const LOG_TYPE_META: Record<string, { label: string; color: string; bg: string }> = {
+  app: { label: '应用', color: '#0958d9', bg: '#e6f4ff' },
+  server: { label: '服务', color: '#595959', bg: '#f5f5f5' },
+  raw: { label: '原始', color: '#8c8c8c', bg: '#fafafa' },
+};
+
 // 从文件名提取日期（用于排序和分组）
 function extractDateFromFilename(name: string): Date | null {
   // 匹配 server-2026-07-09.log 或 2026-07-09.log 格式
@@ -1186,16 +1198,35 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
 
           <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
             {/* 左侧：文件列表（日期分组 + 卡片式） */}
-            <div style={{ width: 370, flexShrink: 0, border: '1px solid #e8e8e8', borderRadius: 8, maxHeight: 640, overflow: 'auto', background: '#fafbfc' }}>
-              {dateFiltered.length === 0 && (
-                <div style={{ padding: 30, color: '#999', textAlign: 'center' }}>
-                  {logFiles.length === 0 ? '暂无日志文件' : '该日期范围内无日志文件'}
+            <div style={{ width: 370, flexShrink: 0 }}>
+              {/* 文件列表标题 + 日志类型图例 */}
+              <div style={{ padding: '10px 12px', border: '1px solid #e8e8e8', borderRadius: '8px 8px 0 0', background: '#fff', borderBottom: 'none' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#333', marginBottom: 6 }}>📁 日志文件</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 11, color: '#888' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#0958d9' }} />
+                    应用日志
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#595959' }} />
+                    服务/启动日志
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#8c8c8c' }} />
+                    其他原始日志
+                  </span>
                 </div>
-              )}
-              {groupOrder.map(groupLabel => (
-                <div key={groupLabel}>
-                  {/* 分组标题 */}
-                  <div style={{
+              </div>
+              <div style={{ border: '1px solid #e8e8e8', borderRadius: '0 0 8px 8px', maxHeight: 640, overflow: 'auto', background: '#fafbfc' }}>
+                {dateFiltered.length === 0 && (
+                  <div style={{ padding: 30, color: '#999', textAlign: 'center' }}>
+                    {logFiles.length === 0 ? '暂无日志文件' : '该日期范围内无日志文件'}
+                  </div>
+                )}
+                {groupOrder.map(groupLabel => (
+                  <div key={groupLabel}>
+                    {/* 分组标题 */}
+                    <div style={{
                     padding: '6px 14px', fontSize: 11.5, fontWeight: 600,
                     color: groupLabel === todayStr ? '#1890ff' : '#888',
                     background: groupLabel === todayStr ? '#e6f4ff20' : '#f0f0f0',
@@ -1210,12 +1241,14 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                     const isTodayGroup = groupLabel === todayStr;
                     const fileDate = extractDateFromFilename(f.filename);
                     const isVeryRecent = fileDate && (Date.now() - fileDate.getTime() < 86400000); // 24h内
+                    const logType = getLogType(f.filename);
+                    const typeMeta = LOG_TYPE_META[logType];
 
-                    // 级别标签
+                    // 级别标签（定宽，便于整列对齐）
                     const badges = [];
-                    if (lc.ERROR > 0) badges.push(<span key="err" style={{ background: '#fff1f0', color: '#cf1322', fontSize: 10.5, padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>E {lc.ERROR}</span>);
-                    if (lc.WARN > 0) badges.push(<span key="warn" style={{ background: '#fff7e6', color: '#d46b08', fontSize: 10.5, padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>W {lc.WARN}</span>);
-                    if (lc.PERF > 0) badges.push(<span key="perf" style={{ background: '#e6fffb', color: '#08979c', fontSize: 10.5, padding: '1px 5px', borderRadius: 3 }}>P {lc.PERF}</span>);
+                    if (lc.ERROR > 0) badges.push(<span key="err" style={{ width: 40, textAlign: 'center', background: '#fff1f0', color: '#cf1322', fontSize: 10, padding: '1px 0', borderRadius: 3, fontWeight: 600 }}>E {lc.ERROR}</span>);
+                    if (lc.WARN > 0) badges.push(<span key="warn" style={{ width: 40, textAlign: 'center', background: '#fff7e6', color: '#d46b08', fontSize: 10, padding: '1px 0', borderRadius: 3, fontWeight: 600 }}>W {lc.WARN}</span>);
+                    if (lc.PERF > 0) badges.push(<span key="perf" style={{ width: 40, textAlign: 'center', background: '#e6fffb', color: '#08979c', fontSize: 10, padding: '1px 0', borderRadius: 3 }}>P {lc.PERF}</span>);
 
                     return (
                       <div
@@ -1225,30 +1258,36 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                           padding: '9px 12px',
                           borderBottom: '1px solid #f0f0f0',
                           cursor: 'pointer',
-                          background: active ? '#e6f7ff' : (isTodayGroup ? '#fff' : '#fff'),
+                          background: active ? '#e6f7ff' : '#fff',
                           borderLeft: active ? '3px solid #1890ff' : (isVeryRecent && !active ? '3px solid #91d5ff' : '3px solid transparent'),
                           transition: 'background 0.15s',
                         }}
                         onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = '#f5f5f5'; }}
-                        onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = isTodayGroup ? '#fff' : '#fff'; }}
+                        onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+                        title={`${logType === 'app' ? '应用运行日志' : logType === 'server' ? '服务/启动日志' : '原始日志'}：${f.filename}`}
                       >
-                        {/* 第一行：图标+文件名+大小 */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1 }}>
-                            <span style={{ fontSize: 14, flexShrink: 0 }}>{isVeryRecent ? '🔥' : '📄'}</span>
+                        {/* 第一行：类型标签 + 文件名 + 大小 */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
+                            <span style={{
+                              fontSize: 10, fontWeight: 600, color: typeMeta.color, background: typeMeta.bg,
+                              padding: '1px 5px', borderRadius: 3, flexShrink: 0, border: `1px solid ${typeMeta.color}22`
+                            }}>
+                              {typeMeta.label}
+                            </span>
                             <span style={{
                               fontFamily: 'monospace', fontWeight: active ? 700 : 600, fontSize: 12.5,
                               color: active ? '#0958d9' : '#333',
                               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                             }} title={f.filename}>{f.filename}</span>
                           </div>
-                          <span style={{ color: '#aaa', fontSize: 10.5, flexShrink: 0, marginLeft: 6 }}>{fmtBytes(f.size)}</span>
+                          <span style={{ color: '#aaa', fontSize: 10.5, flexShrink: 0 }}>{fmtBytes(f.size)}</span>
                         </div>
-                        {/* 第二行：元信息 */}
-                        <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 19 }}>
-                          <span style={{ color: '#bbb', fontSize: 10.5 }}>{(f.lines || 0).toLocaleString()} 行</span>
-                          {f.modifiedAt && <span style={{ color: '#bbb', fontSize: 10.5 }}>· {fmtMtime(f.modifiedAt)}</span>}
-                          {badges.length > 0 && <span style={{ display: 'flex', gap: 4 }}>{badges}</span>}
+                        {/* 第二行：固定列宽，保证整列对齐 */}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center' }}>
+                          <span style={{ width: 52, color: '#bbb', fontSize: 10.5, textAlign: 'right' }}>{(f.lines || 0).toLocaleString()} 行</span>
+                          <span style={{ width: 110, color: '#bbb', fontSize: 10.5, textAlign: 'left' }}>{f.modifiedAt ? fmtMtime(f.modifiedAt) : '-'}</span>
+                          <span style={{ flex: 1, display: 'flex', gap: 4, justifyContent: 'flex-end' }}>{badges}</span>
                         </div>
                       </div>
                     );
@@ -1256,6 +1295,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                 </div>
               ))}
             </div>
+          </div>
 
             {/* 右侧：日志内容 */}
             <div style={{ flex: 1, minWidth: 0, border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
