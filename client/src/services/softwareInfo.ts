@@ -7,6 +7,8 @@ export interface SoftwareInfo {
   assistantName: string;
   knowledgeBaseName: string;
   welcomeMessage: string;
+  loginImage: string;   // 登录界面图片 URL
+  chatImage: string;    // 聊天界面头像/Logo 图片 URL
 }
 
 const DEFAULT_SOFTWARE_INFO: SoftwareInfo = {
@@ -15,6 +17,8 @@ const DEFAULT_SOFTWARE_INFO: SoftwareInfo = {
   assistantName: '小智',
   knowledgeBaseName: '广康集团知识库',
   welcomeMessage: '您好！我是广康集团AI助手，很高兴为您服务😊',
+  loginImage: '',
+  chatImage: '',
 };
 
 let cache: SoftwareInfo | null = null;

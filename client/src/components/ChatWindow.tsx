@@ -31,6 +31,7 @@ export default function ChatWindow({
   currentUser
 }: ChatWindowProps) {
   const sw = useSoftwareInfo();
+  const chatAvatar = sw.chatImage || '/logo.jpg';
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -88,7 +89,7 @@ export default function ChatWindow({
         {messages.length === 0 && candidates.length === 0 && (
           <div className="welcome-area-modern">
             <div className="welcome-avatar">
-              <img src="/logo.jpg" alt={sw.softwareName} />
+              <img src={chatAvatar} alt={sw.softwareName} />
             </div>
             <h2 className="welcome-title">{sw.welcomeMessage || ('您好！我是' + sw.softwareName)}</h2>
             <p className="welcome-subtitle">请问有什么可以帮您？</p>
@@ -99,7 +100,7 @@ export default function ChatWindow({
           <div key={i} className={`message-row-modern ${msg.role}`}>
             {msg.role === 'assistant' && (
               <div className="avatar-modern assistant">
-                <img src="/logo.jpg" alt="AI" />
+                <img src={chatAvatar} alt="AI" />
               </div>
             )}
             <div className={`message-bubble-modern ${msg.role}`}>
@@ -135,7 +136,7 @@ export default function ChatWindow({
         {candidates.length > 0 && (
           <div className="message-row-modern assistant">
             <div className="avatar-modern assistant">
-              <img src="/logo.jpg" alt="AI" />
+              <img src={chatAvatar} alt="AI" />
             </div>
             <div className="message-bubble-modern assistant candidate-bubble-modern">
               <div className="candidate-prompt-modern">
@@ -169,7 +170,7 @@ export default function ChatWindow({
         {isTyping && (
           <div className="message-row-modern assistant">
             <div className="avatar-modern assistant">
-              <img src="/logo.jpg" alt="AI" />
+              <img src={chatAvatar} alt="AI" />
             </div>
             <div className="message-bubble-modern assistant typing-bubble-modern">
               <div className="typing-indicator-modern">

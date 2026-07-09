@@ -316,7 +316,11 @@ function MainApp({ user, onLogout }: MainAppProps) {
     <div className="app-container">
       <div className="app-header">
         <div className="header-left">
-          <div className="logo">🤖</div>
+          <div className="logo">
+            {sw.chatImage
+              ? <img src={sw.chatImage} alt={sw.softwareName} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 8 }} />
+              : '🤖'}
+          </div>
           <div>
             <h1>{sw.softwareName}</h1>
             <span className={`status-dot ${connected ? 'online' : 'offline'}`}>

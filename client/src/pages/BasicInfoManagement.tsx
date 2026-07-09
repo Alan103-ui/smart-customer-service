@@ -125,9 +125,10 @@ export default function BasicInfoManagement() {
   const [oaBatchIds, setOaBatchIds] = useState('');
   const [oaBatchResult, setOaBatchResult] = useState<any>(null);
 
-  // 软件信息（可编辑品牌/名称/欢迎语）
-  const [software, setSoftware] = useState<any>({ companyName: '', softwareName: '', assistantName: '', knowledgeBaseName: '', welcomeMessage: '' });
+  // 软件信息（可编辑品牌/名称/欢迎语/界面图片）
+  const [software, setSoftware] = useState<any>({ companyName: '', softwareName: '', assistantName: '', knowledgeBaseName: '', welcomeMessage: '', loginImage: '', chatImage: '' });
   const [softwareMsg, setSoftwareMsg] = useState('');
+  const [uploadingImg, setUploadingImg] = useState<'' | 'loginImage' | 'chatImage'>('');
 
   // 致远 OA SSO 白名单
   const [oaSso, setOaSso] = useState<any>({ mode: 'whitelist', requireSign: false, hasSignSecret: false, signSecretMasked: '', trustedIps: [], whitelist: [], count: 0, ssoUrl: '/api/auth/sso/oa' });
@@ -149,7 +150,7 @@ export default function BasicInfoManagement() {
       .catch(() => {});
   };
   const loadOA = () => fetch(API + '/oa/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: '', fixedToken: '' })).catch(() => {});
-  const loadSoftware = () => fetch(API + '/software-info', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => { const s = d.data || d; setSoftware({ companyName: s.companyName || '', softwareName: s.softwareName || '', assistantName: s.assistantName || '', knowledgeBaseName: s.knowledgeBaseName || '', welcomeMessage: s.welcomeMessage || '' }); }).catch(() => {});
+  const loadSoftware = () => fetch(API + '/software-info', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => { const s = d.data || d; setSoftware({ companyName: s.companyName || '', softwareName: s.softwareName || '', assistantName: s.assistantName || '', knowledgeBaseName: s.knowledgeBaseName || '', welcomeMessage: s.welcomeMessage || '', loginImage: s.loginImage || '', chatImage: s.chatImage || '' }); }).catch(() => {});
 
   useEffect(() => {
     if (subTab === 'org') loadOrg();
@@ -220,6 +221,31 @@ export default function BasicInfoManagement() {
   const saveSoftware = async () => {
     const r = await fetch(API + '/software-info', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(software) }).then(r => r.json());
     if (r.success) { setSoftwareMsg('软件信息已保存，前端界面将自动应用'); loadSoftware(); } else setSoftwareMsg('保存失败：' + (r.error || ''));
+  };
+  // 上传界面图片（登录/聊天），成功后写入对应字段（需再点"保存软件信息"落库）
+  const uploadSoftwareImage = async (field: 'loginImage' | 'chatImage', file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setSoftwareMsg('请选择图片文件'); return; }
+    if (file.size > 5 * 1024 * 1024) { setSoftwareMsg('图片不能超过 5MB'); return; }
+    setUploadingImg(field);
+    setSoftwareMsg('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('originalName', file.name);
+      const res = await fetch(API + '/upload-media', { method: 'POST', headers: getAuthHeaders(), body: fd });
+      const r = await res.json();
+      if (r.success && r.url) {
+        setSoftware((s: any) => ({ ...s, [field]: r.url }));
+        setSoftwareMsg('图片已上传，请点击"保存软件信息"使其生效');
+      } else {
+        setSoftwareMsg('上传失败：' + (r.error || ''));
+      }
+    } catch (e) {
+      setSoftwareMsg('上传异常：' + String(e));
+    } finally {
+      setUploadingImg('');
+    }
   };
   const testOA = async () => {
     setOaTest(null); setOaMsg('');
@@ -541,6 +567,44 @@ export default function BasicInfoManagement() {
               style={{ width: '100%', maxWidth: 560, fontSize: 14, padding: 6 }}
             />
           </div>
+
+          {/* 界面图片上传 */}
+          <div style={{ marginTop: 20, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            {([
+              { field: 'loginImage', label: '登录界面图片', hint: '显示在登录页顶部（建议正方形或横向 Logo，PNG/JPG，≤5MB）' },
+              { field: 'chatImage', label: '聊天界面图片', hint: '聊天页助手头像 / Logo（建议正方形，PNG/JPG，≤5MB）' },
+            ] as { field: 'loginImage' | 'chatImage'; label: string; hint: string }[]).map(({ field, label, hint }) => (
+              <div key={field} style={{ border: '1px solid #e8e8e8', borderRadius: 8, padding: 14, width: 300 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>{hint}</div>
+                <div style={{
+                  width: '100%', height: 130, border: '1px dashed #d9d9d9', borderRadius: 6,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                  background: '#fafafa', marginBottom: 10
+                }}>
+                  {software[field]
+                    ? <img src={software[field]} alt={label} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                    : <span style={{ color: '#bbb', fontSize: 13 }}>暂无图片</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ cursor: 'pointer', padding: '5px 12px', border: '1px solid #1890ff', color: '#1890ff', borderRadius: 4, fontSize: 13, background: '#fff' }}>
+                    {uploadingImg === field ? '上传中…' : '选择图片'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      disabled={uploadingImg === field}
+                      onChange={e => { uploadSoftwareImage(field, e.target.files?.[0] || null); e.target.value = ''; }}
+                    />
+                  </label>
+                  {software[field] && (
+                    <button onClick={() => setSoftware((s: any) => ({ ...s, [field]: '' }))} style={{ padding: '5px 12px', fontSize: 13 }}>移除</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
           <div style={{ marginTop: 16 }}>
             <button onClick={saveSoftware}>保存软件信息</button>
           </div>

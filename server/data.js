@@ -196,7 +196,9 @@ const DEFAULT_SOFTWARE_INFO = {
   softwareName: '广康生化',
   assistantName: '小智',
   knowledgeBaseName: '广康集团知识库',
-  welcomeMessage: '您好！我是广康集团AI助手，很高兴为您服务😊'
+  welcomeMessage: '您好！我是广康集团AI助手，很高兴为您服务😊',
+  loginImage: '',   // 登录界面图片 URL（如 /uploads/xxx.png），为空则用默认样式
+  chatImage: ''     // 聊天界面头像/Logo 图片 URL，为空则用默认 /logo.jpg
 };
 
 function loadSoftwareInfo() {

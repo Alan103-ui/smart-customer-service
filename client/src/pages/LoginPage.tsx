@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSoftwareInfo } from '../services/softwareInfo';
 
 interface LoginPageProps {
   onLogin: (user: { id: string; username: string; name: string; role: string }) => void;
@@ -7,6 +8,7 @@ interface LoginPageProps {
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
+  const sw = useSoftwareInfo();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -127,8 +129,16 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-2xl shadow-lg">
         {/* Logo / 标题 */}
         <div className="text-center">
-          <div className="text-4xl mb-2">🤖</div>
-          <h1 className="text-2xl font-bold text-gray-800">智能客服系统</h1>
+          {sw.loginImage ? (
+            <img
+              src={sw.loginImage}
+              alt={sw.softwareName}
+              style={{ maxHeight: 96, maxWidth: '100%', objectFit: 'contain', margin: '0 auto 8px' }}
+            />
+          ) : (
+            <div className="text-4xl mb-2">🤖</div>
+          )}
+          <h1 className="text-2xl font-bold text-gray-800">{sw.softwareName || '智能客服系统'}</h1>
           <p className="mt-1 text-sm text-gray-500">登录后使用 AI 智能问答</p>
         </div>
 
