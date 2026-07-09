@@ -513,7 +513,8 @@ ${faqContext}`;
 // ============ Express + WebSocket 服务 ============
 const app = express();
 app.use(cors());
-app.use(express.json());
+// 提高 JSON body 上限（支持配置批量导入等大负载；内部管理工具，非公网暴露）
+app.use(express.json({ limit: '10mb' }));
 // 性能监控中间件（记录所有API响应时间）
 app.use(performanceMiddleware);
 // 静态文件服务（禁止缓存 index.html，带哈希的资源可长期缓存）
@@ -799,6 +800,14 @@ app.get('/api/categories', (req, res) => {
 // 公开接口：前端读取软件信息（标题/助手名/欢迎语等），无需登录
 app.get('/api/public/software-info', (req, res) => {
   try { res.json({ success: true, data: loadSoftwareInfo() }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 公开公告（登录页/聊天页展示，无需登录）
+app.get('/api/public/announcement', (req, res) => {
+  try {
+    const { loadAnnouncement } = require('./data');
+    res.json({ success: true, data: loadAnnouncement() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 

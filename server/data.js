@@ -19,6 +19,12 @@ const A8_CONFIG_PATH = path.join(__dirname, '../data/a8_config.json');
 const SOFTWARE_INFO_PATH = path.join(__dirname, '../data/software-info.json');
 const KNOWLEDGE_BASES_PATH = path.join(__dirname, '../data/knowledge_bases.json');
 const DB_PATH = path.join(__dirname, '../data/conversations.db');
+const SYSTEM_CONFIG_PATH = path.join(__dirname, '../data/system-config.json');
+const SYNONYMS_PATH = path.join(__dirname, '../data/synonyms.json');
+const STOPWORDS_PATH = path.join(__dirname, '../data/stopwords.json');
+const ANNOUNCEMENT_PATH = path.join(__dirname, '../data/announcement.json');
+const SSO_WHITELIST_PATH = path.join(__dirname, '../data/sso-whitelist.json');
+const DEPARTMENTS_PATH = path.join(__dirname, '../data/departments.json');
 
 // ============ FAQ 知识库（带缓存） ============
 let FAQ_KNOWLEDGE_BASE = [];
@@ -276,6 +282,119 @@ function writeDB(data) {
   fs.writeFileSync(fp, JSON.stringify(data, null, 2));
 }
 
+// ============ 统一系统配置 ============
+const DEFAULT_SYSTEM_CONFIG = {
+  chat: {
+    temperature: 0.7,    // 模型温度
+    topP: 0.9,
+    maxTokens: 1024
+  },
+  retrieval: {
+    topK: 5,             // 召回条数
+    scoreThreshold: 0.35, // 相似度阈值
+    enableRerank: true   // 是否启用重排序
+  },
+  conversation: {
+    timeoutMs: 60000,    // 单次回答超时
+    enableRewrite: true, // 答案口语化改写
+    enableMemory: true   // 启用对话记忆
+  },
+  ui: {
+    pageSize: 20         // 后台默认分页大小
+  },
+  multiDeptEnabled: false, // 多部门数据隔离开关
+  defaultDepartment: ''    // 默认部门（未分配人员归入此项）
+};
+
+function loadSystemConfig() {
+  if (!fs.existsSync(SYSTEM_CONFIG_PATH)) {
+    saveSystemConfig(DEFAULT_SYSTEM_CONFIG);
+    return JSON.parse(JSON.stringify(DEFAULT_SYSTEM_CONFIG));
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(SYSTEM_CONFIG_PATH, 'utf8'));
+    return deepMergeConfig(DEFAULT_SYSTEM_CONFIG, data);
+  } catch (e) {
+    console.error('[data] 系统配置读取失败：', e.message);
+    return JSON.parse(JSON.stringify(DEFAULT_SYSTEM_CONFIG));
+  }
+}
+
+function saveSystemConfig(data) {
+  const merged = deepMergeConfig(DEFAULT_SYSTEM_CONFIG, data || {});
+  fs.writeFileSync(SYSTEM_CONFIG_PATH, JSON.stringify(merged, null, 2));
+  return merged;
+}
+
+// 深层合并，确保缺省字段补齐
+function deepMergeConfig(def, src) {
+  const out = Array.isArray(def) ? [] : {};
+  if (Array.isArray(def)) return Array.isArray(src) ? src : def;
+  for (const k of Object.keys(def)) {
+    if (def[k] && typeof def[k] === 'object' && !Array.isArray(def[k])) {
+      out[k] = deepMergeConfig(def[k], (src && src[k]) || {});
+    } else {
+      out[k] = (src && src[k] !== undefined) ? src[k] : def[k];
+    }
+  }
+  // 保留 src 中多余字段（兼容未来扩展）
+  if (src && typeof src === 'object') {
+    for (const k of Object.keys(src)) if (!(k in out)) out[k] = src[k];
+  }
+  return out;
+}
+
+// ============ 同义词 ============
+function loadSynonyms() {
+  if (!fs.existsSync(SYNONYMS_PATH)) return [];
+  try { return JSON.parse(fs.readFileSync(SYNONYMS_PATH, 'utf8')); } catch (e) { return []; }
+}
+function saveSynonyms(data) {
+  fs.writeFileSync(SYNONYMS_PATH, JSON.stringify(data, null, 2));
+}
+
+// ============ 停用词 ============
+function loadStopwords() {
+  if (!fs.existsSync(STOPWORDS_PATH)) return [];
+  try { return JSON.parse(fs.readFileSync(STOPWORDS_PATH, 'utf8')); } catch (e) { return []; }
+}
+function saveStopwords(data) {
+  fs.writeFileSync(STOPWORDS_PATH, JSON.stringify(data, null, 2));
+}
+
+// ============ 系统公告 / Banner ============
+const DEFAULT_ANNOUNCEMENT = { enabled: false, title: '', content: '', level: 'info', updatedAt: null, updatedBy: '' };
+function loadAnnouncement() {
+  if (!fs.existsSync(ANNOUNCEMENT_PATH)) return { ...DEFAULT_ANNOUNCEMENT };
+  try {
+    const data = JSON.parse(fs.readFileSync(ANNOUNCEMENT_PATH, 'utf8'));
+    return { ...DEFAULT_ANNOUNCEMENT, ...data };
+  } catch (e) { return { ...DEFAULT_ANNOUNCEMENT }; }
+}
+function saveAnnouncement(data) {
+  const merged = { ...DEFAULT_ANNOUNCEMENT, ...(data || {}) };
+  fs.writeFileSync(ANNOUNCEMENT_PATH, JSON.stringify(merged, null, 2));
+  return merged;
+}
+
+// ============ SSO 白名单（独立数据源，带审计元数据）============
+function loadSSOWhitelist() {
+  if (!fs.existsSync(SSO_WHITELIST_PATH)) return [];
+  try { return JSON.parse(fs.readFileSync(SSO_WHITELIST_PATH, 'utf8')); } catch (e) { return []; }
+}
+function saveSSOWhitelist(data) {
+  fs.writeFileSync(SSO_WHITELIST_PATH, JSON.stringify(data, null, 2));
+}
+
+// ============ 部门目录（多部门隔离基础）============
+function loadDepartments() {
+  if (!fs.existsSync(DEPARTMENTS_PATH)) return [];
+  try { return JSON.parse(fs.readFileSync(DEPARTMENTS_PATH, 'utf8')); } catch (e) { return []; }
+}
+function saveDepartments(data) {
+  fs.writeFileSync(DEPARTMENTS_PATH, JSON.stringify(data, null, 2));
+}
+
 // ============ 初始化 ============
 // 初始化时执行一次（规范化FAQ分类）
 setTimeout(() => { try { normalizeFAQCategories(); } catch(e) {} }, 1000);
@@ -324,6 +443,28 @@ module.exports = {
   readDB,
   writeDB,
 
+  // 统一系统配置
+  loadSystemConfig,
+  saveSystemConfig,
+
+  // 同义词 / 停用词
+  loadSynonyms,
+  saveSynonyms,
+  loadStopwords,
+  saveStopwords,
+
+  // 公告
+  loadAnnouncement,
+  saveAnnouncement,
+
+  // SSO 白名单
+  loadSSOWhitelist,
+  saveSSOWhitelist,
+
+  // 部门
+  loadDepartments,
+  saveDepartments,
+
   // 路径常量（供其他模块使用）
   CATEGORIES_PATH,
   FAQ_PATH,
@@ -333,5 +474,11 @@ module.exports = {
   A8_CONFIG_PATH,
   SOFTWARE_INFO_PATH,
   KNOWLEDGE_BASES_PATH,
-  DB_PATH
+  DB_PATH,
+  SYSTEM_CONFIG_PATH,
+  SYNONYMS_PATH,
+  STOPWORDS_PATH,
+  ANNOUNCEMENT_PATH,
+  SSO_WHITELIST_PATH,
+  DEPARTMENTS_PATH
 };

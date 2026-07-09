@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useSoftwareInfo } from '../services/softwareInfo';
+import { useSoftwareInfo, useAnnouncement, ANNOUNCEMENT_COLORS } from '../services/softwareInfo';
 
 interface LoginPageProps {
   onLogin: (user: { id: string; username: string; name: string; role: string }) => void;
@@ -9,6 +9,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
   const sw = useSoftwareInfo();
+  const ann = useAnnouncement();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -127,6 +128,13 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-2xl shadow-lg">
+        {/* 系统公告 Banner */}
+        {ann.enabled && (ann.title || ann.content) && (
+          <div style={{ background: ANNOUNCEMENT_COLORS[ann.level]?.bg || '#e6f7ff', border: '1px solid ' + (ANNOUNCEMENT_COLORS[ann.level]?.border || '#91d5ff'), color: ANNOUNCEMENT_COLORS[ann.level]?.color || '#0958d9', padding: '8px 12px', borderRadius: 8, fontSize: 13 }}>
+            {ann.title && <div style={{ fontWeight: 600, marginBottom: ann.content ? 4 : 0 }}>{ann.title}</div>}
+            {ann.content && <div style={{ whiteSpace: 'pre-wrap' }}>{ann.content}</div>}
+          </div>
+        )}
         {/* Logo / 标题 */}
         <div className="text-center">
           {sw.loginImage ? (

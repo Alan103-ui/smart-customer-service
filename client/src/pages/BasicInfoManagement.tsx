@@ -16,7 +16,7 @@ async function safeFetch<T>(url: string): Promise<T> {
   return [] as unknown as T;
 }
 
-type SubTab = 'org' | 'personnel' | 'permissions' | 'oa' | 'software';
+type SubTab = 'org' | 'personnel' | 'permissions' | 'oa' | 'software' | 'config' | 'sso' | 'dict' | 'dept' | 'announcement' | 'audit';
 
 // 权限目录（本地兜底，后端 /api/admin/permissions/catalog 返回权威版本）
 const PERM_GROUPS_LOCAL: { group: string; items: { code: string; label: string }[] }[] = [
@@ -147,12 +147,115 @@ export default function BasicInfoManagement() {
   const loadOA = () => fetch(API + '/oa/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: '', fixedToken: '' })).catch(() => {});
   const loadSoftware = () => fetch(API + '/software-info', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => { const s = d.data || d; setSoftware({ companyName: s.companyName || '', softwareName: s.softwareName || '', assistantName: s.assistantName || '', knowledgeBaseName: s.knowledgeBaseName || '', welcomeMessage: s.welcomeMessage || '', loginImage: s.loginImage || '', chatImage: s.chatImage || '' }); }).catch(() => {});
 
+  // ==================== 统一系统配置 ====================
+  const [config, setConfig] = useState<any>({
+    chat: { temperature: 0.7, topP: 0.9, maxTokens: 1024 },
+    retrieval: { topK: 5, scoreThreshold: 0.35, enableRerank: true },
+    conversation: { timeoutMs: 60000, enableRewrite: true, enableMemory: true },
+    ui: { pageSize: 20 }, multiDeptEnabled: false, defaultDepartment: ''
+  });
+  const [configMsg, setConfigMsg] = useState('');
+  const loadConfig = () => fetch(API + '/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { data: {} }).then((d: any) => { if (d.data) setConfig(d.data); }).catch(() => {});
+  const saveConfig = async () => {
+    const res = await fetch(API + '/config', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(config) });
+    const d = await res.json();
+    if (d.success) { setConfigMsg('系统配置已保存'); loadConfig(); } else setConfigMsg('保存失败：' + (d.error || ''));
+  };
+
+  // ==================== SSO 白名单 ====================
+  const [ssoList, setSsoList] = useState<any[]>([]);
+  const [ssoAccount, setSsoAccount] = useState('');
+  const [ssoName, setSsoName] = useState('');
+  const [ssoNote, setSsoNote] = useState('');
+  const [ssoMsg, setSsoMsg] = useState('');
+  const loadSsoWhitelist = () => fetch(API + '/sso-whitelist', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { data: [] }).then((d: any) => setSsoList(Array.isArray(d.data) ? d.data : [])).catch(() => {});
+  const addSSO = async () => {
+    if (!ssoAccount.trim()) { setSsoMsg('账号(工号)必填'); return; }
+    const res = await fetch(API + '/sso-whitelist', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ account: ssoAccount.trim(), name: ssoName.trim(), note: ssoNote.trim() }) });
+    const d = await res.json();
+    if (d.success) { setSsoAccount(''); setSsoName(''); setSsoNote(''); setSsoMsg('已添加'); loadSsoWhitelist(); } else setSsoMsg('添加失败：' + (d.error || ''));
+  };
+  const delSSO = async (acc: string) => {
+    if (!confirm('从白名单移除 ' + acc + '？')) return;
+    const res = await fetch(API + '/sso-whitelist/' + encodeURIComponent(acc), { method: 'DELETE', headers: getAuthHeaders() });
+    const d = await res.json();
+    if (d.success) loadSsoWhitelist(); else alert(d.error || '删除失败');
+  };
+
+  // ==================== 同义词 / 停用词 ====================
+  const [synList, setSynList] = useState<any[]>([]);
+  const [synWords, setSynWords] = useState('');
+  const [synNote, setSynNote] = useState('');
+  const [stopList, setStopList] = useState<string[]>([]);
+  const [stopWord, setStopWord] = useState('');
+  const [dictMsg, setDictMsg] = useState('');
+  const loadDict = () => {
+    fetch(API + '/synonyms', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { data: [] }).then((d: any) => setSynList(Array.isArray(d.data) ? d.data : [])).catch(() => {});
+    fetch(API + '/stopwords', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { data: [] }).then((d: any) => setStopList(Array.isArray(d.data) ? d.data : [])).catch(() => {});
+  };
+  const addSyn = async () => {
+    const words = synWords.split(/[\s,，;；]+/).map(s => s.trim()).filter(Boolean);
+    if (words.length < 2) { setDictMsg('同义词至少 2 个，用逗号或空格分隔'); return; }
+    const res = await fetch(API + '/synonyms', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ words, note: synNote.trim() }) });
+    const d = await res.json();
+    if (d.success) { setSynWords(''); setSynNote(''); setDictMsg('同义词组已添加'); loadDict(); } else setDictMsg('添加失败：' + (d.error || ''));
+  };
+  const delSyn = async (id: string) => { const r = await fetch(API + '/synonyms/' + id, { method: 'DELETE', headers: getAuthHeaders() }); const d = await r.json(); if (d.success) loadDict(); else alert(d.error || '删除失败'); };
+  const addStop = async () => {
+    if (!stopWord.trim()) { setDictMsg('停用词必填'); return; }
+    const res = await fetch(API + '/stopwords', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ word: stopWord.trim() }) });
+    const d = await res.json();
+    if (d.success) { setStopWord(''); setDictMsg('停用词已添加'); loadDict(); } else setDictMsg('添加失败：' + (d.error || ''));
+  };
+  const delStop = async (w: string) => { const r = await fetch(API + '/stopwords/' + encodeURIComponent(w), { method: 'DELETE', headers: getAuthHeaders() }); const d = await r.json(); if (d.success) loadDict(); else alert(d.error || '删除失败'); };
+
+  // ==================== 部门管理 ====================
+  const [deptList, setDeptList] = useState<any[]>([]);
+  const [deptName, setDeptName] = useState('');
+  const [deptCode, setDeptCode] = useState('');
+  const [deptParent, setDeptParent] = useState('');
+  const [deptMsg, setDeptMsg] = useState('');
+  const loadDepts = () => fetch(API + '/departments', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { data: [] }).then((d: any) => setDeptList(Array.isArray(d.data) ? d.data : [])).catch(() => {});
+  const saveDept = async () => {
+    if (!deptName.trim()) { setDeptMsg('部门名称必填'); return; }
+    const res = await fetch(API + '/departments', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ name: deptName.trim(), code: deptCode.trim(), parentId: deptParent || null }) });
+    const d = await res.json();
+    if (d.success) { setDeptName(''); setDeptCode(''); setDeptParent(''); setDeptMsg('部门已添加'); loadDepts(); } else setDeptMsg('保存失败：' + (d.error || ''));
+  };
+  const delDept = async (id: string) => { if (!confirm('删除该部门？')) return; const r = await fetch(API + '/departments/' + id, { method: 'DELETE', headers: getAuthHeaders() }); const d = await r.json(); if (d.success) loadDepts(); else alert(d.error || '删除失败'); };
+
+  // ==================== 系统公告 ====================
+  const [ann, setAnn] = useState<any>({ enabled: false, title: '', content: '', level: 'info' });
+  const [annMsg, setAnnMsg] = useState('');
+  const loadAnnouncement = () => fetch(API + '/announcement', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { data: {} }).then((d: any) => { if (d.data) setAnn(d.data); }).catch(() => {});
+  const saveAnnouncement = async () => {
+    const res = await fetch(API + '/announcement', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(ann) });
+    const d = await res.json();
+    if (d.success) { setAnnMsg('公告已保存'); loadAnnouncement(); } else setAnnMsg('保存失败：' + (d.error || ''));
+  };
+
+  // ==================== 操作审计 ====================
+  const [auditList, setAuditList] = useState<any[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditOp, setAuditOp] = useState('');
+  const [auditOpInput, setAuditOpInput] = useState('');
+  const loadAudit = (op = auditOp) => {
+    const q = op ? ('?operation=' + encodeURIComponent(op)) : '';
+    fetch(API + '/audit-logs' + q, { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { data: [], total: 0 }).then((d: any) => { setAuditList(Array.isArray(d.data) ? d.data : []); setAuditTotal(d.total || 0); }).catch(() => {});
+  };
+
   useEffect(() => {
     if (subTab === 'org') loadOrg();
     if (subTab === 'personnel') loadP();
     if (subTab === 'permissions') loadPerm();
     if (subTab === 'oa') { loadOA(); loadSSO(); }
     if (subTab === 'software') loadSoftware();
+    if (subTab === 'config') loadConfig();
+    if (subTab === 'sso') loadSsoWhitelist();
+    if (subTab === 'dict') loadDict();
+    if (subTab === 'dept') loadDepts();
+    if (subTab === 'announcement') loadAnnouncement();
+    if (subTab === 'audit') loadAudit();
   }, [subTab]);
 
   // ==================== 组织架构保存 ====================
@@ -297,8 +400,8 @@ export default function BasicInfoManagement() {
     <div>
       <h2>基础信息管理</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {(['org', 'personnel', 'permissions', 'oa', 'software'] as SubTab[]).map(k => (
-          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织架构' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : '软件信息'}</button>
+        {(['org', 'personnel', 'permissions', 'oa', 'software', 'config', 'sso', 'dict', 'dept', 'announcement', 'audit'] as SubTab[]).map(k => (
+          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织架构' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : k === 'dept' ? '部门管理' : k === 'announcement' ? '系统公告' : '操作审计'}</button>
         ))}
       </div>
 
@@ -527,6 +630,157 @@ export default function BasicInfoManagement() {
             <button onClick={saveSoftware}>保存软件信息</button>
           </div>
           {softwareMsg && <div style={{ marginTop: 12, color: '#52c41a' }}>{softwareMsg}</div>}
+        </div>
+      )}
+
+      {/* 系统配置 */}
+      {subTab === 'config' && (
+        <div>
+          <h3>统一系统配置</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+            <fieldset style={{ flex: 1, minWidth: 280 }}>
+              <legend>对话生成</legend>
+              模型温度：<input type="number" step="0.1" value={config.chat?.temperature ?? 0} onChange={e => setConfig({ ...config, chat: { ...config.chat, temperature: Number(e.target.value) } })} style={{ width: 80 }} /><br />
+              TopP：<input type="number" step="0.1" value={config.chat?.topP ?? 0} onChange={e => setConfig({ ...config, chat: { ...config.chat, topP: Number(e.target.value) } })} style={{ width: 80 }} /><br />
+              最大Token：<input type="number" value={config.chat?.maxTokens ?? 0} onChange={e => setConfig({ ...config, chat: { ...config.chat, maxTokens: Number(e.target.value) } })} style={{ width: 100 }} />
+            </fieldset>
+            <fieldset style={{ flex: 1, minWidth: 280 }}>
+              <legend>检索</legend>
+              召回条数 TopK：<input type="number" value={config.retrieval?.topK ?? 0} onChange={e => setConfig({ ...config, retrieval: { ...config.retrieval, topK: Number(e.target.value) } })} style={{ width: 80 }} /><br />
+              相似度阈值：<input type="number" step="0.05" value={config.retrieval?.scoreThreshold ?? 0} onChange={e => setConfig({ ...config, retrieval: { ...config.retrieval, scoreThreshold: Number(e.target.value) } })} style={{ width: 80 }} /><br />
+              启用重排序：<input type="checkbox" checked={!!config.retrieval?.enableRerank} onChange={e => setConfig({ ...config, retrieval: { ...config.retrieval, enableRerank: e.target.checked } })} />
+            </fieldset>
+            <fieldset style={{ flex: 1, minWidth: 280 }}>
+              <legend>会话</legend>
+              回答超时(ms)：<input type="number" value={config.conversation?.timeoutMs ?? 0} onChange={e => setConfig({ ...config, conversation: { ...config.conversation, timeoutMs: Number(e.target.value) } })} style={{ width: 100 }} /><br />
+              答案口语化：<input type="checkbox" checked={!!config.conversation?.enableRewrite} onChange={e => setConfig({ ...config, conversation: { ...config.conversation, enableRewrite: e.target.checked } })} /><br />
+              对话记忆：<input type="checkbox" checked={!!config.conversation?.enableMemory} onChange={e => setConfig({ ...config, conversation: { ...config.conversation, enableMemory: e.target.checked } })} />
+            </fieldset>
+          </div>
+          <fieldset style={{ marginTop: 12 }}>
+            <legend>多部门隔离</legend>
+            启用：<input type="checkbox" checked={!!config.multiDeptEnabled} onChange={e => setConfig({ ...config, multiDeptEnabled: e.target.checked })} /> （开启后，人员/对话列表可按部门过滤）<br />
+            默认部门：<input value={config.defaultDepartment || ''} onChange={e => setConfig({ ...config, defaultDepartment: e.target.value })} style={{ width: 240 }} />
+          </fieldset>
+          <div style={{ marginTop: 12 }}>
+            <button onClick={saveConfig}>保存配置</button>
+            <button style={{ marginLeft: 8 }} onClick={async () => { const r = await fetch(API + '/config/export', { headers: getAuthHeaders() }); const blob = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'system-config-backup.json'; a.click(); }}>导出配置备份</button>
+            <label style={{ marginLeft: 8 }}>
+              导入备份：<input type="file" accept="application/json" onChange={async (e: any) => {
+                const f = e.target.files?.[0]; if (!f) return;
+                const text = await f.text();
+                try { const bundle = JSON.parse(text); const r = await fetch(API + '/config/import', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ bundle }) }); const d = await r.json(); if (d.success) { setConfigMsg('已恢复：' + (d.imported || []).join(',')); loadConfig(); } else setConfigMsg('恢复失败：' + (d.error || '')); } catch (err: any) { setConfigMsg('解析失败：' + err.message); }
+              }} />
+            </label>
+          </div>
+          {configMsg && <div style={{ marginTop: 12, color: '#52c41a' }}>{configMsg}</div>}
+        </div>
+      )}
+
+      {/* SSO 白名单 */}
+      {subTab === 'sso' && (
+        <div>
+          <h3>SSO 登录白名单</h3>
+          <div>账号(工号)：<input value={ssoAccount} onChange={e => setSsoAccount(e.target.value)} placeholder="如 GK88888" />
+            姓名：<input value={ssoName} onChange={e => setSsoName(e.target.value)} />
+            备注：<input value={ssoNote} onChange={e => setSsoNote(e.target.value)} />
+            <button style={{ marginLeft: 8 }} onClick={addSSO}>添加</button>
+          </div>
+          {ssoMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{ssoMsg}</div>}
+          <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th>账号</th><th>姓名</th><th>备注</th><th>添加人</th><th>添加时间</th><th>操作</th></tr></thead>
+            <tbody>
+              {ssoList.map((x: any) => (
+                <tr key={x.account}><td>{x.account}</td><td>{x.name || '-'}</td><td>{x.note || '-'}</td><td>{x.addedBy || '-'}</td><td>{x.addedAt ? x.addedAt.slice(0, 19).replace('T', ' ') : '-'}</td><td><button onClick={() => delSSO(x.account)}>移除</button></td></tr>
+              ))}
+              {ssoList.length === 0 && <tr><td colSpan={6}>暂无白名单</td></tr>}
+            </tbody>
+          </table>
+          <p style={{ color: '#999', fontSize: 12, marginTop: 8 }}>白名单变更已自动同步至 OA 配置并写入审计日志。</p>
+        </div>
+      )}
+
+      {/* 同义词 / 停用词 */}
+      {subTab === 'dict' && (
+        <div>
+          <h3>同义词 / 停用词</h3>
+          <div style={{ display: 'flex', gap: 24 }}>
+            <div style={{ flex: 1 }}>
+              <h4>同义词组</h4>
+              词语（逗号或空格分隔，至少2个）：<br />
+              <input value={synWords} onChange={e => setSynWords(e.target.value)} style={{ width: '100%' }} placeholder="如：发票, 票据, 发飘" /><br />
+              备注：<input value={synNote} onChange={e => setSynNote(e.target.value)} style={{ width: '100%' }} /><br />
+              <button style={{ marginTop: 8 }} onClick={addSyn}>添加同义词组</button>
+              <ul>{synList.map((s: any) => (<li key={s.id}>{s.words.join(' / ')} {s.note ? ('(' + s.note + ')') : ''} <button onClick={() => delSyn(s.id)}>删</button></li>))}</ul>
+            </div>
+            <div style={{ flex: 1 }}>
+              <h4>停用词</h4>
+              停用词：<input value={stopWord} onChange={e => setStopWord(e.target.value)} /> <button onClick={addStop}>添加</button>
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {stopList.map((w: string) => (<span key={w} style={{ border: '1px solid #d9d9d9', padding: '2px 8px', borderRadius: 4 }}>{w} <button onClick={() => delStop(w)} style={{ border: 'none', background: 'none', color: '#f5222d', cursor: 'pointer' }}>×</button></span>))}
+                {stopList.length === 0 && <span style={{ color: '#999' }}>暂无</span>}
+              </div>
+            </div>
+          </div>
+          {dictMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{dictMsg}</div>}
+        </div>
+      )}
+
+      {/* 部门管理 */}
+      {subTab === 'dept' && (
+        <div>
+          <h3>部门管理（多部门隔离基础）</h3>
+          <div>名称：<input value={deptName} onChange={e => setDeptName(e.target.value)} />
+            编码：<input value={deptCode} onChange={e => setDeptCode(e.target.value)} />
+            上级：<select value={deptParent} onChange={e => setDeptParent(e.target.value)}><option value="">-- 无 --</option>{deptList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
+            <button style={{ marginLeft: 8 }} onClick={saveDept}>添加部门</button>
+          </div>
+          {deptMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{deptMsg}</div>}
+          <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th>名称</th><th>编码</th><th>上级</th><th>操作</th></tr></thead>
+            <tbody>
+              {deptList.map((d: any) => (<tr key={d.id}><td>{d.name}</td><td>{d.code || '-'}</td><td>{deptList.find(x => x.id === d.parentId)?.name || '-'}</td><td><button onClick={() => delDept(d.id)}>删除</button></td></tr>))}
+              {deptList.length === 0 && <tr><td colSpan={4}>暂无部门</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 系统公告 */}
+      {subTab === 'announcement' && (
+        <div>
+          <h3>系统公告 / Banner</h3>
+          <div><label><input type="checkbox" checked={!!ann.enabled} onChange={e => setAnn({ ...ann, enabled: e.target.checked })} /> 启用公告</label></div>
+          <div style={{ marginTop: 8 }}>级别：
+            <select value={ann.level} onChange={e => setAnn({ ...ann, level: e.target.value })}>
+              <option value="info">普通(info)</option><option value="warning">警告(warning)</option><option value="success">成功(success)</option><option value="error">错误(error)</option>
+            </select>
+          </div>
+          <div style={{ marginTop: 8 }}>标题：<input value={ann.title} onChange={e => setAnn({ ...ann, title: e.target.value })} style={{ width: 360 }} /></div>
+          <div style={{ marginTop: 8 }}>内容：<br /><textarea value={ann.content} onChange={e => setAnn({ ...ann, content: e.target.value })} rows={4} style={{ width: '100%', maxWidth: 600 }} /></div>
+          <div style={{ marginTop: 12 }}><button onClick={saveAnnouncement}>保存公告</button></div>
+          {annMsg && <div style={{ marginTop: 8, color: '#52c41a' }}>{annMsg}</div>}
+        </div>
+      )}
+
+      {/* 操作审计 */}
+      {subTab === 'audit' && (
+        <div>
+          <h3>操作审计日志</h3>
+          <div>操作筛选：<input value={auditOpInput} onChange={e => setAuditOpInput(e.target.value)} placeholder="如 新增 / 删除 / 更新" />
+            <button style={{ marginLeft: 8 }} onClick={() => { setAuditOp(auditOpInput.trim()); loadAudit(auditOpInput.trim()); }}>查询</button>
+            <button style={{ marginLeft: 8 }} onClick={() => { setAuditOp(''); setAuditOpInput(''); loadAudit(''); }}>全部</button>
+          </div>
+          <p style={{ color: '#999', fontSize: 12 }}>共 {auditTotal} 条</p>
+          <table border={1} cellPadding={6} style={{ marginTop: 8, width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr><th>时间</th><th>操作</th><th>操作人</th><th>详情</th></tr></thead>
+            <tbody>
+              {auditList.map((a: any, i: number) => (
+                <tr key={i}><td>{a.timestamp ? a.timestamp.slice(0, 19).replace('T', ' ') : '-'}</td><td>{a.operation || '-'}</td><td>{a.operator || '-'}</td><td style={{ maxWidth: 400, wordBreak: 'break-all' }}>{a.details ? JSON.stringify(a.details) : ''}</td></tr>
+              ))}
+              {auditList.length === 0 && <tr><td colSpan={4}>暂无记录</td></tr>}
+            </tbody>
+          </table>
         </div>
       )}
 

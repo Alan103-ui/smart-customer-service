@@ -43,7 +43,15 @@ const {
   loadPersonnel, savePersonnel,
   loadPermissions, savePermissions,
   loadA8Config, saveA8Config,
-  CATEGORIES_PATH, FAQ_PATH, ORG_PATH, PERSONNEL_PATH, PERMISSIONS_PATH, A8_CONFIG_PATH, KNOWLEDGE_BASES_PATH
+  loadSoftwareInfo, saveSoftwareInfo,
+  loadSystemConfig, saveSystemConfig,
+  loadSynonyms, saveSynonyms,
+  loadStopwords, saveStopwords,
+  loadAnnouncement, saveAnnouncement,
+  loadSSOWhitelist, saveSSOWhitelist,
+  loadDepartments, saveDepartments,
+  CATEGORIES_PATH, FAQ_PATH, ORG_PATH, PERSONNEL_PATH, PERMISSIONS_PATH, A8_CONFIG_PATH, KNOWLEDGE_BASES_PATH,
+  SYSTEM_CONFIG_PATH, SYNONYMS_PATH, STOPWORDS_PATH, ANNOUNCEMENT_PATH, SSO_WHITELIST_PATH, DEPARTMENTS_PATH
 } = data;
 
 // ============ 日志系统 ============
@@ -971,8 +979,16 @@ function enrichConversation(conv) {
 router.get('/conversations', (req, res) => {
   try {
     const db = readDB();
-    const { limit = 100, offset = 0 } = req.query;
-    const slice = db.conversations.slice(Number(offset), Number(offset) + Number(limit));
+    const { limit = 100, offset = 0, department } = req.query;
+    let convs = db.conversations;
+    // 多部门隔离：仅当开关开启且指定 department 时按部门过滤
+    if (department) {
+      const cfg = loadSystemConfig();
+      if (cfg.multiDeptEnabled) {
+        convs = convs.filter(c => (c.department || cfg.defaultDepartment || '') === String(department));
+      }
+    }
+    const slice = convs.slice(Number(offset), Number(offset) + Number(limit));
     res.json(slice.map(c => enrichConversation(c)));
   } catch (err) {
     errorLog('获取对话列表失败', err);
@@ -1174,8 +1190,16 @@ router.delete('/org/:id', (req, res) => {
 router.get('/personnel', (req, res) => {
   try {
     const list = loadPersonnel();
-    const { orgId } = req.query;
-    const filtered = orgId ? list.filter(p => p.orgId === orgId) : list;
+    const { orgId, department } = req.query;
+    let filtered = list;
+    if (orgId) filtered = filtered.filter(p => p.orgId === orgId);
+    // 多部门隔离：仅当开关开启且指定 department 时按部门过滤
+    if (department) {
+      const cfg = loadSystemConfig();
+      if (cfg.multiDeptEnabled) {
+        filtered = filtered.filter(p => (p.department || cfg.defaultDepartment || '') === String(department));
+      }
+    }
     res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1498,6 +1522,347 @@ router.get('/performance', (req, res) => {
     res.send(html);
   } catch (e) {
     res.status(500).send('页面生成失败: ' + e.message);
+  }
+});
+
+// ==========================================
+// 十、统一系统配置
+// ==========================================
+router.get('/config', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    res.json({ success: true, data: loadSystemConfig() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/config', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const updated = saveSystemConfig(req.body || {});
+    auditLog('更新系统配置', req.user ? req.user.username : 'unknown', { keys: Object.keys(req.body || {}) });
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 十一、系统公告 / Banner
+// ==========================================
+router.get('/announcement', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    res.json({ success: true, data: loadAnnouncement() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/announcement', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const prev = loadAnnouncement();
+    const body = req.body || {};
+    const updated = saveAnnouncement({
+      enabled: body.enabled !== undefined ? !!body.enabled : prev.enabled,
+      title: body.title || '',
+      content: body.content || '',
+      level: ['info', 'warning', 'success', 'error'].includes(body.level) ? body.level : (prev.level || 'info'),
+      updatedAt: new Date().toISOString(),
+      updatedBy: req.user ? req.user.username : 'unknown'
+    });
+    auditLog('更新系统公告', req.user ? req.user.username : 'unknown', { enabled: updated.enabled, title: updated.title });
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 十二、SSO 白名单（独立数据源 + 审计）
+// ==========================================
+// 启动时若白名单文件不存在，则从 oa-config.json 的 sso.whitelist 初始化（兼容旧数据）
+(function seedSSOWhitelist() {
+  try {
+    if (!fs.existsSync(SSO_WHITELIST_PATH)) {
+      const oaPath = path.join(__dirname, '../data/oa-config.json');
+      let legacy = [];
+      try { legacy = (JSON.parse(fs.readFileSync(oaPath, 'utf8')).sso || {}).whitelist || []; } catch (e) {}
+      const now = new Date().toISOString();
+      const seed = (Array.isArray(legacy) ? legacy : []).map(acc => ({
+        account: String(acc), name: '', note: '从 oa-config 迁移', addedBy: 'system', addedAt: now
+      }));
+      saveSSOWhitelist(seed);
+      console.log(`[init] SSO 白名单已从 oa-config 迁移 ${seed.length} 条到 ${path.basename(SSO_WHITELIST_PATH)}`);
+    }
+  } catch (e) { errorLog('SSO 白名单初始化失败', e); }
+})();
+
+// 将白名单账号同步回 oa-config.json（保证现有 SSO 登录逻辑无需改动即可生效）
+function syncOAConfigWhitelist(accounts) {
+  try {
+    const oaPath = path.join(__dirname, '../data/oa-config.json');
+    const cfg = JSON.parse(fs.readFileSync(oaPath, 'utf8'));
+    cfg.sso = cfg.sso || {};
+    cfg.sso.whitelist = accounts.map(String);
+    fs.writeFileSync(oaPath, JSON.stringify(cfg, null, 2));
+  } catch (e) { errorLog('同步 oa-config 白名单失败', e); }
+}
+
+router.get('/sso-whitelist', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    res.json({ success: true, data: loadSSOWhitelist() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/sso-whitelist', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const { account, name, note } = req.body || {};
+    const acc = (account || '').toString().trim();
+    if (!acc) return res.status(400).json({ error: '账号(工号)必填' });
+    const list = loadSSOWhitelist();
+    if (list.some(x => x.account === acc)) return res.status(400).json({ error: '该账号已在白名单中' });
+    const entry = { account: acc, name: (name || '').trim(), note: (note || '').trim(), addedBy: req.user ? req.user.username : 'unknown', addedAt: new Date().toISOString() };
+    list.push(entry);
+    saveSSOWhitelist(list);
+    syncOAConfigWhitelist(list.map(x => x.account));
+    auditLog('新增SSO白名单', req.user ? req.user.username : 'unknown', { account: acc });
+    res.json({ success: true, data: entry });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/sso-whitelist/:account', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const acc = decodeURIComponent(req.params.account);
+    const list = loadSSOWhitelist();
+    const before = list.length;
+    const next = list.filter(x => x.account !== acc);
+    if (next.length === before) return res.status(404).json({ error: '白名单中未找到该账号' });
+    saveSSOWhitelist(next);
+    syncOAConfigWhitelist(next.map(x => x.account));
+    auditLog('删除SSO白名单', req.user ? req.user.username : 'unknown', { account: acc });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 十三、同义词 / 停用词
+// ==========================================
+router.get('/synonyms', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try { res.json({ success: true, data: loadSynonyms() }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/synonyms', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const { words, note } = req.body || {};
+    if (!Array.isArray(words) || words.length < 2) return res.status(400).json({ error: '同义词至少需 2 个词' });
+    const list = loadSynonyms();
+    const entry = { id: 'syn_' + Date.now(), words: words.map(w => String(w).trim()).filter(Boolean), note: (note || '').trim(), createdAt: new Date().toISOString() };
+    list.push(entry);
+    saveSynonyms(list);
+    auditLog('新增同义词组', req.user ? req.user.username : 'unknown', { words: entry.words });
+    res.json({ success: true, data: entry });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.delete('/synonyms/:id', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const list = loadSynonyms();
+    const next = list.filter(x => x.id !== req.params.id);
+    if (next.length === list.length) return res.status(404).json({ error: '未找到该同义词组' });
+    saveSynonyms(next);
+    auditLog('删除同义词组', req.user ? req.user.username : 'unknown', { id: req.params.id });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/stopwords', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try { res.json({ success: true, data: loadStopwords() }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/stopwords', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const { word } = req.body || {};
+    const w = (word || '').toString().trim();
+    if (!w) return res.status(400).json({ error: '停用词必填' });
+    const list = loadStopwords();
+    if (list.includes(w)) return res.status(400).json({ error: '该停用词已存在' });
+    list.push(w);
+    saveStopwords(list);
+    auditLog('新增停用词', req.user ? req.user.username : 'unknown', { word: w });
+    res.json({ success: true, data: list });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.delete('/stopwords/:word', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const w = decodeURIComponent(req.params.word);
+    const list = loadStopwords();
+    const next = list.filter(x => x !== w);
+    if (next.length === list.length) return res.status(404).json({ error: '未找到该停用词' });
+    saveStopwords(next);
+    auditLog('删除停用词', req.user ? req.user.username : 'unknown', { word: w });
+    res.json({ success: true, data: next });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ==========================================
+// 十四、部门目录（多部门隔离基础）
+// ==========================================
+router.get('/departments', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try { res.json({ success: true, data: loadDepartments() }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/departments', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const { name, code, parentId, sortOrder } = req.body || {};
+    if (!name || !name.trim()) return res.status(400).json({ error: '部门名称必填' });
+    const list = loadDepartments();
+    const entry = { id: 'dept_' + Date.now(), name: name.trim(), code: (code || '').trim(), parentId: parentId || null, sortOrder: Number(sortOrder) || 0, createdAt: new Date().toISOString() };
+    list.push(entry);
+    saveDepartments(list);
+    auditLog('新增部门', req.user ? req.user.username : 'unknown', { name: entry.name, code: entry.code });
+    res.json({ success: true, data: entry });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.put('/departments/:id', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const list = loadDepartments();
+    const idx = list.findIndex(d => d.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: '部门不存在' });
+    const { name, code, parentId, sortOrder } = req.body || {};
+    if (name !== undefined) list[idx].name = name.trim();
+    if (code !== undefined) list[idx].code = code.trim();
+    if (parentId !== undefined) list[idx].parentId = parentId || null;
+    if (sortOrder !== undefined) list[idx].sortOrder = Number(sortOrder) || 0;
+    saveDepartments(list);
+    auditLog('更新部门', req.user ? req.user.username : 'unknown', { id: req.params.id });
+    res.json({ success: true, data: list[idx] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.delete('/departments/:id', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const list = loadDepartments();
+    const next = list.filter(d => d.id !== req.params.id);
+    if (next.length === list.length) return res.status(404).json({ error: '部门不存在' });
+    saveDepartments(next);
+    auditLog('删除部门', req.user ? req.user.username : 'unknown', { id: req.params.id });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 为人员打部门标签（多部门隔离的数据归属）
+router.put('/personnel/:id/department', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const { department } = req.body || {};
+    const list = loadPersonnel();
+    const idx = list.findIndex(p => p.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: '人员不存在' });
+    list[idx].department = department || '';
+    savePersonnel(list);
+    auditLog('人员归属部门', req.user ? req.user.username : 'unknown', { id: req.params.id, department: department || '' });
+    res.json({ success: true, data: list[idx] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ==========================================
+// 十五、操作审计查询
+// ==========================================
+router.get('/audit-logs', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const LOGS_DIR = path.join(__dirname, '../logs');
+    const { operation, operator, date, limit = 200, offset = 0 } = req.query;
+    if (!fs.existsSync(LOGS_DIR)) return res.json({ success: true, data: [], total: 0 });
+    let files = fs.readdirSync(LOGS_DIR).filter(f => f.endsWith('.log'));
+    if (date) files = files.filter(f => f.startsWith(String(date)));
+    files.sort((a, b) => b.localeCompare(a)); // 新日期优先
+    const out = [];
+    const opQ = operation ? String(operation).toLowerCase() : '';
+    const opQ2 = operator ? String(operator).toLowerCase() : '';
+    for (const f of files) {
+      const raw = fs.readFileSync(path.join(LOGS_DIR, f), 'utf8');
+      for (const line of raw.split('\n')) {
+        if (!line.trim()) continue;
+        let log;
+        try { log = JSON.parse(line); } catch (e) { continue; }
+        if (log.level !== 'AUDIT') continue;
+        if (opQ && !String(log.operation || '').toLowerCase().includes(opQ)) continue;
+        if (opQ2 && !String(log.operator || '').toLowerCase().includes(opQ2)) continue;
+        out.push(log);
+      }
+    }
+    out.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+    const total = out.length;
+    const paged = out.slice(Number(offset), Number(offset) + Number(limit));
+    res.json({ success: true, data: paged, total });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 十六、配置备份 / 恢复
+// ==========================================
+function buildConfigBundle() {
+  return {
+    exportedAt: new Date().toISOString(),
+    version: 1,
+    data: {
+      systemConfig: loadSystemConfig(),
+      softwareInfo: loadSoftwareInfo ? loadSoftwareInfo() : undefined,
+      a8Config: loadA8Config(),
+      synonyms: loadSynonyms(),
+      stopwords: loadStopwords(),
+      announcement: loadAnnouncement(),
+      ssoWhitelist: loadSSOWhitelist(),
+      departments: loadDepartments(),
+      permissions: loadPermissions(),
+      categories: loadCategories(),
+      knowledgeBases: loadKnowledgeBases(),
+      faq: getFAQ()
+    }
+  };
+}
+
+router.get('/config/export', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const bundle = buildConfigBundle();
+    auditLog('导出系统配置', req.user ? req.user.username : 'unknown', {});
+    res.setHeader('Content-Disposition', `attachment; filename="system-config-backup-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.setHeader('Content-Type', 'application/json');
+    res.json(bundle);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/config/import', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const body = req.body || {};
+    const bundle = body.bundle || body; // 兼容直接传 bundle 或 {bundle}
+    const d = bundle && bundle.data ? bundle.data : null;
+    if (!d) return res.status(400).json({ error: '无效的配置包' });
+    const scope = Array.isArray(body.scope) ? body.scope : null; // 可选：仅恢复指定模块
+    const imported = [];
+    const apply = (key, fn) => {
+      if (scope && !scope.includes(key)) return;
+      if (d[key] !== undefined) { fn(d[key]); imported.push(key); }
+    };
+    apply('systemConfig', saveSystemConfig);
+    apply('softwareInfo', saveSoftwareInfo);
+    apply('a8Config', saveA8Config);
+    apply('synonyms', saveSynonyms);
+    apply('stopwords', saveStopwords);
+    apply('announcement', saveAnnouncement);
+    apply('ssoWhitelist', (v) => { saveSSOWhitelist(v); syncOAConfigWhitelist(v.map(x => x.account)); });
+    apply('departments', saveDepartments);
+    apply('permissions', savePermissions);
+    apply('categories', saveCategories);
+    apply('knowledgeBases', saveKnowledgeBases);
+    apply('faq', saveFAQ);
+    auditLog('导入系统配置', req.user ? req.user.username : 'unknown', { scope: scope || 'all', imported });
+    res.json({ success: true, imported });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

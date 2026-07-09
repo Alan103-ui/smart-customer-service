@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { Message, Candidate } from '../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useSoftwareInfo } from '../services/softwareInfo';
+import { useSoftwareInfo, useAnnouncement, ANNOUNCEMENT_COLORS } from '../services/softwareInfo';
 import './ChatWindow.design.css';
 
 interface ChatWindowProps {
@@ -32,6 +32,7 @@ export default function ChatWindow({
 }: ChatWindowProps) {
   const sw = useSoftwareInfo();
   const chatAvatar = sw.chatImage || '/logo.jpg';
+  const ann = useAnnouncement();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,6 +57,13 @@ export default function ChatWindow({
 
   return (
     <div className="chat-window-modern">
+      {/* 系统公告 Banner */}
+      {ann.enabled && (ann.title || ann.content) && (
+        <div style={{ background: ANNOUNCEMENT_COLORS[ann.level]?.bg || '#e6f7ff', borderBottom: '1px solid ' + (ANNOUNCEMENT_COLORS[ann.level]?.border || '#91d5ff'), color: ANNOUNCEMENT_COLORS[ann.level]?.color || '#0958d9', padding: '8px 16px', fontSize: 13 }}>
+          {ann.title && <span style={{ fontWeight: 600, marginRight: 8 }}>{ann.title}</span>}
+          {ann.content && <span style={{ whiteSpace: 'pre-wrap' }}>{ann.content}</span>}
+        </div>
+      )}
       {/* 分类选择栏 */}
       {categories.length > 0 && (
         <div className="category-bar-modern">
