@@ -4,10 +4,72 @@
  */
 
 const { callOllamaChat, DEFAULT_BASE_URL, DEFAULT_MODEL } = require('./ollama-client');
+const { loadSoftwareInfo } = require('./data');
 
 // ============ 配置常量 ============
 const OLLAMA_BASE_URL = DEFAULT_BASE_URL;
 const OLLAMA_MODEL = DEFAULT_MODEL;
+
+// ============ 改写结果缓存 ============
+// 按 FAQ id + 模型版本 + 语气 缓存，二次命中直接返回，省掉 LLM 调用延迟
+const rewriteCache = new Map(); // key -> { answerHash, rewritten, hits }
+const REWRITE_CACHE_MAX_SIZE = 500;
+
+/**
+ * 获取当前实际用于改写的 LLM 模型（用于缓存版本标识）。
+ * 模型切换后，缓存 key 变化，旧结果自动失效。
+ * 懒加载 model-switcher，避免模块加载期循环依赖。
+ */
+function getActiveRewriteModel() {
+  try {
+    const ms = require('./model-switcher');
+    const m = ms.getCurrentModel ? ms.getCurrentModel('llm') : null;
+    return m || OLLAMA_MODEL;
+  } catch (e) {
+    return OLLAMA_MODEL;
+  }
+}
+
+/** 轻量哈希（仅用于内容失效判断，非加密用途） */
+function hashString(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function buildRewriteCacheKey(faqId, model, tone) {
+  return `${faqId}::${model}::${tone}`;
+}
+
+/**
+ * 清除改写缓存（可指定 faqId 精准清除，或不传清空全部）
+ * @param {string} [faqId]
+ * @returns {number} 清除条数
+ */
+function clearRewriteCache(faqId) {
+  if (!faqId) {
+    const n = rewriteCache.size;
+    rewriteCache.clear();
+    console.log(`[AnswerRewriter] 改写缓存已清空（${n} 条）`);
+    return n;
+  }
+  let removed = 0;
+  for (const key of rewriteCache.keys()) {
+    if (key.startsWith(`${faqId}::`)) {
+      rewriteCache.delete(key);
+      removed++;
+    }
+  }
+  console.log(`[AnswerRewriter] 已清除 FAQ(${faqId}) 的改写缓存 ${removed} 条`);
+  return removed;
+}
+
+function getRewriteCacheStats() {
+  return { size: rewriteCache.size, maxSize: REWRITE_CACHE_MAX_SIZE };
+}
 
 /** 最大改写长度限制（防止异常输入） */
 const MAX_ANSWER_LENGTH = 5000;
@@ -114,12 +176,27 @@ async function rewriteToColloquial(originalAnswer, options = {}) {
     tone = 'friendly',
     userName = '',
     isReturnUser = false,
-    intent = null
+    intent = null,
+    faqId = null // 新增：传入 FAQ id 以启用改写结果缓存
   } = options;
 
   // 校验语气参数
   const toneKey = TONE_IDS.includes(tone) ? tone : 'friendly';
   const toneConfig = TONE_CONFIGS[toneKey];
+
+  // ---- 缓存命中检查（仅 FAQ 场景且答案足够长）----
+  let cacheKey = null;
+  const answerHash = hashString(answer);
+  if (faqId && answer.length > 20) {
+    const model = getActiveRewriteModel();
+    cacheKey = buildRewriteCacheKey(faqId, model, toneKey);
+    const hit = rewriteCache.get(cacheKey);
+    if (hit && hit.answerHash === answerHash) {
+      hit.hits++;
+      console.log(`[AnswerRewriter] 命中改写缓存，跳过 LLM（faqId=${faqId}, 模型=${model}, 命中${hit.hits}次, 耗时≈0ms）`);
+      return hit.rewritten;
+    }
+  }
 
   // ---- 构建 Prompt 各部分 ----
   const historyContext = buildHistoryContext(conversationHistory);
@@ -154,9 +231,21 @@ async function rewriteToColloquial(originalAnswer, options = {}) {
 
     // 后处理：清除多余引号/前缀
     const cleaned = cleanRewritten(rewritten);
+    const result = cleaned || answer; // 若清洗后为空，降级返回原答案
 
-    console.log(`[AnswerRewriter] 改写完成，原长度: ${answer.length}, 新长度: ${cleaned.length}`);
-    return cleaned || answer; // 若清洗后为空，降级返回原答案
+    // ---- 写入缓存（仅当改写成功且与原文不同）----
+    if (cacheKey && result && result !== answer) {
+      rewriteCache.set(cacheKey, { answerHash, rewritten: result, hits: 1 });
+      // 超限清理（删除最早插入项，Map 保持插入顺序）
+      if (rewriteCache.size > REWRITE_CACHE_MAX_SIZE) {
+        const oldest = rewriteCache.keys().next().value;
+        rewriteCache.delete(oldest);
+      }
+      console.log(`[AnswerRewriter] 改写完成并缓存，原长度: ${answer.length}, 新长度: ${result.length}, 缓存数: ${rewriteCache.size}`);
+    } else {
+      console.log(`[AnswerRewriter] 改写完成，原长度: ${answer.length}, 新长度: ${result.length}`);
+    }
+    return result;
 
   } catch (err) {
     console.error('[AnswerRewriter] 改写失败，使用原答案：', err.message);
@@ -332,7 +421,8 @@ function buildEmotionResponse(intent) {
  * @returns {string}
  */
 function buildRewriteSystemPrompt({ tonePrompt, personalization, emotionResponse }) {
-  let prompt = `你是「广康集团AI助手」的智能客服，名字叫「小智」。
+  const sw = loadSoftwareInfo();
+  let prompt = `你是「${sw.softwareName}」的智能客服，名字叫「${sw.assistantName}」。
   
   【【【 核心原则（必须遵守）】】】
   1. 【100%保持原意】- 改写后的答案必须完全保留原答案的核心信息和含义
@@ -471,6 +561,8 @@ module.exports = {
   batchRewrite,
   evaluateQuality,
   getToneList,
+  clearRewriteCache,
+  getRewriteCacheStats,
   TONE_CONFIGS,
   EMOTION_TEMPLATES
 };

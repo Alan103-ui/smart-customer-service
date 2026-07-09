@@ -13,6 +13,9 @@ const auth = require('./auth');  // 用户认证模块
 // 导入模型自动切换管理器
 const modelSwitcher = require('./model-switcher');
 
+// 软件信息（可编辑品牌/名称/欢迎语等）
+const { loadSoftwareInfo } = require('./data');
+
 // ============ 环境配置 ============
 // HyDE（假设文档生成）：默认关闭，因为会增加延迟
 // 启用方法：启动时设置环境变量 ENABLE_HYDE=1
@@ -83,7 +86,7 @@ const uploadEndpoints = require('./upload-endpoints');
 // ============ 知识库管理（动态加载） ============
 function loadKnowledgeBases() {
   if (!fs.existsSync(KNOWLEDGE_BASES_PATH)) {
-    const defaultKB = [{ id: 'kb_default', name: '广康集团知识库', description: '默认知识库', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDefault: true, isActive: true }];
+    const defaultKB = [{ id: 'kb_default', name: loadSoftwareInfo().knowledgeBaseName, description: '默认知识库', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDefault: true, isActive: true }];
     saveKnowledgeBases(defaultKB);
     return defaultKB;
   }
@@ -470,9 +473,10 @@ async function generateAgentReply(sessionId, userMessage, conversationHistory, i
   }
   
   // 构建 prompt
+  const sw = loadSoftwareInfo();
   const faqContext = getFAQ().map(f => `Q: ${f.question}\nA: ${stripHtmlTags(f.answer)}`).join('\n\n');
   
-  const systemPrompt = `你是「广康集团AI助手」的智能客服，名字叫「小智」。
+  const systemPrompt = `你是「${sw.softwareName}」的智能客服，名字叫「${sw.assistantName}」。
 请用简洁、友好、专业的中文回答用户问题。
 
 规则：
@@ -790,6 +794,11 @@ app.get('/api/categories', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// 公开接口：前端读取软件信息（标题/助手名/欢迎语等），无需登录
+app.get('/api/public/software-info', (req, res) => {
+  try { res.json({ success: true, data: loadSoftwareInfo() }); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 
@@ -1511,7 +1520,7 @@ app.get('*', (req, res, next) => {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, '0.0.0.0', async () => {
-  console.log(`🤖 广康集团AI助手后端服务启动成功！`);
+  console.log(`🤖 ${loadSoftwareInfo().softwareName}后端服务启动成功！`);
   console.log(`   WebSocket: ws://localhost:${PORT}/ws`);
   console.log(`   管理后台 API: http://localhost:${PORT}/api/admin/stats`);
   console.log(`   AI 模型: ${MODEL_NAME} @ ${OLLAMA_URL}`);

@@ -7,6 +7,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message, Candidate } from '../types';
+import { useSoftwareInfo } from '../services/softwareInfo';
 import './ChatWindow.modern.css';
 
 interface ChatWindowProps {
@@ -32,6 +33,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   selectedCategory = '全部',
   onSelectCategory
 }) => {
+  const sw = useSoftwareInfo();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -61,7 +63,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="chat-header__brand">
           <div className="chat-header__logo">AI</div>
           <div>
-            <h1 className="chat-header__title">广康智能知识助手</h1>
+            <h1 className="chat-header__title">{sw.softwareName}</h1>
             <p className="chat-header__subtitle">企业级 RAG 知识管理系统</p>
           </div>
         </div>
@@ -77,7 +79,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <div className="welcome-icon">
                 <span style={{ fontSize: '36px' }}>🤖</span>
               </div>
-              <h2 className="welcome-title">欢迎使用广康智能知识助手</h2>
+              <h2 className="welcome-title">{sw.welcomeMessage || ('欢迎使用' + sw.softwareName)}</h2>
               <p className="welcome-subtitle">
                 我是您的 AI 知识助手，可以帮您快速查询企业知识库中的信息
               </p>

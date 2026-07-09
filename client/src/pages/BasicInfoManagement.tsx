@@ -16,7 +16,7 @@ async function safeFetch<T>(url: string): Promise<T> {
   return [] as unknown as T;
 }
 
-type SubTab = 'org' | 'personnel' | 'permissions' | 'oa';
+type SubTab = 'org' | 'personnel' | 'permissions' | 'oa' | 'software';
 
 // 权限目录（本地兜底，后端 /api/admin/permissions/catalog 返回权威版本）
 const PERM_GROUPS_LOCAL: { group: string; items: { code: string; label: string }[] }[] = [
@@ -125,6 +125,10 @@ export default function BasicInfoManagement() {
   const [oaBatchIds, setOaBatchIds] = useState('');
   const [oaBatchResult, setOaBatchResult] = useState<any>(null);
 
+  // 软件信息（可编辑品牌/名称/欢迎语）
+  const [software, setSoftware] = useState<any>({ companyName: '', softwareName: '', assistantName: '', knowledgeBaseName: '', welcomeMessage: '' });
+  const [softwareMsg, setSoftwareMsg] = useState('');
+
   // 致远 OA SSO 白名单
   const [oaSso, setOaSso] = useState<any>({ mode: 'whitelist', requireSign: false, hasSignSecret: false, signSecretMasked: '', trustedIps: [], whitelist: [], count: 0, ssoUrl: '/api/auth/sso/oa' });
   const [oaSsoSecret, setOaSsoSecret] = useState('');
@@ -145,12 +149,14 @@ export default function BasicInfoManagement() {
       .catch(() => {});
   };
   const loadOA = () => fetch(API + '/oa/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: '', fixedToken: '' })).catch(() => {});
+  const loadSoftware = () => fetch(API + '/software-info', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => setSoftware({ companyName: d.companyName || '', softwareName: d.softwareName || '', assistantName: d.assistantName || '', knowledgeBaseName: d.knowledgeBaseName || '', welcomeMessage: d.welcomeMessage || '' })).catch(() => {});
 
   useEffect(() => {
     if (subTab === 'org') loadOrg();
     if (subTab === 'personnel') loadP();
     if (subTab === 'permissions') loadPerm();
     if (subTab === 'oa') { loadOA(); loadSSO(); }
+    if (subTab === 'software') loadSoftware();
   }, [subTab]);
 
   // ==================== 组织架构保存 ====================
@@ -210,6 +216,10 @@ export default function BasicInfoManagement() {
   const saveOA = async () => {
     const r = await fetch(API + '/oa/config', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(oa) }).then(r => r.json());
     if (r.success) { setOaMsg('配置已保存'); loadOA(); } else setOaMsg('保存失败：' + (r.error || ''));
+  };
+  const saveSoftware = async () => {
+    const r = await fetch(API + '/software-info', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(software) }).then(r => r.json());
+    if (r.success) { setSoftwareMsg('软件信息已保存，前端界面将自动应用'); loadSoftware(); } else setSoftwareMsg('保存失败：' + (r.error || ''));
   };
   const testOA = async () => {
     setOaTest(null); setOaMsg('');
@@ -294,8 +304,8 @@ export default function BasicInfoManagement() {
     <div>
       <h2>基础信息管理</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {(['org', 'personnel', 'permissions', 'oa'] as SubTab[]).map(k => (
-          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织架构' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : '致远OA对接'}</button>
+        {(['org', 'personnel', 'permissions', 'oa', 'software'] as SubTab[]).map(k => (
+          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织架构' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : '软件信息'}</button>
         ))}
       </div>
 
@@ -512,6 +522,33 @@ export default function BasicInfoManagement() {
               {oaTest.sampleAccount ? ' ｜ 示例组织：' + oaTest.sampleAccount.name : ''}
             </div>
           )}
+        </div>
+      )}
+
+      {/* 软件信息 */}
+      {subTab === 'software' && (
+        <div style={{ maxWidth: 700 }}>
+          <div style={{ background: '#fffbe6', padding: 12, borderRadius: 6, marginBottom: 12, fontSize: 13, color: '#666' }}>
+            此处可自定义系统对外展示的公司名称、软件名称、助手名、知识库名称与欢迎语。保存后，前端聊天界面与标题将自动生效。
+          </div>
+          <div style={{ marginTop: 8 }}>公司名称：<input value={software.companyName} onChange={e => setSoftware({ ...software, companyName: e.target.value })} placeholder="如 广康集团" style={{ width: 360 }} /></div>
+          <div style={{ marginTop: 8 }}>软件名称：<input value={software.softwareName} onChange={e => setSoftware({ ...software, softwareName: e.target.value })} placeholder="如 广康集团AI助手" style={{ width: 360 }} /></div>
+          <div style={{ marginTop: 8 }}>助手名称：<input value={software.assistantName} onChange={e => setSoftware({ ...software, assistantName: e.target.value })} placeholder="如 小智" style={{ width: 240 }} /></div>
+          <div style={{ marginTop: 8 }}>知识库名称：<input value={software.knowledgeBaseName} onChange={e => setSoftware({ ...software, knowledgeBaseName: e.target.value })} placeholder="如 广康集团知识库" style={{ width: 360 }} /></div>
+          <div style={{ marginTop: 8 }}>欢迎语：</div>
+          <div style={{ marginTop: 4 }}>
+            <textarea
+              value={software.welcomeMessage}
+              onChange={e => setSoftware({ ...software, welcomeMessage: e.target.value })}
+              rows={3}
+              placeholder="如 您好！我是广康集团AI助手，很高兴为您服务😊"
+              style={{ width: '100%', maxWidth: 560, fontSize: 14, padding: 6 }}
+            />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <button onClick={saveSoftware}>保存软件信息</button>
+          </div>
+          {softwareMsg && <div style={{ marginTop: 12, color: '#52c41a' }}>{softwareMsg}</div>}
         </div>
       )}
 

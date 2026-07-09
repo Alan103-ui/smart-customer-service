@@ -117,7 +117,7 @@ function isResolved(conversation) {
 
 function loadKnowledgeBases() {
   if (!fs.existsSync(KNOWLEDGE_BASES_PATH)) {
-    const defaultKB = [{ id: 'kb_default', name: '广康集团知识库', description: '默认知识库', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDefault: true, isActive: true }];
+    const defaultKB = [{ id: 'kb_default', name: data.loadSoftwareInfo().knowledgeBaseName, description: '默认知识库', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDefault: true, isActive: true }];
     saveKnowledgeBases(defaultKB);
     return defaultKB;
   }
@@ -1275,6 +1275,18 @@ router.put('/personnel/:id/reset-password', (req, res) => {
 // ============ 基础信息：权限管理 ============
 router.get('/permissions/catalog', (req, res) => {
   try { res.json({ success: true, data: data.PERMISSION_CATALOG }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============ 基础信息：软件信息（可编辑品牌/名称） ============
+router.get('/software-info', (req, res) => {
+  try { res.json({ success: true, data: data.loadSoftwareInfo() }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.put('/software-info', (req, res) => {
+  try {
+    const saved = data.saveSoftwareInfo(req.body || {});
+    res.json({ success: true, data: saved });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.get('/permissions', (req, res) => {

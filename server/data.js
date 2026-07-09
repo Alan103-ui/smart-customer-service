@@ -16,6 +16,7 @@ const ORG_PATH = path.join(__dirname, '../data/org_structure.json');
 const PERSONNEL_PATH = path.join(__dirname, '../data/personnel.json');
 const PERMISSIONS_PATH = path.join(__dirname, '../data/permissions.json');
 const A8_CONFIG_PATH = path.join(__dirname, '../data/a8_config.json');
+const SOFTWARE_INFO_PATH = path.join(__dirname, '../data/software-info.json');
 const KNOWLEDGE_BASES_PATH = path.join(__dirname, '../data/knowledge_bases.json');
 const DB_PATH = path.join(__dirname, '../data/conversations.db');
 
@@ -189,6 +190,36 @@ function savePermissions(data) {
   fs.writeFileSync(PERMISSIONS_PATH, JSON.stringify(data, null, 2));
 }
 
+// ============ 软件信息（可编辑品牌/名称配置） ============
+const DEFAULT_SOFTWARE_INFO = {
+  companyName: '广康集团',
+  softwareName: '广康集团AI助手',
+  assistantName: '小智',
+  knowledgeBaseName: '广康集团知识库',
+  welcomeMessage: '您好！我是广康集团AI助手，很高兴为您服务😊'
+};
+
+function loadSoftwareInfo() {
+  if (!fs.existsSync(SOFTWARE_INFO_PATH)) {
+    saveSoftwareInfo(DEFAULT_SOFTWARE_INFO);
+    return { ...DEFAULT_SOFTWARE_INFO };
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(SOFTWARE_INFO_PATH, 'utf8'));
+    // 补齐缺失字段，避免前端读取到 undefined
+    return { ...DEFAULT_SOFTWARE_INFO, ...data };
+  } catch (e) {
+    console.error('[data] 软件信息读取失败：', e.message);
+    return { ...DEFAULT_SOFTWARE_INFO };
+  }
+}
+
+function saveSoftwareInfo(data) {
+  const merged = { ...DEFAULT_SOFTWARE_INFO, ...(data || {}) };
+  fs.writeFileSync(SOFTWARE_INFO_PATH, JSON.stringify(merged, null, 2));
+  return merged;
+}
+
 // ============ A8 配置 ============
 function loadA8Config() {
   if (!fs.existsSync(A8_CONFIG_PATH)) {
@@ -208,7 +239,7 @@ let KNOWLEDGE_BASES_CACHE = null;
 
 function loadKnowledgeBases() {
   if (!fs.existsSync(KNOWLEDGE_BASES_PATH)) {
-    const defaultKB = [{ id: 'kb_default', name: '广康集团知识库', description: '默认知识库', isDefault: true, createdAt: new Date().toISOString() }];
+    const defaultKB = [{ id: 'kb_default', name: DEFAULT_SOFTWARE_INFO.knowledgeBaseName, description: '默认知识库', isDefault: true, createdAt: new Date().toISOString() }];
     saveKnowledgeBases(defaultKB);
     return defaultKB;
   }
@@ -273,20 +304,24 @@ module.exports = {
   savePermissions,
   PERMISSION_CATALOG,
   ALL_PERMISSION_CODES,
-  
+
+  // 软件信息（可编辑品牌/名称）
+  loadSoftwareInfo,
+  saveSoftwareInfo,
+
   // A8配置
   loadA8Config,
   saveA8Config,
-  
+
   // 知识库
   loadKnowledgeBases,
   saveKnowledgeBases,
   getKnowledgeBases,
-  
+
   // 对话数据
   readDB,
   writeDB,
-  
+
   // 路径常量（供其他模块使用）
   CATEGORIES_PATH,
   FAQ_PATH,
@@ -294,6 +329,7 @@ module.exports = {
   PERSONNEL_PATH,
   PERMISSIONS_PATH,
   A8_CONFIG_PATH,
+  SOFTWARE_INFO_PATH,
   KNOWLEDGE_BASES_PATH,
   DB_PATH
 };

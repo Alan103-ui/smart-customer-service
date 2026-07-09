@@ -3,6 +3,7 @@ import type { Message } from '../types';
 import BasicInfoManagement from './BasicInfoManagement';
 import RAGManagement from './RAGManagement';
 import DataStatistics from './DataStatistics';
+import { useSoftwareInfo } from '../services/softwareInfo';
 import { Editor, Toolbar } from '@wangeditor/editor-for-react';
 import { IDomEditor, IEditorConfig } from '@wangeditor/editor';
 
@@ -148,6 +149,7 @@ interface CategoryItem {
 
 // ==================== 主组件 ====================
 export default function AdminDashboard({ onBack }: AdminDashboardProps) {
+  const sw = useSoftwareInfo();
   const [tab, setTab] = useState<'stats' | 'faq' | 'categories' | 'basicInfo' | 'rag' | 'conversations' | 'logs'>('stats');
   const [stats, setStats] = useState<Stats | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -574,7 +576,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           <button className="back-btn" onClick={onBack} style={{ marginRight: 16 }}>
             ← 返回前端
           </button>
-          <h1>🤖 广康集团AI助手 - 管理后台</h1>
+          <h1>🤖 {sw.softwareName} - 管理后台</h1>
         </div>
         <div className="admin-tabs">
           <button className={`tab-btn ${tab === 'stats' ? 'active' : ''}`} onClick={() => setTab('stats')}>📈 数据统计</button>

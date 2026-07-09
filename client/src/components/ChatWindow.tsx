@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { Message, Candidate } from '../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useSoftwareInfo } from '../services/softwareInfo';
 import './ChatWindow.design.css';
 
 interface ChatWindowProps {
@@ -14,6 +15,7 @@ interface ChatWindowProps {
   categories?: string[];
   selectedCategory?: string;
   onSelectCategory?: (cat: string) => void;
+  currentUser?: { name: string; username: string };
 }
 
 export default function ChatWindow({
@@ -25,8 +27,10 @@ export default function ChatWindow({
   onSelectCandidate,
   categories = [],
   selectedCategory = '全部',
-  onSelectCategory
+  onSelectCategory,
+  currentUser
 }: ChatWindowProps) {
+  const sw = useSoftwareInfo();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -84,9 +88,9 @@ export default function ChatWindow({
         {messages.length === 0 && candidates.length === 0 && (
           <div className="welcome-area-modern">
             <div className="welcome-avatar">
-              <img src="/logo.jpg" alt="广康集团AI助手" />
+              <img src="/logo.jpg" alt={sw.softwareName} />
             </div>
-            <h2 className="welcome-title">您好！我是广康集团AI助手</h2>
+            <h2 className="welcome-title">{sw.welcomeMessage || ('您好！我是' + sw.softwareName)}</h2>
             <p className="welcome-subtitle">请问有什么可以帮您？</p>
           </div>
         )}
@@ -107,6 +111,9 @@ export default function ChatWindow({
                 )}
               </div>
               <div className="message-meta-modern">
+                {msg.role === 'user' && currentUser && (
+                  <span className="message-sender-modern">{currentUser.name || currentUser.username}</span>
+                )}
                 <span className="message-time-modern">
                   {new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                 </span>
@@ -118,7 +125,7 @@ export default function ChatWindow({
             </div>
             {msg.role === 'user' && (
               <div className="avatar-modern user">
-                <span>👤</span>
+                <span>{currentUser?.name?.charAt(0) || currentUser?.username?.charAt(0) || '👤'}</span>
               </div>
             )}
           </div>

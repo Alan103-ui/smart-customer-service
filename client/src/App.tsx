@@ -4,6 +4,7 @@ import ChatWindow from './components/ChatWindow';
 import AdminDashboard from './pages/AdminDashboard';
 import LoginPage from './pages/LoginPage';
 import type { Message, WebSocketMessage, Candidate } from './types';
+import { useSoftwareInfo } from './services/softwareInfo';
 import './App.css';
 
 // ============================================================
@@ -117,6 +118,9 @@ function MainApp({ user, onLogout }: MainAppProps) {
   });
 
   const wsRef = useRef<WebSocket | null>(null);
+
+  // 软件信息（可编辑品牌/名称），后端实时读取
+  const sw = useSoftwareInfo();
 
   // =========== 所有 effects ===========
   useEffect(() => { localStorage.setItem('cs_session_id', sessionId); }, [sessionId]);
@@ -311,7 +315,7 @@ function MainApp({ user, onLogout }: MainAppProps) {
         <div className="header-left">
           <div className="logo">🤖</div>
           <div>
-            <h1>广康集团AI助手</h1>
+            <h1>{sw.softwareName}</h1>
             <span className={`status-dot ${connected ? 'online' : 'offline'}`}>
               {connected ? '在线' : '连接中...'}
             </span>
@@ -352,6 +356,7 @@ function MainApp({ user, onLogout }: MainAppProps) {
         categories={categories}
         selectedCategory={selectedCategory}
         onSelectCategory={setSelectedCategory}
+        currentUser={{ name: user.name, username: user.username }}
       />
 
       {/* 我的对话模态框 */}
