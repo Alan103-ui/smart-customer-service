@@ -11,7 +11,7 @@ export interface SoftwareInfo {
 
 const DEFAULT_SOFTWARE_INFO: SoftwareInfo = {
   companyName: '广康集团',
-  softwareName: '广康集团AI助手',
+  softwareName: '广康生化',
   assistantName: '小智',
   knowledgeBaseName: '广康集团知识库',
   welcomeMessage: '您好！我是广康集团AI助手，很高兴为您服务😊',

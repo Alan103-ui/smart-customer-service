@@ -528,9 +528,6 @@ export default function BasicInfoManagement() {
       {/* 软件信息 */}
       {subTab === 'software' && (
         <div style={{ maxWidth: 700 }}>
-          <div style={{ background: '#fffbe6', padding: 12, borderRadius: 6, marginBottom: 12, fontSize: 13, color: '#666' }}>
-            此处可自定义系统对外展示的公司名称、软件名称、助手名、知识库名称与欢迎语。保存后，前端聊天界面与标题将自动生效。
-          </div>
           <div style={{ marginTop: 8 }}>公司名称：<input value={software.companyName} onChange={e => setSoftware({ ...software, companyName: e.target.value })} style={{ width: 360 }} /></div>
           <div style={{ marginTop: 8 }}>软件名称：<input value={software.softwareName} onChange={e => setSoftware({ ...software, softwareName: e.target.value })} style={{ width: 360 }} /></div>
           <div style={{ marginTop: 8 }}>助手名称：<input value={software.assistantName} onChange={e => setSoftware({ ...software, assistantName: e.target.value })} style={{ width: 240 }} /></div>

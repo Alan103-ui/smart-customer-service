@@ -122,6 +122,9 @@ function MainApp({ user, onLogout }: MainAppProps) {
   // 软件信息（可编辑品牌/名称），后端实时读取
   const sw = useSoftwareInfo();
 
+  // 浏览器标签页标题随软件名动态更新
+  useEffect(() => { document.title = sw.softwareName || 'AI助手'; }, [sw.softwareName]);
+
   // =========== 所有 effects ===========
   useEffect(() => { localStorage.setItem('cs_session_id', sessionId); }, [sessionId]);
 

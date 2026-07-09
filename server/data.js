@@ -193,7 +193,7 @@ function savePermissions(data) {
 // ============ 软件信息（可编辑品牌/名称配置） ============
 const DEFAULT_SOFTWARE_INFO = {
   companyName: '广康集团',
-  softwareName: '广康集团AI助手',
+  softwareName: '广康生化',
   assistantName: '小智',
   knowledgeBaseName: '广康集团知识库',
   welcomeMessage: '您好！我是广康集团AI助手，很高兴为您服务😊'
