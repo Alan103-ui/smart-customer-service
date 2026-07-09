@@ -245,6 +245,9 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const [logLevelFilter, setLogLevelFilter] = useState<string>('ALL');
   const [logSearch, setLogSearch] = useState<string>('');
   const [logLimit, setLogLimit] = useState<number>(200);
+  const [logSort, setLogSort] = useState<'time' | 'durDesc' | 'durAsc'>('time');
+  const [logDateFrom, setLogDateFrom] = useState<string>('');
+  const [logDateTo, setLogDateTo] = useState<string>('');
   const [logAutoRefresh, setLogAutoRefresh] = useState<boolean>(false);
   const [logExpandAll, setLogExpandAll] = useState<boolean>(false);
   const [logHint, setLogHint] = useState<string>('');
@@ -1061,13 +1064,30 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       {/* 日志管理 */}
       {tab === 'logs' && (() => {
         // ===== 派生数据：统计 + 日期分组 + 排序 =====
-        const totalErrors = logFiles.reduce((s, f) => s + ((f.levelCounts || {}).ERROR || 0), 0);
-        const totalWarns = logFiles.reduce((s, f) => s + ((f.levelCounts || {}).WARN || 0), 0);
-        const totalSize = logFiles.reduce((s, f) => s + (f.size || 0), 0);
-        const totalLines = logFiles.reduce((s, f) => s + (f.lines || 0), 0);
+        // 日期范围筛选（基于文件名日期或 modifiedAt）
+        const fromTs = logDateFrom ? new Date(logDateFrom + 'T00:00:00').getTime() : null;
+        const toTs = logDateTo ? new Date(logDateTo + 'T23:59:59.999').getTime() : null;
+        const fileDateTs = (f: any): number | null => {
+          const d = extractDateFromFilename(f.filename) || (f.modifiedAt ? new Date(f.modifiedAt) : null);
+          return d ? d.getTime() : null;
+        };
+        const dateFiltered = logFiles.filter(f => {
+          if (fromTs === null && toTs === null) return true;
+          const ts = fileDateTs(f);
+          if (ts === null) return false; // 无日期文件在启用筛选时隐藏
+          if (fromTs !== null && ts < fromTs) return false;
+          if (toTs !== null && ts > toTs) return false;
+          return true;
+        });
+        const dateFilterActive = fromTs !== null || toTs !== null;
+
+        const totalErrors = dateFiltered.reduce((s, f) => s + ((f.levelCounts || {}).ERROR || 0), 0);
+        const totalWarns = dateFiltered.reduce((s, f) => s + ((f.levelCounts || {}).WARN || 0), 0);
+        const totalSize = dateFiltered.reduce((s, f) => s + (f.size || 0), 0);
+        const totalLines = dateFiltered.reduce((s, f) => s + (f.lines || 0), 0);
 
         // 按日期分组（按文件名中的日期或 mtime）
-        const grouped = logFiles.slice().sort((a, b) => {
+        const grouped = dateFiltered.slice().sort((a, b) => {
           const da = extractDateFromFilename(a.filename) || (a.modifiedAt ? new Date(a.modifiedAt) : new Date(0));
           const db = extractDateFromFilename(b.filename) || (b.modifiedAt ? new Date(b.modifiedAt) : new Date(0));
           return db.getTime() - da.getTime(); // 最新的在前
@@ -1081,6 +1101,34 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
         const groupOrder = Object.keys(grouped);
         const todayStr = '今天';
 
+        // 条目排序（按耗时）
+        const sortedEntries = (() => {
+          if (logSort === 'time') return logEntries;
+          const durOf = (e: any) => {
+            const v = Number(e.durationMs ?? e.duration ?? null);
+            return isNaN(v) ? null : v;
+          };
+          const arr = logEntries.slice();
+          if (logSort === 'durDesc') {
+            arr.sort((a, b) => {
+              const da = durOf(a), db = durOf(b);
+              if (da === null && db === null) return 0;
+              if (da === null) return 1;   // 无耗时沉底
+              if (db === null) return -1;
+              return db - da;
+            });
+          } else {
+            arr.sort((a, b) => {
+              const da = durOf(a), db = durOf(b);
+              if (da === null && db === null) return 0;
+              if (da === null) return 1;
+              if (db === null) return -1;
+              return da - db;
+            });
+          }
+          return arr;
+        })();
+
         return (
         <div style={{ padding: 16, background: '#fff', minHeight: 300 }}>
           {/* 顶部：标题 + 刷新 + 统计概览 */}
@@ -1093,10 +1141,10 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           </div>
 
           {/* 统计概览条 */}
-          {logFiles.length > 0 && (
+          {dateFiltered.length > 0 && (
             <div style={{ display: 'flex', gap: 16, marginBottom: 14, flexWrap: 'wrap' }}>
               {[
-                { label: '文件数', value: logFiles.length, icon: '📁', color: '#1890ff' },
+                { label: '文件数', value: dateFiltered.length, icon: '📁', color: '#1890ff' },
                 { label: '总大小', value: fmtBytes(totalSize), icon: '💾', color: '#722ed1' },
                 { label: '总行数', value: totalLines.toLocaleString(), icon: '📃', color: '#13c2c2' },
                 ...(totalErrors > 0 ? [{ label: '错误', value: totalErrors, icon: '❌', color: '#cf1322' }] : []),
@@ -1115,11 +1163,34 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
             </div>
           )}
 
+          {/* 日期范围筛选栏 */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, padding: '8px 12px', background: '#fafafa', border: '1px solid #eee', borderRadius: 6 }}>
+            <span style={{ fontSize: 12.5, color: '#666' }}>📅 日期范围：</span>
+            <input type="date" value={logDateFrom} onChange={e => setLogDateFrom(e.target.value)}
+              style={{ padding: '4px 8px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }} />
+            <span style={{ fontSize: 12.5, color: '#999' }}>至</span>
+            <input type="date" value={logDateTo} onChange={e => setLogDateTo(e.target.value)}
+              style={{ padding: '4px 8px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }} />
+            {dateFilterActive && (
+              <button onClick={() => { setLogDateFrom(''); setLogDateTo(''); }}
+                style={{ padding: '4px 10px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff', fontSize: 12 }}>
+                清除筛选
+              </button>
+            )}
+            {dateFilterActive && (
+              <span style={{ fontSize: 12, color: '#1890ff' }}>
+                筛选中：{dateFiltered.length} / {logFiles.length} 个文件
+              </span>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
             {/* 左侧：文件列表（日期分组 + 卡片式） */}
             <div style={{ width: 370, flexShrink: 0, border: '1px solid #e8e8e8', borderRadius: 8, maxHeight: 640, overflow: 'auto', background: '#fafbfc' }}>
-              {logFiles.length === 0 && (
-                <div style={{ padding: 30, color: '#999', textAlign: 'center' }}>暂无日志文件</div>
+              {dateFiltered.length === 0 && (
+                <div style={{ padding: 30, color: '#999', textAlign: 'center' }}>
+                  {logFiles.length === 0 ? '暂无日志文件' : '该日期范围内无日志文件'}
+                </div>
               )}
               {groupOrder.map(groupLabel => (
                 <div key={groupLabel}>
@@ -1272,6 +1343,13 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                         <option value={1000}>最近1000</option>
                         <option value={999999}>全部</option>
                       </select>
+                      <select value={logSort} onChange={e => setLogSort(e.target.value as any)}
+                        title="排序方式"
+                        style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }}>
+                        <option value="time">按时间</option>
+                        <option value="durDesc">按耗时(长→短)</option>
+                        <option value="durAsc">按耗时(短→长)</option>
+                      </select>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#666', cursor: 'pointer' }}>
                         <input type="checkbox" checked={logAutoRefresh} onChange={e => setLogAutoRefresh(e.target.checked)} />
                         实时
@@ -1284,10 +1362,10 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                   </div>
                   {/* 日志条目 */}
                   <div ref={logBodyRef} style={{ maxHeight: 588, overflow: 'auto' }}>
-                    {logEntries.length === 0 ? (
+                    {sortedEntries.length === 0 ? (
                       <div style={{ padding: 40, color: '#999', textAlign: 'center' }}>无匹配日志</div>
                     ) : (
-                      logEntries.map((entry, i) => (
+                      sortedEntries.map((entry, i) => (
                         <LogRow key={`${i}-${logExpandAll}`} entry={entry} index={i} kw={logSearch.trim()} openByDefault={logExpandAll} />
                       ))
                     )}
