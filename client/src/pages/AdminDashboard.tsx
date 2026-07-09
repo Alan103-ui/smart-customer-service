@@ -59,6 +59,44 @@ function fmtTime(iso?: string): string {
   return d.toTimeString().slice(0, 8);
 }
 
+// 日期分组标签（今天 / 昨天 / 更早）
+function getDateGroupLabel(dateStr?: string): string {
+  if (!dateStr) return '未知日期';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '未知日期';
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const fileDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (fileDate.getTime() === today.getTime()) return '今天';
+  if (fileDate.getTime() === yesterday.getTime()) return '昨天';
+  // 超过7天显示具体日期
+  const diffDays = Math.floor((today.getTime() - fileDate.getTime()) / 86400000);
+  if (diffDays <= 7) return `${diffDays}天前`;
+  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+}
+
+// 格式化修改时间
+function fmtMtime(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) return '今天 ' + d.toTimeString().slice(0, 5);
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return '昨天 ' + d.toTimeString().slice(0, 5);
+  return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) + ' ' + d.toTimeString().slice(0, 5);
+}
+
+// 从文件名提取日期（用于排序和分组）
+function extractDateFromFilename(name: string): Date | null {
+  // 匹配 server-2026-07-09.log 或 2026-07-09.log 格式
+  const m = name.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  return null;
+}
+
 // 单条日志行（可展开查看详情）
 function LogRow({ entry }: { entry: any }) {
   const [open, setOpen] = useState(false);
@@ -928,59 +966,154 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       )}
 
       {/* 日志管理 */}
-      {tab === 'logs' && (
+      {tab === 'logs' && (() => {
+        // ===== 派生数据：统计 + 日期分组 + 排序 =====
+        const totalErrors = logFiles.reduce((s, f) => s + ((f.levelCounts || {}).ERROR || 0), 0);
+        const totalWarns = logFiles.reduce((s, f) => s + ((f.levelCounts || {}).WARN || 0), 0);
+        const totalSize = logFiles.reduce((s, f) => s + (f.size || 0), 0);
+        const totalLines = logFiles.reduce((s, f) => s + (f.lines || 0), 0);
+
+        // 按日期分组（按文件名中的日期或 mtime）
+        const grouped = logFiles.slice().sort((a, b) => {
+          const da = extractDateFromFilename(a.filename) || (a.modifiedAt ? new Date(a.modifiedAt) : new Date(0));
+          const db = extractDateFromFilename(b.filename) || (b.modifiedAt ? new Date(b.modifiedAt) : new Date(0));
+          return db.getTime() - da.getTime(); // 最新的在前
+        }).reduce((groups, f) => {
+          const dateKey = getDateGroupLabel(f.modifiedAt) || getDateGroupLabel(f.filename);
+          if (!groups[dateKey]) groups[dateKey] = [];
+          groups[dateKey].push(f);
+          return groups;
+        }, {} as Record<string, any[]>);
+
+        const groupOrder = Object.keys(grouped);
+        const todayStr = '今天';
+
+        return (
         <div style={{ padding: 16, background: '#fff', minHeight: 300 }}>
+          {/* 顶部：标题 + 刷新 + 统计概览 */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>📝 日志管理</h3>
             <button onClick={fetchLogs} disabled={logLoading}
               style={{ padding: '5px 14px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff' }}>
-              {logLoading ? '加载中…' : '↻ 刷新列表'}
+              {logLoading ? '加载中…' : '↻ 刷新'}
             </button>
           </div>
 
+          {/* 统计概览条 */}
+          {logFiles.length > 0 && (
+            <div style={{ display: 'flex', gap: 16, marginBottom: 14, flexWrap: 'wrap' }}>
+              {[
+                { label: '文件数', value: logFiles.length, icon: '📁', color: '#1890ff' },
+                { label: '总大小', value: fmtBytes(totalSize), icon: '💾', color: '#722ed1' },
+                { label: '总行数', value: totalLines.toLocaleString(), icon: '📃', color: '#13c2c2' },
+                ...(totalErrors > 0 ? [{ label: '错误', value: totalErrors, icon: '❌', color: '#cf1322' }] : []),
+                ...(totalWarns > 0 ? [{ label: '警告', value: totalWarns, icon: '⚠️', color: '#d46b08' }] : []),
+              ].map(s => (
+                <div key={s.label} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: `${s.color}08`, border: `1px solid ${s.color}22`,
+                  padding: '6px 12px', borderRadius: 6, fontSize: 12.5
+                }}>
+                  <span>{s.icon}</span>
+                  <span style={{ color: '#666' }}>{s.label}</span>
+                  <strong style={{ color: s.color }}>{s.value}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-            {/* 左侧：文件列表 */}
-            <div style={{ width: 340, flexShrink: 0, border: '1px solid #eee', borderRadius: 6, maxHeight: 620, overflow: 'auto' }}>
+            {/* 左侧：文件列表（日期分组 + 卡片式） */}
+            <div style={{ width: 370, flexShrink: 0, border: '1px solid #e8e8e8', borderRadius: 8, maxHeight: 640, overflow: 'auto', background: '#fafbfc' }}>
               {logFiles.length === 0 && (
-                <div style={{ padding: 20, color: '#999', textAlign: 'center' }}>暂无日志文件</div>
+                <div style={{ padding: 30, color: '#999', textAlign: 'center' }}>暂无日志文件</div>
               )}
-              {logFiles.map((f) => {
-                const active = f.filename === selectedLogFile;
-                const lc = f.levelCounts || {};
-                const total = (lc.ERROR || 0) + (lc.WARN || 0) + (lc.INFO || 0) + (lc.AUDIT || 0) + (lc.PERF || 0);
-                return (
-                  <div
-                    key={f.filename}
-                    onClick={() => fetchLogEntries(f.filename)}
-                    style={{
-                      padding: '10px 12px',
-                      borderBottom: '1px solid #f0f0f0',
-                      cursor: 'pointer',
-                      background: active ? '#e6f4ff' : '#fff',
-                      borderLeft: active ? '3px solid #0958d9' : '3px solid transparent'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, color: '#222' }}>{f.filename}</span>
-                      <span style={{ color: '#999', fontSize: 11 }}>{fmtBytes(f.size)}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ color: '#999', fontSize: 11 }}>{(f.lines ?? total) || 0} 行</span>
-                      {lc.ERROR > 0 && <span style={{ background: '#fff1f0', color: '#cf1322', fontSize: 11, padding: '0 6px', borderRadius: 3 }}>ERROR {lc.ERROR}</span>}
-                      {lc.WARN > 0 && <span style={{ background: '#fff7e6', color: '#d46b08', fontSize: 11, padding: '0 6px', borderRadius: 3 }}>WARN {lc.WARN}</span>}
-                      {lc.INFO > 0 && <span style={{ background: '#e6f4ff', color: '#0958d9', fontSize: 11, padding: '0 6px', borderRadius: 3 }}>INFO {lc.INFO}</span>}
-                      {lc.AUDIT > 0 && <span style={{ background: '#f9f0ff', color: '#531dab', fontSize: 11, padding: '0 6px', borderRadius: 3 }}>AUDIT {lc.AUDIT}</span>}
-                      {lc.PERF > 0 && <span style={{ background: '#e6fffb', color: '#08979c', fontSize: 11, padding: '0 6px', borderRadius: 3 }}>PERF {lc.PERF}</span>}
-                    </div>
+              {groupOrder.map(groupLabel => (
+                <div key={groupLabel}>
+                  {/* 分组标题 */}
+                  <div style={{
+                    padding: '6px 14px', fontSize: 11.5, fontWeight: 600,
+                    color: groupLabel === todayStr ? '#1890ff' : '#888',
+                    background: groupLabel === todayStr ? '#e6f4ff20' : '#f0f0f0',
+                    borderBottom: '1px solid #eee',
+                    position: 'sticky', top: 0, zIndex: 1
+                  }}>
+                    {groupLabel === todayStr ? '📅 ' : ''}{groupLabel} · {grouped[groupLabel].length} 个文件
                   </div>
-                );
-              })}
+                  {grouped[groupLabel].map((f) => {
+                    const active = f.filename === selectedLogFile;
+                    const lc = f.levelCounts || {};
+                    const isTodayGroup = groupLabel === todayStr;
+                    const fileDate = extractDateFromFilename(f.filename);
+                    const isVeryRecent = fileDate && (Date.now() - fileDate.getTime() < 86400000); // 24h内
+
+                    // 级别标签
+                    const badges = [];
+                    if (lc.ERROR > 0) badges.push(<span key="err" style={{ background: '#fff1f0', color: '#cf1322', fontSize: 10.5, padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>E {lc.ERROR}</span>);
+                    if (lc.WARN > 0) badges.push(<span key="warn" style={{ background: '#fff7e6', color: '#d46b08', fontSize: 10.5, padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>W {lc.WARN}</span>);
+                    if (lc.PERF > 0) badges.push(<span key="perf" style={{ background: '#e6fffb', color: '#08979c', fontSize: 10.5, padding: '1px 5px', borderRadius: 3 }}>P {lc.PERF}</span>);
+
+                    return (
+                      <div
+                        key={f.filename}
+                        onClick={() => fetchLogEntries(f.filename)}
+                        style={{
+                          padding: '9px 12px',
+                          borderBottom: '1px solid #f0f0f0',
+                          cursor: 'pointer',
+                          background: active ? '#e6f7ff' : (isTodayGroup ? '#fff' : '#fff'),
+                          borderLeft: active ? '3px solid #1890ff' : (isVeryRecent && !active ? '3px solid #91d5ff' : '3px solid transparent'),
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = '#f5f5f5'; }}
+                        onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = isTodayGroup ? '#fff' : '#fff'; }}
+                      >
+                        {/* 第一行：图标+文件名+大小 */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1 }}>
+                            <span style={{ fontSize: 14, flexShrink: 0 }}>{isVeryRecent ? '🔥' : '📄'}</span>
+                            <span style={{
+                              fontFamily: 'monospace', fontWeight: active ? 700 : 600, fontSize: 12.5,
+                              color: active ? '#0958d9' : '#333',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                            }} title={f.filename}>{f.filename}</span>
+                          </div>
+                          <span style={{ color: '#aaa', fontSize: 10.5, flexShrink: 0, marginLeft: 6 }}>{fmtBytes(f.size)}</span>
+                        </div>
+                        {/* 第二行：元信息 */}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 19 }}>
+                          <span style={{ color: '#bbb', fontSize: 10.5 }}>{(f.lines || 0).toLocaleString()} 行</span>
+                          {f.modifiedAt && <span style={{ color: '#bbb', fontSize: 10.5 }}>· {fmtMtime(f.modifiedAt)}</span>}
+                          {badges.length > 0 && <span style={{ display: 'flex', gap: 4 }}>{badges}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
 
             {/* 右侧：日志内容 */}
-            <div style={{ flex: 1, minWidth: 0, border: '1px solid #eee', borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ flex: 1, minWidth: 0, border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
               {!selectedLogFile ? (
-                <div style={{ padding: 60, color: '#bbb', textAlign: 'center' }}>← 从左侧选择一个日志文件查看内容</div>
+                <div style={{ padding: 70, color: '#bbb', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 36 }}>📋</span>
+                  <span>从左侧选择日志文件查看内容</span>
+                  {logFiles.length > 0 && (
+                    <button onClick={() => {
+                      // 自动选最新的文件
+                      const newest = logFiles.slice().sort((a, b) => {
+                        const da = extractDateFromFilename(a.filename) || (a.modifiedAt ? new Date(a.modifiedAt) : new Date(0));
+                        const db = extractDateFromFilename(b.filename) || (b.modifiedAt ? new Date(b.modifiedAt) : new Date(0));
+                        return db.getTime() - da.getTime();
+                      })[0];
+                      if (newest) fetchLogEntries(newest.filename);
+                    }}
+                    style={{ padding: '6px 18px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#1890ff', color: '#fff', fontSize: 12 }}>
+                      打开最新日志 →
+                    </button>
+                  )}
+                </div>
               ) : (
                 <>
                   {/* 工具栏 */}
@@ -1037,7 +1170,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
             </div>
           </div>
         </div>
-      )}
+      );})()}
 
       {/* 分类新增/编辑弹窗 */}
       {showCatModal && (
