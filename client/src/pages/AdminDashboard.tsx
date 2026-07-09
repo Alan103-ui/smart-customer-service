@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import type { Message } from '../types';
 import BasicInfoManagement from './BasicInfoManagement';
 import RAGManagement from './RAGManagement';
@@ -97,43 +97,85 @@ function extractDateFromFilename(name: string): Date | null {
   return null;
 }
 
-// 单条日志行（可展开查看详情）
-function LogRow({ entry }: { entry: any }) {
-  const [open, setOpen] = useState(false);
-  const meta = LOG_LEVEL_META[entry.level] || { color: '#666', bg: '#f5f5f5' };
+// 级别对应的整行底色（轻微着色，便于快速区分）
+const LEVEL_ROW_BG: Record<string, string> = {
+  ERROR: '#fff5f5',
+  WARN: '#fffbe6',
+  INFO: '#f0f7ff',
+  AUDIT: '#f9f0ff',
+  PERF: '#e6fffb',
+  DEBUG: '#f6ffed',
+  RAW: '#fafafa',
+};
+
+// 关键词高亮
+function HighlightText({ text, kw }: { text: string; kw: string }) {
+  if (!kw) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const k = kw.toLowerCase();
+  const nodes: ReactNode[] = [];
+  let i = 0, idx = lower.indexOf(k, i), key = 0;
+  while (idx !== -1) {
+    if (idx > i) nodes.push(<span key={key++}>{text.slice(i, idx)}</span>);
+    nodes.push(
+      <mark key={key++} style={{ background: '#ffe58f', color: '#000', padding: '0 1px', borderRadius: 2 }}>
+        {text.slice(idx, idx + k.length)}
+      </mark>
+    );
+    i = idx + k.length;
+    idx = lower.indexOf(k, i);
+  }
+  if (i < text.length) nodes.push(<span key={key++}>{text.slice(i)}</span>);
+  return <>{nodes}</>;
+}
+
+// 单条日志行（行号 + 级别底色 + 时间列 + 关键词高亮 + 可展开详情）
+function LogRow({ entry, index, kw, openByDefault }: { entry: any; index: number; kw: string; openByDefault: boolean }) {
+  const [open, setOpen] = useState(openByDefault);
+  const meta = LOG_LEVEL_META[entry.level] || { color: '#8c8c8c', bg: '#f5f5f5' };
   const detail = { ...entry };
   delete (detail as any).timestamp;
   delete (detail as any).level;
   delete (detail as any).message;
   const detailKeys = Object.keys(detail);
+  const isRaw = entry.level === 'RAW';
+  const rowBg = open ? '#f7f7f7' : (LEVEL_ROW_BG[entry.level] || '#fff');
   return (
     <div
       style={{
+        display: 'flex',
         borderLeft: `3px solid ${meta.color}`,
-        background: entry.level === 'ERROR' ? '#fff5f5' : (open ? '#fafafa' : '#fff'),
-        padding: '6px 10px',
+        background: rowBg,
         borderBottom: '1px solid #f0f0f0',
-        fontFamily: 'monospace',
         fontSize: 12.5,
         cursor: detailKeys.length ? 'pointer' : 'default'
       }}
       onClick={() => detailKeys.length && setOpen(o => !o)}
     >
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ background: meta.bg, color: meta.color, padding: '1px 6px', borderRadius: 3, fontWeight: 600, fontSize: 11, minWidth: 52, textAlign: 'center' }}>
-          {entry.level}
-        </span>
-        <span style={{ color: '#999', minWidth: 64 }}>{fmtTime(entry.timestamp)}</span>
-        <span style={{ color: '#333', flex: 1, wordBreak: 'break-all' }}>{entry.message}</span>
-        {detailKeys.length > 0 && (
-          <span style={{ color: '#bbb', fontSize: 11 }}>{open ? '▲' : '▼'}</span>
+      <span style={{ width: 44, flexShrink: 0, textAlign: 'right', padding: '6px 8px 6px 0', color: '#bbb', userSelect: 'none', fontSize: 11 }}>
+        {index + 1}
+      </span>
+      <div style={{ flex: 1, minWidth: 0, padding: '6px 10px 6px 0', fontFamily: 'monospace' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+          <span style={{ background: meta.bg, color: meta.color, padding: '1px 6px', borderRadius: 3, fontWeight: 600, fontSize: 11, minWidth: 52, textAlign: 'center', flexShrink: 0 }}>
+            {entry.level}
+          </span>
+          <span style={{ color: '#999', minWidth: 66, flexShrink: 0 }}>{fmtTime(entry.timestamp)}</span>
+          <span style={{ color: '#222', flex: 1, wordBreak: 'break-all', lineHeight: 1.5 }}>
+            {isRaw
+              ? <span style={{ whiteSpace: 'pre-wrap' }}>{entry.message}</span>
+              : <HighlightText text={String(entry.message || '')} kw={kw} />}
+          </span>
+          {detailKeys.length > 0 && (
+            <span style={{ color: '#bbb', fontSize: 11, flexShrink: 0 }}>{open ? '▲' : '▼'}</span>
+          )}
+        </div>
+        {open && detailKeys.length > 0 && (
+          <pre style={{ margin: '6px 0 2px', background: '#fff', border: '1px solid #eee', padding: 8, borderRadius: 4, fontSize: 11.5, color: '#555', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 300, overflow: 'auto' }}>
+            {JSON.stringify(detail, null, 2)}
+          </pre>
         )}
       </div>
-      {open && detailKeys.length > 0 && (
-        <pre style={{ margin: '6px 0 2px 70px', background: '#fff', border: '1px solid #eee', padding: 8, borderRadius: 4, fontSize: 11.5, color: '#555', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-          {JSON.stringify(detail, null, 2)}
-        </pre>
-      )}
     </div>
   );
 }
@@ -204,7 +246,18 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const [logSearch, setLogSearch] = useState<string>('');
   const [logLimit, setLogLimit] = useState<number>(200);
   const [logAutoRefresh, setLogAutoRefresh] = useState<boolean>(false);
+  const [logExpandAll, setLogExpandAll] = useState<boolean>(false);
+  const [logHint, setLogHint] = useState<string>('');
+  const logBodyRef = useRef<HTMLDivElement | null>(null);
+  const logHintTimer = useRef<number | null>(null);
   const logRefreshTimer = useRef<number | null>(null);
+
+  // 短暂提示（复制/下载成功后）
+  const flashLogHint = (msg: string) => {
+    setLogHint(msg);
+    if (logHintTimer.current) window.clearTimeout(logHintTimer.current);
+    logHintTimer.current = window.setTimeout(() => setLogHint(''), 2000);
+  };
 
   // 知识库状态（供分类和FAQ选择使用）
   const [knowledgeBases, setKnowledgeBases] = useState<any[]>([]);
@@ -324,6 +377,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
         const result = await res.json();
         setLogEntries(Array.isArray(result.data) ? result.data : []);
         setSelectedLogFile(filename);
+        if (logBodyRef.current) logBodyRef.current.scrollTop = 0;
       }
     } catch (err) { console.error('读取日志文件失败', err); setLogEntries([]); }
     finally { setLogLoading(false); }
@@ -332,6 +386,45 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   // 切换文件/筛选条件变化时重新加载
   const reloadLogEntries = () => {
     if (selectedLogFile) fetchLogEntries(selectedLogFile);
+  };
+
+  // 把当前条目拼成可读文本（用于复制/下载）
+  const buildLogText = (): string => {
+    return logEntries.map((e) => {
+      const meta = { ...e };
+      delete (meta as any).timestamp;
+      delete (meta as any).level;
+      delete (meta as any).message;
+      const metaStr = Object.keys(meta).length ? ' ' + JSON.stringify(meta) : '';
+      return `[${e.level}] ${e.timestamp || ''} ${e.message || ''}${metaStr}`;
+    }).join('\n');
+  };
+
+  const copyLogText = () => {
+    const text = buildLogText();
+    if (!text) { flashLogHint('暂无内容可复制'); return; }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => flashLogHint('已复制当前日志到剪贴板'))
+        .catch(() => flashLogHint('复制失败，请手动选择'));
+    } else {
+      flashLogHint('当前环境不支持自动复制');
+    }
+  };
+
+  const downloadLogText = () => {
+    const text = buildLogText();
+    if (!text) { flashLogHint('暂无内容可下载'); return; }
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedLogFile || 'log'}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    flashLogHint('已下载当前日志');
   };
 
   // 实时刷新（每 3 秒轮询当前文件）
@@ -1116,53 +1209,87 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                 </div>
               ) : (
                 <>
-                  {/* 工具栏 */}
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 12px', borderBottom: '1px solid #eee', background: '#fafafa' }}>
-                    <strong style={{ fontSize: 13 }}>{selectedLogFile}</strong>
-                    <span style={{ color: '#999', fontSize: 12 }}>共 {logEntries.length} 条</span>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {LOG_LEVELS.map(l => (
-                        <button key={l.key} onClick={() => setLogLevelFilter(l.key)}
-                          style={{
-                            fontSize: 11, padding: '3px 9px', cursor: 'pointer', borderRadius: 12, border: '1px solid',
-                            borderColor: logLevelFilter === l.key ? l.color : '#d9d9d9',
-                            background: logLevelFilter === l.key ? l.bg : '#fff',
-                            color: logLevelFilter === l.key ? l.color : '#666'
-                          }}>
-                          {l.label}
-                        </button>
-                      ))}
+                  {/* 工具栏：标题 + 级别分布 + 操作 */}
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid #eee', background: '#fafafa' }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: 13 }}>{selectedLogFile}</strong>
+                      <span style={{ color: '#999', fontSize: 12 }}>共 {logEntries.length} 条</span>
+                      {/* 级别分布统计 */}
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {LOG_LEVELS.filter(l => l.key !== 'ALL').map(l => {
+                          const c = logEntries.filter(e => e.level === l.key).length;
+                          if (!c) return null;
+                          return (
+                            <span key={l.key} title={`${l.label} 数量`}
+                              style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: l.bg, color: l.color, border: '1px solid ' + l.color }}>
+                              {l.label} {c}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div style={{ flex: 1 }} />
+                      {logHint && <span style={{ color: '#389e0d', fontSize: 12 }}>{logHint}</span>}
+                      <button onClick={() => setLogExpandAll(v => !v)}
+                        style={{ padding: '4px 10px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff', fontSize: 12 }}>
+                        {logExpandAll ? '折叠全部' : '展开全部'}
+                      </button>
+                      <button onClick={copyLogText}
+                        style={{ padding: '4px 10px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff', fontSize: 12 }}>
+                        复制
+                      </button>
+                      <button onClick={downloadLogText}
+                        style={{ padding: '4px 10px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff', fontSize: 12 }}>
+                        下载
+                      </button>
                     </div>
-                    <input
-                      placeholder="搜索关键词…"
-                      value={logSearch}
-                      onChange={e => setLogSearch(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') reloadLogEntries(); }}
-                      style={{ flex: 1, minWidth: 120, padding: '5px 10px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }}
-                    />
-                    <select value={logLimit} onChange={e => setLogLimit(Number(e.target.value))}
-                      style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }}>
-                      <option value={100}>最近100</option>
-                      <option value={200}>最近200</option>
-                      <option value={500}>最近500</option>
-                      <option value={1000}>最近1000</option>
-                      <option value={999999}>全部</option>
-                    </select>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#666', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={logAutoRefresh} onChange={e => setLogAutoRefresh(e.target.checked)} />
-                      实时
-                    </label>
-                    <button onClick={reloadLogEntries} disabled={logLoading}
-                      style={{ padding: '5px 12px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff', fontSize: 12 }}>
-                      {logLoading ? '…' : '查询'}
-                    </button>
+                    {/* 筛选行 */}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {LOG_LEVELS.map(l => (
+                          <button key={l.key} onClick={() => setLogLevelFilter(l.key)}
+                            style={{
+                              fontSize: 11, padding: '3px 9px', cursor: 'pointer', borderRadius: 12, border: '1px solid',
+                              borderColor: logLevelFilter === l.key ? l.color : '#d9d9d9',
+                              background: logLevelFilter === l.key ? l.bg : '#fff',
+                              color: logLevelFilter === l.key ? l.color : '#666'
+                            }}>
+                            {l.label}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        placeholder="搜索关键词…"
+                        value={logSearch}
+                        onChange={e => setLogSearch(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') reloadLogEntries(); }}
+                        style={{ flex: 1, minWidth: 140, padding: '5px 10px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }}
+                      />
+                      <select value={logLimit} onChange={e => setLogLimit(Number(e.target.value))}
+                        style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }}>
+                        <option value={100}>最近100</option>
+                        <option value={200}>最近200</option>
+                        <option value={500}>最近500</option>
+                        <option value={1000}>最近1000</option>
+                        <option value={999999}>全部</option>
+                      </select>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#666', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={logAutoRefresh} onChange={e => setLogAutoRefresh(e.target.checked)} />
+                        实时
+                      </label>
+                      <button onClick={reloadLogEntries} disabled={logLoading}
+                        style={{ padding: '5px 12px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff', fontSize: 12 }}>
+                        {logLoading ? '…' : '查询'}
+                      </button>
+                    </div>
                   </div>
                   {/* 日志条目 */}
-                  <div style={{ maxHeight: 560, overflow: 'auto' }}>
+                  <div ref={logBodyRef} style={{ maxHeight: 588, overflow: 'auto' }}>
                     {logEntries.length === 0 ? (
                       <div style={{ padding: 40, color: '#999', textAlign: 'center' }}>无匹配日志</div>
                     ) : (
-                      logEntries.map((entry, i) => <LogRow key={i} entry={entry} />)
+                      logEntries.map((entry, i) => (
+                        <LogRow key={`${i}-${logExpandAll}`} entry={entry} index={i} kw={logSearch.trim()} openByDefault={logExpandAll} />
+                      ))
                     )}
                   </div>
                 </>
