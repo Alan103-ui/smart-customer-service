@@ -211,6 +211,32 @@ async function getOrgAccounts() {
   }));
 }
 
+// 获取某组织单位下的部门列表（致远 OA V8 真实部门接口）
+// GET /seeyon/rest/orgDepartments/{accountId}?token=  -> JSON 数组，元素 type:"Department"
+// 注：该接口返回的是该 account 下的"部门"（含根部门），与 orgAccounts 的"单位"互补：
+//   - orgAccounts  -> 单位/集团（type=Account），同步为组织(org)
+//   - orgDepartments -> 部门（type=Department），同步为部门(dept)，parent 由 superior 决定
+async function getOrgDepartments(accountId) {
+  if (!accountId) return [];
+  const token = await getToken();
+  const url = `${loadOAConfig().baseUrl}/seeyon/rest/orgDepartments/${encodeURIComponent(String(accountId))}?token=${encodeURIComponent(token)}`;
+  const data = await requestText(url);
+  const arr = parseOAJson(data);
+  if (!Array.isArray(arr)) return [];
+  return arr.map((m) => ({
+    oaId: String(m.id),
+    name: m.name || '',
+    code: m.code || '',
+    // superior 可能为超长整数，json-bigint 已存为字符串；指向父部门 id 或 account 根 id
+    superior: m.superior !== undefined && m.superior !== null ? String(m.superior) : null,
+    superiorName: m.superiorName || '',
+    orgAccountId: m.orgAccountId !== undefined && m.orgAccountId !== null ? String(m.orgAccountId) : null,
+    orgAccountName: m.orgAccountName || '',
+    enabled: m.enabled !== false && m.isDeleted !== true,
+    raw: m,
+  }));
+}
+
 // ============ 人员 ============
 // 该 OA 人员接口：GET /orgMembers/{orgAccountId}?token= 返回该组织【全部人员】数组
 // （无"按人员ID单查"能力）。因此批量拉取 = 拉取各组织单位全部人员。
@@ -317,6 +343,7 @@ module.exports = {
   getToken,
   clearTokenCache,
   getOrgAccounts,
+  getOrgDepartments,
   getOrgMembersByAccount,
   getAllOrgMembers,
   fetchAllMembers,

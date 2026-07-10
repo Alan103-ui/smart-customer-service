@@ -374,7 +374,7 @@ export default function BasicInfoManagement() {
     if (!confirm('确定从致远OA同步组织架构到本地？')) return;
     setOaMsg('同步中...');
     const r = await fetch(API + '/oa/sync-org', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json());
-    setOaMsg(r.success ? (r.message + (r.deptCount ? `（识别部门 ${r.deptCount} 个）` : '')) : ('同步失败：' + (r.error || '')));
+    setOaMsg(r.success ? r.message : ('同步失败：' + (r.error || '')));
     if (r.success) loadOrg();
   };
   const syncOAMembers = async () => {
@@ -549,7 +549,7 @@ export default function BasicInfoManagement() {
           </div>
           <div style={{ marginTop: 12, padding: 12, border: '1px dashed #d9d9d9', borderRadius: 6 }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>部门识别规则</div>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>致远 OA 不区分组织/部门（均 type=Account），默认同步为「组织」。命中下方规则的 OA 单位将同步为「部门」（归入组织树，可在「组织与部门」管理）。多个值用逗号分隔。</div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>部门（中心/组/部等）现由 OA 的 orgDepartments 接口自动同步为「部门」并保留上下级关系；下方规则仅用于把某个组织单位（Account）强制识别为部门（可选）。多个值用逗号分隔。</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <span>名称含：<input value={oaDeptRule.nameKw} onChange={e => setOaDeptRule(s => ({ ...s, nameKw: e.target.value }))} placeholder="如 部门,科,组" style={{ width: 200 }} /></span>
               <span>编码前缀：<input value={oaDeptRule.codePre} onChange={e => setOaDeptRule(s => ({ ...s, codePre: e.target.value }))} placeholder="如 D,DEP" style={{ width: 120 }} /></span>

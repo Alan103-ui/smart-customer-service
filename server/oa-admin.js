@@ -257,6 +257,8 @@ router.get('/members', async (req, res) => {
 
 // ============ 按 OA ID 实时查询人员 ============
 // ============ 同步组织架构到本地 ============
+// 组织单位(Account) -> org 节点；部门(Department, 来自 orgDepartments) -> dept 节点，parent 由 superior 决定。
+// 部门识别规则(orgDeptRule)仍作为"把某个组织单位强制识别为部门"的可选覆盖。
 router.post('/sync-org', async (req, res) => {
   try {
     const accounts = await oa.getOrgAccounts();
@@ -268,11 +270,20 @@ router.post('/sync-org', async (req, res) => {
     let added = 0;
     let updated = 0;
     let deptCount = 0;
+    let accountCount = 0;
+    const now = () => new Date().toISOString();
+    const upsert = (node) => {
+      const idx = merged.findIndex((o) => o.oaId === node.oaId);
+      if (idx >= 0) { merged[idx] = node; updated++; }
+      else { merged.push(node); added++; }
+    };
+
+    // 1) 组织单位（Account）-> org 节点（规则命中可强制为 dept）
     for (const a of accounts) {
       const nodeIsDept = rule.byOaId.includes(a.oaId) || rule.byCode.some(p => a.code && String(a.code).startsWith(p)) || rule.byNameKeyword.some(k => a.name && a.name.includes(k));
       const idx = merged.findIndex((o) => o.oaId === a.oaId);
       const node = {
-        id: idx >= 0 ? merged[idx].id : 'org_oa_' + a.oaId,
+        id: 'org_oa_' + a.oaId,
         name: a.name,
         parentId: a.parentId ? 'org_oa_' + a.parentId : null,
         sortOrder: idx >= 0 ? merged[idx].sortOrder : merged.length,
@@ -283,23 +294,54 @@ router.post('/sync-org', async (req, res) => {
         oaId: a.oaId,
         oaCode: a.code,
         source: 'oa',
-        createdAt: idx >= 0 ? merged[idx].createdAt : new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: idx >= 0 ? merged[idx].createdAt : now(),
+        updatedAt: now(),
       };
-      if (idx >= 0) {
-        merged[idx] = node;
-        updated++;
-      } else {
-        merged.push(node);
-        added++;
-      }
+      upsert(node);
       if (nodeIsDept) deptCount++;
+      accountCount++;
     }
+
+    // 2) 部门（Department）-> dept 节点，parent 由 superior 决定
+    for (const a of accounts) {
+      let depts = [];
+      try { depts = await oa.getOrgDepartments(a.oaId); } catch (e) { depts = []; }
+      if (!depts.length) continue;
+      const accountNodeId = 'org_oa_' + a.oaId;
+      const deptNodeId = (oaId) => 'org_oa_' + oaId;
+      for (const d of depts) {
+        const sup = d.superior;
+        const orgAcc = d.orgAccountId;
+        // 根部门：superior 指向 account 根（orgAccountId 或本单位 id），或没有 superiorName -> 挂在 account 节点下
+        const isRoot = !sup || sup === orgAcc || sup === String(a.oaId);
+        const parentId = isRoot ? accountNodeId : deptNodeId(sup);
+        const idx = merged.findIndex((o) => o.oaId === d.oaId);
+        const node = {
+          id: deptNodeId(d.oaId),
+          name: d.name,
+          parentId,
+          sortOrder: typeof (d.raw && d.raw.sortId) === 'number' ? d.raw.sortId : (idx >= 0 ? merged[idx].sortOrder : merged.length),
+          description: d.orgAccountName ? 'OA部门:' + d.orgAccountName : 'OA部门',
+          isActive: d.enabled,
+          type: 'dept',
+          code: d.code || '',
+          oaId: d.oaId,
+          oaCode: d.code || '',
+          source: 'oa',
+          createdAt: idx >= 0 ? merged[idx].createdAt : now(),
+          updatedAt: now(),
+        };
+        upsert(node);
+        deptCount++;
+      }
+    }
+
     saveOrg(merged);
     res.json({
       success: true,
-      message: `同步完成：新增 ${added} 个、更新 ${updated} 个组织单元（其中 ${deptCount} 个识别为部门）`,
+      message: `同步完成：组织 ${accountCount} 个、部门 ${deptCount} 个（新增 ${added}、更新 ${updated}）`,
       total: merged.length,
+      accountCount,
       deptCount,
     });
   } catch (e) {
