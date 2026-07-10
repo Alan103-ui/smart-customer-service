@@ -526,14 +526,15 @@ async function searchByFAQCacheAsync(query, intent = null, topK = 5, threshold =
     // RRF 融合（使用可配置权重，默认向量60%、BM25 40%）
     const fused = rrfFusion([vectorResults, bm25Results], null, 60);
     
-    // 转换回原格式
+    // 转换回原格式（score 保留余弦相似度，方便上游使用）
     const finalResults = [];
     for (const r of fused) {
       const faq = FAQ_EMBEDDING_CACHE.get(r.docId);
       if (faq) {
         finalResults.push({
           parentDocId: r.docId,
-          score: r.score,
+          score: r.originalScore || r.score,  // 保留余弦相似度，不是 RRF 分数
+          rrScore: r.score,                      // RRF 分数另存
           question: faq.question,
           category: faq.category,
           content: faq.content,
