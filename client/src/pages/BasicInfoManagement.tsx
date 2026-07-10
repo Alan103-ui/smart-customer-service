@@ -168,18 +168,39 @@ export default function BasicInfoManagement() {
   const [ssoName, setSsoName] = useState('');
   const [ssoNote, setSsoNote] = useState('');
   const [ssoMsg, setSsoMsg] = useState('');
-  const loadSsoWhitelist = () => fetch(API + '/sso-whitelist', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { data: [] }).then((d: any) => setSsoList(Array.isArray(d.data) ? d.data : [])).catch(() => {});
+  const [ssoSearch, setSsoSearch] = useState('');
+  const [ssoSelected, setSsoSelected] = useState<string[]>([]);
+  const loadSsoWhitelist = (q?: string) => {
+    const url = API + '/sso-whitelist' + (q && q.trim() ? '?q=' + encodeURIComponent(q.trim()) : '');
+    return fetch(url, { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then((d: any) => { setSsoList(Array.isArray(d.data) ? d.data : []); return d; })
+      .catch(() => {});
+  };
   const addSSO = async () => {
     if (!ssoAccount.trim()) { setSsoMsg('账号(工号)必填'); return; }
     const res = await fetch(API + '/sso-whitelist', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ account: ssoAccount.trim(), name: ssoName.trim(), note: ssoNote.trim() }) });
     const d = await res.json();
-    if (d.success) { setSsoAccount(''); setSsoName(''); setSsoNote(''); setSsoMsg('已添加'); loadSsoWhitelist(); } else setSsoMsg('添加失败：' + (d.error || ''));
+    if (d.success) { setSsoAccount(''); setSsoName(''); setSsoNote(''); setSsoMsg('已添加'); loadSsoWhitelist(ssoSearch); } else setSsoMsg('添加失败：' + (d.error || ''));
   };
   const delSSO = async (acc: string) => {
     if (!confirm('从白名单移除 ' + acc + '？')) return;
     const res = await fetch(API + '/sso-whitelist/' + encodeURIComponent(acc), { method: 'DELETE', headers: getAuthHeaders() });
     const d = await res.json();
-    if (d.success) loadSsoWhitelist(); else alert(d.error || '删除失败');
+    if (d.success) { setSsoSelected(prev => prev.filter(a => a !== acc)); loadSsoWhitelist(ssoSearch); } else alert(d.error || '删除失败');
+  };
+  const toggleSsoSelect = (acc: string) => setSsoSelected(prev => prev.includes(acc) ? prev.filter(a => a !== acc) : [...prev, acc]);
+  const allSsoSelected = ssoList.length > 0 && ssoList.every(x => ssoSelected.includes(x.account));
+  const toggleSelectAllSso = () => {
+    if (allSsoSelected) setSsoSelected(prev => prev.filter(a => !ssoList.some(x => x.account === a)));
+    else setSsoSelected(prev => Array.from(new Set([...prev, ...ssoList.map(x => x.account)])));
+  };
+  const batchDelSSO = async () => {
+    if (!ssoSelected.length) return;
+    if (!confirm('确定批量移除选中的 ' + ssoSelected.length + ' 个账号？')) return;
+    const res = await fetch(API + '/sso-whitelist/batch-delete', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ accounts: ssoSelected }) });
+    const d = await res.json();
+    if (d.success) { setSsoMsg('已批量移除 ' + (d.removed || ssoSelected.length) + ' 个账号'); setSsoSelected([]); loadSsoWhitelist(ssoSearch); } else alert(d.error || '批量移除失败');
   };
 
   // ==================== 同义词 / 停用词 ====================
@@ -701,22 +722,34 @@ export default function BasicInfoManagement() {
       {subTab === 'sso' && (
         <div>
           <h3>SSO 登录白名单</h3>
-          <div>账号(工号)：<input value={ssoAccount} onChange={e => setSsoAccount(e.target.value)} placeholder="如 GK88888" />
-            姓名：<input value={ssoName} onChange={e => setSsoName(e.target.value)} />
-            备注：<input value={ssoNote} onChange={e => setSsoNote(e.target.value)} />
-            <button style={{ marginLeft: 8 }} onClick={addSSO}>添加</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span>账号(工号)：<input value={ssoAccount} onChange={e => setSsoAccount(e.target.value)} placeholder="如 GK88888" /></span>
+            <span>姓名：<input value={ssoName} onChange={e => setSsoName(e.target.value)} /></span>
+            <span>备注：<input value={ssoNote} onChange={e => setSsoNote(e.target.value)} /></span>
+            <button onClick={addSSO}>添加</button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={ssoSearch} onChange={e => setSsoSearch(e.target.value)} placeholder="搜索账号/姓名/部门/添加人" style={{ width: 260 }} onKeyDown={e => { if (e.key === 'Enter') loadSsoWhitelist(ssoSearch); }} />
+            <button onClick={() => loadSsoWhitelist(ssoSearch)}>查询</button>
+            <button onClick={() => { setSsoSearch(''); loadSsoWhitelist(''); }}>重置</button>
+            <button onClick={batchDelSSO} disabled={!ssoSelected.length} style={{ marginLeft: 'auto' }}>
+              批量移除{ssoSelected.length ? '（' + ssoSelected.length + '）' : ''}
+            </button>
           </div>
           {ssoMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{ssoMsg}</div>}
           <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><th>账号</th><th>姓名</th><th>备注</th><th>添加人</th><th>添加时间</th><th>操作</th></tr></thead>
+            <thead><tr><th><input type="checkbox" checked={allSsoSelected} onChange={toggleSelectAllSso} /></th><th>账号</th><th>姓名</th><th>部门</th><th>备注</th><th>添加人</th><th>添加时间</th><th>操作</th></tr></thead>
             <tbody>
               {ssoList.map((x: any) => (
-                <tr key={x.account}><td>{x.account}</td><td>{x.name || '-'}</td><td>{x.note || '-'}</td><td>{x.addedBy || '-'}</td><td>{x.addedAt ? x.addedAt.slice(0, 19).replace('T', ' ') : '-'}</td><td><button onClick={() => delSSO(x.account)}>移除</button></td></tr>
+                <tr key={x.account}>
+                  <td><input type="checkbox" checked={ssoSelected.includes(x.account)} onChange={() => toggleSsoSelect(x.account)} /></td>
+                  <td>{x.account}</td><td>{x.name || '-'}</td><td>{x.department || '-'}</td><td>{x.note || '-'}</td><td>{x.addedBy || '-'}</td><td>{x.addedAt ? x.addedAt.slice(0, 19).replace('T', ' ') : '-'}</td><td><button onClick={() => delSSO(x.account)}>移除</button></td>
+                </tr>
               ))}
-              {ssoList.length === 0 && <tr><td colSpan={6}>暂无白名单</td></tr>}
+              {ssoList.length === 0 && <tr><td colSpan={8}>暂无白名单</td></tr>}
             </tbody>
           </table>
-          <p style={{ color: '#999', fontSize: 12, marginTop: 8 }}>白名单变更已自动同步至 OA 配置并写入审计日志。</p>
+          <p style={{ color: '#999', fontSize: 12, marginTop: 8 }}>白名单变更已自动同步至 OA 配置并写入审计日志。勾选后可批量移除，支持按账号 / 姓名 / 部门查询。</p>
         </div>
       )}
 

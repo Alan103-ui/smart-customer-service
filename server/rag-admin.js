@@ -1611,9 +1611,36 @@ function syncOAConfigWhitelist(accounts) {
   } catch (e) { errorLog('同步 oa-config 白名单失败', e); }
 }
 
+// 将白名单条目与人员信息关联，补全姓名/部门（人员 username === 白名单 account）
+function enrichSSOEntries(list) {
+  const personnelMap = {};
+  try {
+    const personnel = loadPersonnel() || [];
+    personnel.forEach(p => { if (p && p.username) personnelMap[p.username] = p; });
+  } catch (e) { errorLog('读取人员信息失败', e); }
+  return (list || []).map(x => {
+    const p = personnelMap[x.account] || {};
+    return {
+      ...x,
+      name: (x.name && String(x.name).trim()) ? x.name : (p.name || ''),
+      department: p.orgName || ''
+    };
+  });
+}
+
 router.get('/sso-whitelist', auth.authMiddleware, auth.adminOnly, (req, res) => {
   try {
-    res.json({ success: true, data: loadSSOWhitelist() });
+    const q = (req.query.q || '').toString().trim().toLowerCase();
+    const all = enrichSSOEntries(loadSSOWhitelist());
+    const filtered = q
+      ? all.filter(x =>
+          (x.account || '').toLowerCase().includes(q) ||
+          (x.name || '').toLowerCase().includes(q) ||
+          (x.department || '').toLowerCase().includes(q) ||
+          (x.addedBy || '').toLowerCase().includes(q) ||
+          (x.note || '').toLowerCase().includes(q))
+      : all;
+    res.json({ success: true, data: filtered, total: all.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1648,6 +1675,26 @@ router.delete('/sso-whitelist/:account', auth.authMiddleware, auth.adminOnly, (r
     syncOAConfigWhitelist(next.map(x => x.account));
     auditLog('删除SSO白名单', req.user ? req.user.username : 'unknown', { account: acc });
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 批量移除白名单
+router.post('/sso-whitelist/batch-delete', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const accounts = Array.isArray(req.body && req.body.accounts) ? req.body.accounts.map(String) : [];
+    if (!accounts.length) return res.status(400).json({ error: '请提供要移除的账号列表' });
+    const list = loadSSOWhitelist();
+    const set = new Set(accounts);
+    const before = list.length;
+    const next = list.filter(x => !set.has(x.account));
+    const removed = before - next.length;
+    if (removed === 0) return res.status(404).json({ error: '白名单中未找到指定账号' });
+    saveSSOWhitelist(next);
+    syncOAConfigWhitelist(next.map(x => x.account));
+    auditLog('批量删除SSO白名单', req.user ? req.user.username : 'unknown', { count: removed });
+    res.json({ success: true, removed });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
