@@ -118,6 +118,7 @@ export default function BasicInfoManagement() {
 
   // 致远 OA
   const [oa, setOa] = useState<any>({ enabled: false, baseUrl: '', username: '', secret: '', fixedToken: '' });
+  const [oaDeptRule, setOaDeptRule] = useState<any>({ nameKw: '', codePre: '', oaId: '' });
   const [oaTest, setOaTest] = useState<any>(null);
   const [oaMsg, setOaMsg] = useState('');
   // 软件信息（可编辑品牌/名称/欢迎语/界面图片）
@@ -144,7 +145,12 @@ export default function BasicInfoManagement() {
       .then((d: any) => { if (d && d.success && Array.isArray(d.data) && d.data.length) setPermCatalog(d.data); })
       .catch(() => {});
   };
-  const loadOA = () => fetch(API + '/oa/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: '', fixedToken: '' })).catch(() => {});
+  const loadOA = () => fetch(API + '/oa/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => {
+    setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: '', fixedToken: '' });
+    const r = d.orgDeptRule || {};
+    const j = (arr: any) => Array.isArray(arr) ? arr.join(',') : (arr ? String(arr) : '');
+    setOaDeptRule({ nameKw: j(r.byNameKeyword), codePre: j(r.byCode), oaId: j(r.byOaId) });
+  }).catch(() => {});
   const loadSoftware = () => fetch(API + '/software-info', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => { const s = d.data || d; setSoftware({ companyName: s.companyName || '', softwareName: s.softwareName || '', assistantName: s.assistantName || '', knowledgeBaseName: s.knowledgeBaseName || '', welcomeMessage: s.welcomeMessage || '', loginImage: s.loginImage || '', chatImage: s.chatImage || '' }); }).catch(() => {});
 
   // ==================== 统一系统配置 ====================
@@ -324,7 +330,9 @@ export default function BasicInfoManagement() {
 
   // ==================== 致远 OA ====================
   const saveOA = async () => {
-    const r = await fetch(API + '/oa/config', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(oa) }).then(r => r.json());
+    const toArr = (s: string) => String(s || '').split(/[,，;；]/).map(x => x.trim()).filter(Boolean);
+    const deptRule = { byNameKeyword: toArr(oaDeptRule.nameKw), byCode: toArr(oaDeptRule.codePre), byOaId: toArr(oaDeptRule.oaId) };
+    const r = await fetch(API + '/oa/config', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(Object.assign({}, oa, { orgDeptRule: deptRule })) }).then(r => r.json());
     if (r.success) { setOaMsg('配置已保存'); loadOA(); } else setOaMsg('保存失败：' + (r.error || ''));
   };
   const saveSoftware = async () => {
@@ -364,8 +372,9 @@ export default function BasicInfoManagement() {
   };
   const syncOAOrg = async () => {
     if (!confirm('确定从致远OA同步组织架构到本地？')) return;
+    setOaMsg('同步中...');
     const r = await fetch(API + '/oa/sync-org', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json());
-    setOaMsg(r.success ? r.message : ('同步失败：' + (r.error || '')));
+    setOaMsg(r.success ? (r.message + (r.deptCount ? `（识别部门 ${r.deptCount} 个）` : '')) : ('同步失败：' + (r.error || '')));
     if (r.success) loadOrg();
   };
   const syncOAMembers = async () => {
@@ -537,6 +546,16 @@ export default function BasicInfoManagement() {
             <button onClick={testOA} style={{ marginLeft: 8 }}>测试连接</button>
             <button onClick={syncOAOrg} style={{ marginLeft: 8 }}>同步组织架构</button>
             <button onClick={syncOAMembers} style={{ marginLeft: 8, background: '#52c41a', color: '#fff', border: 'none' }}>🔄 同步全部人员</button>
+          </div>
+          <div style={{ marginTop: 12, padding: 12, border: '1px dashed #d9d9d9', borderRadius: 6 }}>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>部门识别规则</div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>致远 OA 不区分组织/部门（均 type=Account），默认同步为「组织」。命中下方规则的 OA 单位将同步为「部门」（归入组织树，可在「组织与部门」管理）。多个值用逗号分隔。</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span>名称含：<input value={oaDeptRule.nameKw} onChange={e => setOaDeptRule(s => ({ ...s, nameKw: e.target.value }))} placeholder="如 部门,科,组" style={{ width: 200 }} /></span>
+              <span>编码前缀：<input value={oaDeptRule.codePre} onChange={e => setOaDeptRule(s => ({ ...s, codePre: e.target.value }))} placeholder="如 D,DEP" style={{ width: 120 }} /></span>
+              <span>oaId：<input value={oaDeptRule.oaId} onChange={e => setOaDeptRule(s => ({ ...s, oaId: e.target.value }))} placeholder="如 123,456" style={{ width: 160 }} /></span>
+              <button onClick={saveOA}>保存规则</button>
+            </div>
           </div>
 
           {/* SSO 单点登录白名单 */}
@@ -722,6 +741,7 @@ export default function BasicInfoManagement() {
       {subTab === 'sso' && (
         <div>
           <h3>SSO 登录白名单</h3>
+          <p style={{ fontSize: 12, color: '#888', margin: '0 0 10px' }}>本页为「系统 SSO 登录白名单」（账号存于 data/sso-whitelist.json，控制谁可用 SSO 登录系统）。与「致远OA对接」页里的 SSO 白名单（控制 OA 跳转登录工号）相互独立，注意区分。</p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <span>账号(工号)：<input value={ssoAccount} onChange={e => setSsoAccount(e.target.value)} placeholder="如 GK88888" /></span>
             <span>姓名：<input value={ssoName} onChange={e => setSsoName(e.target.value)} /></span>
@@ -737,18 +757,20 @@ export default function BasicInfoManagement() {
             </button>
           </div>
           {ssoMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{ssoMsg}</div>}
-          <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><th><input type="checkbox" checked={allSsoSelected} onChange={toggleSelectAllSso} /></th><th>账号</th><th>姓名</th><th>部门</th><th>备注</th><th>添加人</th><th>添加时间</th><th>操作</th></tr></thead>
-            <tbody>
-              {ssoList.map((x: any) => (
-                <tr key={x.account}>
-                  <td><input type="checkbox" checked={ssoSelected.includes(x.account)} onChange={() => toggleSsoSelect(x.account)} /></td>
-                  <td>{x.account}</td><td>{x.name || '-'}</td><td>{x.department || '-'}</td><td>{x.note || '-'}</td><td>{x.addedBy || '-'}</td><td>{x.addedAt ? x.addedAt.slice(0, 19).replace('T', ' ') : '-'}</td><td><button onClick={() => delSSO(x.account)}>移除</button></td>
-                </tr>
-              ))}
-              {ssoList.length === 0 && <tr><td colSpan={8}>暂无白名单</td></tr>}
-            </tbody>
-          </table>
+          <div style={{ maxHeight: 380, overflow: 'auto', marginTop: 12, border: '1px solid #ddd' }}>
+            <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ position: 'sticky', top: 0, background: '#fafafa' }}><tr><th><input type="checkbox" checked={allSsoSelected} onChange={toggleSelectAllSso} /></th><th>账号</th><th>姓名</th><th>部门</th><th>备注</th><th>添加人</th><th>添加时间</th><th>操作</th></tr></thead>
+              <tbody>
+                {ssoList.map((x: any) => (
+                  <tr key={x.account}>
+                    <td><input type="checkbox" checked={ssoSelected.includes(x.account)} onChange={() => toggleSsoSelect(x.account)} /></td>
+                    <td>{x.account}</td><td>{x.name || '-'}</td><td>{x.department || '-'}</td><td>{x.note || '-'}</td><td>{x.addedBy || '-'}</td><td>{x.addedAt ? x.addedAt.slice(0, 19).replace('T', ' ') : '-'}</td><td><button onClick={() => delSSO(x.account)}>移除</button></td>
+                  </tr>
+                ))}
+                {ssoList.length === 0 && <tr><td colSpan={8}>暂无白名单</td></tr>}
+              </tbody>
+            </table>
+          </div>
           <p style={{ color: '#999', fontSize: 12, marginTop: 8 }}>白名单变更已自动同步至 OA 配置并写入审计日志。勾选后可批量移除，支持按账号 / 姓名 / 部门查询。</p>
         </div>
       )}

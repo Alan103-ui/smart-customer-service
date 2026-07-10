@@ -61,6 +61,7 @@ function loadOAConfig() {
     secret: env.secret || local.secret || '',
     fixedToken: env.fixedToken || local.fixedToken || '',
     sso,
+    orgDeptRule: local.orgDeptRule || {},
   };
 }
 
@@ -83,6 +84,7 @@ function saveOAConfig(cfg) {
         ? ssoIn.whitelist.map(String).map(s => s.trim()).filter(Boolean)
         : [],
     },
+    orgDeptRule: cfg.orgDeptRule || {},
   };
   fs.writeFileSync(OA_CONFIG_PATH, JSON.stringify(safe, null, 2));
   return safe;

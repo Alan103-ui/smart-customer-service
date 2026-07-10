@@ -44,6 +44,21 @@ function savePersonnel(list) {
 router.use(auth.authMiddleware);
 router.use(auth.adminOnly);
 
+// 归一化部门识别规则：支持数组或逗号分隔字符串，统一为 {byNameKeyword, byCode, byOaId}
+function normalizeDeptRule(input) {
+  const out = { byNameKeyword: [], byCode: [], byOaId: [] };
+  if (!input) return out;
+  const pick = (v) => Array.isArray(v)
+    ? v.map(String).map(s => s.trim()).filter(Boolean)
+    : (typeof v === 'string' && v.trim())
+      ? v.split(/[,，;；]/).map(s => s.trim()).filter(Boolean)
+      : [];
+  out.byNameKeyword = pick(input.byNameKeyword);
+  out.byCode = pick(input.byCode);
+  out.byOaId = pick(input.byOaId);
+  return out;
+}
+
 // ============ 配置读取（脱敏）============
 router.get('/config', (req, res) => {
   try {
@@ -65,6 +80,7 @@ router.get('/config', (req, res) => {
         trustedIps: Array.isArray(sso.trustedIps) ? sso.trustedIps : [],
         whitelist: Array.isArray(sso.whitelist) ? sso.whitelist : [],
         count: Array.isArray(sso.whitelist) ? sso.whitelist.length : 0,
+        orgDeptRule: normalizeDeptRule(cfg.orgDeptRule),
       },
     });
   } catch (e) {
@@ -75,7 +91,7 @@ router.get('/config', (req, res) => {
 // ============ 配置保存 ============
 router.post('/config', (req, res) => {
   try {
-    const { enabled, baseUrl, username, secret, fixedToken } = req.body || {};
+    const { enabled, baseUrl, username, secret, fixedToken, orgDeptRule } = req.body || {};
     const existing = oa.loadOAConfig();
     // secret / fixedToken 留空表示不修改（保留原值），避免脱敏值回写覆盖
     const saved = oa.saveOAConfig({
@@ -87,6 +103,7 @@ router.post('/config', (req, res) => {
         fixedToken && String(fixedToken).trim() ? String(fixedToken).trim() : existing.fixedToken,
       // 保留已有 SSO 白名单配置，避免保存连接信息时误清空
       sso: existing.sso,
+      orgDeptRule: normalizeDeptRule(orgDeptRule),
     });
     oa.clearTokenCache(); // 配置变更后强制刷新 token
     res.json({
@@ -246,9 +263,13 @@ router.post('/sync-org', async (req, res) => {
     const local = loadOrg();
     const manual = local.filter((o) => o.source !== 'oa'); // 保留手工条目
     const merged = manual.slice();
+    const cfg = oa.loadOAConfig();
+    const rule = normalizeDeptRule(cfg.orgDeptRule);
     let added = 0;
     let updated = 0;
+    let deptCount = 0;
     for (const a of accounts) {
+      const nodeIsDept = rule.byOaId.includes(a.oaId) || rule.byCode.some(p => a.code && String(a.code).startsWith(p)) || rule.byNameKeyword.some(k => a.name && a.name.includes(k));
       const idx = merged.findIndex((o) => o.oaId === a.oaId);
       const node = {
         id: idx >= 0 ? merged[idx].id : 'org_oa_' + a.oaId,
@@ -257,7 +278,8 @@ router.post('/sync-org', async (req, res) => {
         sortOrder: idx >= 0 ? merged[idx].sortOrder : merged.length,
         description: a.shortName ? 'OA:' + a.shortName : '致远OA同步',
         isActive: a.enabled,
-        type: 'org',
+        type: nodeIsDept ? 'dept' : 'org',
+        code: a.code,
         oaId: a.oaId,
         oaCode: a.code,
         source: 'oa',
@@ -271,12 +293,14 @@ router.post('/sync-org', async (req, res) => {
         merged.push(node);
         added++;
       }
+      if (nodeIsDept) deptCount++;
     }
     saveOrg(merged);
     res.json({
       success: true,
-      message: `同步完成：新增 ${added} 个、更新 ${updated} 个组织单元`,
+      message: `同步完成：新增 ${added} 个、更新 ${updated} 个组织单元（其中 ${deptCount} 个识别为部门）`,
       total: merged.length,
+      deptCount,
     });
   } catch (e) {
     res.json({ success: false, error: e.message });
