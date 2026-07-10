@@ -397,7 +397,7 @@ export default function RAGManagement() {
       <h2 className="rag-title">🤖 RAG 管理</h2>
 
       {/* Tab 切换 */}
-      <div className="rag-tabs">
+      <div className="ui-tabs" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { key: 'stats', label: '📊 统计信息' },
           { key: 'test', label: '🔍 测试搜索' },
@@ -410,7 +410,7 @@ export default function RAGManagement() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key as any)}
-            className={`rag-tab ${activeTab === tab.key ? 'rag-tab-active' : ''}`}
+            className={`ui-tab ${activeTab === tab.key ? 'ui-tab--active' : ''}`}
           >
             {tab.label}
           </button>

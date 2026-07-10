@@ -766,32 +766,9 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
         <div className="faq-management">
           <div className="faq-toolbar" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
             {/* 子Tab 切换 */}
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 0 }}>
-              <button
-                style={{
-                  padding: '5px 16px',
-                  borderRadius: '6px 0 0 6px',
-                  border: '1px solid #d9d9d9',
-                  background: catSubTab === 'level1' ? '#1677ff' : '#fff',
-                  color: catSubTab === 'level1' ? '#fff' : '#333',
-                  fontWeight: catSubTab === 'level1' ? 600 : 400,
-                  cursor: 'pointer',
-                }}
-                onClick={() => setCatSubTab('level1')}
-              >一级大类</button>
-              <button
-                style={{
-                  padding: '5px 16px',
-                  borderRadius: '0 6px 6px 0',
-                  border: '1px solid #d9d9d9',
-                  borderLeft: 'none',
-                  background: catSubTab === 'level2' ? '#1677ff' : '#fff',
-                  color: catSubTab === 'level2' ? '#fff' : '#333',
-                  fontWeight: catSubTab === 'level2' ? 600 : 400,
-                  cursor: 'pointer',
-                }}
-                onClick={() => setCatSubTab('level2')}
-              >二级分类</button>
+            <div className="ui-tabs">
+              <button className={`ui-tab ${catSubTab === 'level1' ? 'ui-tab--active' : ''}`} onClick={() => setCatSubTab('level1')}>一级大类</button>
+              <button className={`ui-tab ${catSubTab === 'level2' ? 'ui-tab--active' : ''}`} onClick={() => setCatSubTab('level2')}>二级分类</button>
             </div>
             <button className="btn-primary" onClick={openAddCat}>+ {catSubTab === 'level1' ? '新增一级大类' : '新增二级分类'}</button>
             <span style={{ marginLeft: 'auto', color: '#888', fontSize: 13 }}>
@@ -997,69 +974,66 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
 
       {/* 对话管理 */}
       {tab === 'conversations' && (
-        <div className="conversation-management" style={{ padding: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h3 style={{ margin: 0 }}>💬 对话管理</h3>
-            <div>
-              <button className="btn-danger" onClick={batchDeleteConversations} disabled={selectedSessionIds.size === 0}>
-                批量删除({selectedSessionIds.size})
-              </button>
-            </div>
+        <div className="ui-card">
+          <div className="ui-card__header">
+            <div className="ui-card__title">💬 对话管理</div>
+            <button className="ui-btn ui-btn--danger ui-btn--sm" onClick={batchDeleteConversations} disabled={selectedSessionIds.size === 0}>
+              批量删除({selectedSessionIds.size})
+            </button>
           </div>
-
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: 40 }}>加载中...</div>
-          ) : conversations.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>暂无对话记录</div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#fafafa' }}>
-                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}><input type="checkbox" checked={selectedSessionIds.size > 0 && selectedSessionIds.size === conversations.length} onChange={(e) => { if (e.target.checked) setSelectedSessionIds(new Set(conversations.map((c: Conversation) => c.session_id))); else setSelectedSessionIds(new Set()); }} /></th>
-                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>会话ID</th>
-                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>咨询人</th>
-                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>消息数</th>
-                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>状态</th>
-                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>时间</th>
-                  <th style={{ padding: 10, borderBottom: '1px solid #eee', textAlign: 'left' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {conversations.map((conv) => {
-                  let msgCount = 0;
-                  try {
-                    const msgs = typeof conv.messages === 'string'
-                      ? JSON.parse(conv.messages || '[]')
-                      : (Array.isArray(conv.messages) ? conv.messages : []);
-                    msgCount = msgs.length;
-                  } catch(e) { console.error('解析消息数失败', e); }
-                  return (
-                    <tr key={conv.session_id}>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>
-                        <input type="checkbox" checked={selectedSessionIds.has(conv.session_id)} onChange={(e) => {
+          <div className="ui-card__body">
+            {loading ? (
+              <div className="ui-empty"><span className="ui-empty__text">加载中...</span></div>
+            ) : conversations.length === 0 ? (
+              <div className="ui-empty"><span className="ui-empty__icon">💬</span><span className="ui-empty__text">暂无对话记录</span></div>
+            ) : (
+              <table className="ui-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 40 }}><input type="checkbox" checked={selectedSessionIds.size > 0 && selectedSessionIds.size === conversations.length} onChange={(e) => { if (e.target.checked) setSelectedSessionIds(new Set(conversations.map((c: Conversation) => c.session_id))); else setSelectedSessionIds(new Set()); }} /></th>
+                    <th>会话ID</th>
+                    <th>咨询人</th>
+                    <th>消息数</th>
+                    <th>状态</th>
+                    <th>时间</th>
+                    <th style={{ width: 120 }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {conversations.map((conv) => {
+                    let msgCount = 0;
+                    try {
+                      const msgs = typeof conv.messages === 'string'
+                        ? JSON.parse(conv.messages || '[]')
+                        : (Array.isArray(conv.messages) ? conv.messages : []);
+                      msgCount = msgs.length;
+                    } catch(e) { console.error('解析消息数失败', e); }
+                    return (
+                      <tr key={conv.session_id}>
+                        <td><input type="checkbox" checked={selectedSessionIds.has(conv.session_id)} onChange={(e) => {
                           const s = new Set(selectedSessionIds);
                           if (e.target.checked) s.add(conv.session_id); else s.delete(conv.session_id);
                           setSelectedSessionIds(s);
-                        }} />
-                      </td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5', fontSize: 12, fontFamily: 'monospace' }}>{conv.session_id.substring(0, 16)}...</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>
-                        <div style={{ fontWeight: 600 }}>{conv.user_name || conv.username || '匿名用户'}</div>
-                        {conv.username && <div style={{ fontSize: 12, color: '#999' }}>@{conv.username}</div>}
-                      </td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>{msgCount}</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>{conv.resolved ? '✅ 已解决' : '⏳ 进行中'}</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5', fontSize: 12 }}>{new Date(conv.created_at).toLocaleString('zh-CN')}</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>
-                        <button onClick={() => setSelectedSession(conv.session_id)} style={{ marginRight: 4, cursor: 'pointer' }}>查看</button>
-                        <button onClick={() => deleteConversation(conv.session_id)} style={{ color: '#ff4d4f', cursor: 'pointer', border: 'none', background: 'none' }}>删除</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+                        }} /></td>
+                        <td style={{ fontSize: 12, fontFamily: 'monospace' }}>{conv.session_id.substring(0, 16)}...</td>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{conv.user_name || conv.username || '匿名用户'}</div>
+                          {conv.username && <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>@{conv.username}</div>}
+                        </td>
+                        <td>{msgCount}</td>
+                        <td>{conv.resolved ? <span className="ui-badge ui-badge--success">已解决</span> : <span className="ui-badge ui-badge--warning">进行中</span>}</td>
+                        <td style={{ fontSize: 12 }}>{new Date(conv.created_at).toLocaleString('zh-CN')}</td>
+                        <td>
+                          <button className="ui-btn ui-btn--sm ui-btn--ghost" onClick={() => setSelectedSession(conv.session_id)}>查看</button>
+                          <button className="ui-btn ui-btn--sm ui-btn--danger" onClick={() => deleteConversation(conv.session_id)} style={{ marginLeft: 4 }}>删除</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
 
           {selectedSession && (() => {
             const conv = conversations.find(c => c.session_id === selectedSession);
@@ -1071,24 +1045,24 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                 : (Array.isArray(conv.messages) ? conv.messages : []);
             } catch(e) { console.error('解析对话消息失败', e); }
             return (
-              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setSelectedSession(null)}>
-                <div style={{ background: '#fff', borderRadius: 8, maxWidth: 800, width: '90%', maxHeight: 500, display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
-                  <div style={{ padding: 16, borderBottom: '1px solid #f0f0f0', fontSize: 16, fontWeight: 600 }}>
+              <div className="ui-modal__backdrop" onClick={() => setSelectedSession(null)}>
+                <div className="ui-modal ui-modal--lg" onClick={(e) => e.stopPropagation()}>
+                  <div className="ui-modal__header">
                     对话详情
-                    <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 400, color: '#1890ff' }}>
+                    <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 400, color: 'var(--color-primary-600)' }}>
                       👤 {conv.user_name || conv.username || '匿名用户'}{conv.username ? `（@${conv.username}）` : ''}
                     </span>
                   </div>
-                  <div style={{ overflowY: 'auto', padding: 16, flex: 1 }}>
-                    {msgs.length === 0 ? <div style={{ textAlign: 'center', color: '#999' }}>无消息</div> : msgs.map((m, i) => (
-                      <div key={i} style={{ marginBottom: 12, padding: 10, borderRadius: 6, background: m.role === 'user' ? '#e6f7ff' : '#f6ffed', borderLeft: m.role === 'user' ? '4px solid #1890ff' : '4px solid #52c41a' }}>
+                  <div className="ui-modal__body">
+                    {msgs.length === 0 ? <div className="ui-empty"><span className="ui-empty__text">无消息</span></div> : msgs.map((m, i) => (
+                      <div key={i} style={{ marginBottom: 12, padding: 10, borderRadius: 6, background: m.role === 'user' ? 'var(--color-primary-50)' : 'var(--color-success-light)', borderLeft: m.role === 'user' ? '4px solid var(--color-primary-500)' : '4px solid var(--color-success)' }}>
                         <div style={{ fontWeight: 600, marginBottom: 4 }}>{m.role === 'user' ? '👤 用户' : '🤖 AI'}</div>
                         <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.content}</div>
                       </div>
                     ))}
                   </div>
-                  <div style={{ padding: 12, borderTop: '1px solid #f0f0f0', textAlign: 'right' }}>
-                    <button onClick={() => setSelectedSession(null)} style={{ padding: '6px 20px', cursor: 'pointer' }}>关闭</button>
+                  <div className="ui-modal__footer">
+                    <button className="ui-btn ui-btn--secondary" onClick={() => setSelectedSession(null)}>关闭</button>
                   </div>
                 </div>
               </div>
@@ -1168,36 +1142,36 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
         return (
         <div>
           {/* 子页切换：系统日志 / 操作审计 */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12, padding: '0 16px' }}>
-            <button onClick={() => setLogView('sys')} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: logView === 'sys' ? '#1890ff' : '#fff', color: logView === 'sys' ? '#fff' : '#333' }}>📄 系统日志</button>
-            <button onClick={() => setLogView('audit')} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: logView === 'audit' ? '#1890ff' : '#fff', color: logView === 'audit' ? '#fff' : '#333' }}>🛡️ 操作审计</button>
+          <div className="ui-tabs" style={{ marginBottom: 12 }}>
+            <button className={`ui-tab ${logView === 'sys' ? 'ui-tab--active' : ''}`} onClick={() => setLogView('sys')}>📄 系统日志</button>
+            <button className={`ui-tab ${logView === 'audit' ? 'ui-tab--active' : ''}`} onClick={() => setLogView('audit')}>🛡️ 操作审计</button>
           </div>
 
           {logView === 'audit' ? (
             <div style={{ padding: '0 16px 16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                <input value={auditOpInput} onChange={e => setAuditOpInput(e.target.value)} placeholder="操作筛选，如 新增 / 删除 / 更新" style={{ padding: '5px 10px', border: '1px solid #d9d9d9', borderRadius: 4, width: 280 }} />
-                <button onClick={() => { setAuditOp(auditOpInput.trim()); loadAudit(auditOpInput.trim()); }} disabled={auditLoading} style={{ padding: '5px 14px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff' }}>{auditLoading ? '加载中…' : '查询'}</button>
-                <button onClick={() => { setAuditOp(''); setAuditOpInput(''); loadAudit(''); }} style={{ padding: '5px 14px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff' }}>全部</button>
-                <span style={{ color: '#999', fontSize: 12 }}>共 {auditTotal} 条</span>
+              <div className="ui-toolbar">
+                <input className="ui-input" style={{ width: 280 }} value={auditOpInput} onChange={e => setAuditOpInput(e.target.value)} placeholder="操作筛选，如 新增 / 删除 / 更新" />
+                <button className="ui-btn ui-btn--primary" onClick={() => { setAuditOp(auditOpInput.trim()); loadAudit(auditOpInput.trim()); }} disabled={auditLoading}>{auditLoading ? '加载中…' : '查询'}</button>
+                <button className="ui-btn ui-btn--secondary" onClick={() => { setAuditOp(''); setAuditOpInput(''); loadAudit(''); }}>全部</button>
+                <span className="ui-toolbar__spacer" />
+                <span className="ui-tag">共 {auditTotal} 条</span>
               </div>
-              <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, background: '#fff' }}>
+              <table className="ui-table">
                 <thead><tr><th>时间</th><th>操作</th><th>操作人</th><th>详情</th></tr></thead>
                 <tbody>
                   {auditList.map((a: any, i: number) => (
                     <tr key={i}><td>{a.timestamp ? a.timestamp.slice(0, 19).replace('T', ' ') : '-'}</td><td>{a.operation || '-'}</td><td>{a.operator || '-'}</td><td style={{ maxWidth: 400, wordBreak: 'break-all' }}>{a.details ? JSON.stringify(a.details) : ''}</td></tr>
                   ))}
-                  {auditList.length === 0 && <tr><td colSpan={4}>暂无记录</td></tr>}
+                  {auditList.length === 0 && <tr><td colSpan={4} className="ui-empty">暂无记录</td></tr>}
                 </tbody>
               </table>
             </div>
           ) : (
           <div style={{ padding: 16, background: '#fff', minHeight: 300 }}>
           {/* 顶部：标题 + 刷新 + 统计概览 */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>📝 日志管理</h3>
-            <button onClick={fetchLogs} disabled={logLoading}
-              style={{ padding: '5px 14px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff' }}>
+          <div className="ui-page-head">
+            <div className="ui-page-head__title">📝 日志管理</div>
+            <button className="ui-btn ui-btn--secondary" onClick={fetchLogs} disabled={logLoading}>
               {logLoading ? '加载中…' : '↻ 刷新'}
             </button>
           </div>
@@ -1226,23 +1200,18 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           )}
 
           {/* 日期范围筛选栏 */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, padding: '8px 12px', background: '#fafafa', border: '1px solid #eee', borderRadius: 6 }}>
-            <span style={{ fontSize: 12.5, color: '#666' }}>📅 日期范围：</span>
-            <input type="date" value={logDateFrom} onChange={e => setLogDateFrom(e.target.value)}
-              style={{ padding: '4px 8px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }} />
-            <span style={{ fontSize: 12.5, color: '#999' }}>至</span>
-            <input type="date" value={logDateTo} onChange={e => setLogDateTo(e.target.value)}
-              style={{ padding: '4px 8px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 12 }} />
+          <div className="ui-toolbar" style={{ background: 'var(--color-bg-tertiary)', padding: '8px 12px', borderRadius: 'var(--radius-md)' }}>
+            <span style={{ fontSize: 12.5, color: 'var(--color-text-secondary)' }}>📅 日期范围：</span>
+            <input type="date" className="ui-input" style={{ width: 'auto' }} value={logDateFrom} onChange={e => setLogDateFrom(e.target.value)} />
+            <span style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>至</span>
+            <input type="date" className="ui-input" style={{ width: 'auto' }} value={logDateTo} onChange={e => setLogDateTo(e.target.value)} />
             {dateFilterActive && (
-              <button onClick={() => { setLogDateFrom(''); setLogDateTo(''); }}
-                style={{ padding: '4px 10px', cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4, background: '#fff', fontSize: 12 }}>
+              <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={() => { setLogDateFrom(''); setLogDateTo(''); }}>
                 清除筛选
               </button>
             )}
             {dateFilterActive && (
-              <span style={{ fontSize: 12, color: '#1890ff' }}>
-                筛选中：{dateFiltered.length} / {logFiles.length} 个文件
-              </span>
+              <span className="ui-tag">筛选中：{dateFiltered.length} / {logFiles.length} 个文件</span>
             )}
           </div>
 

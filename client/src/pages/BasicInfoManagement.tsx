@@ -423,9 +423,9 @@ export default function BasicInfoManagement() {
   return (
     <div>
       <h2>基础信息管理</h2>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div className="ui-tabs" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         {(['org', 'personnel', 'permissions', 'oa', 'software', 'config', 'sso', 'dict', 'announcement'] as SubTab[]).map(k => (
-          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织与部门' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : '系统公告'}</button>
+          <button key={k} className={`ui-tab ${subTab === k ? 'ui-tab--active' : ''}`} onClick={() => setSubTab(k)}>{k === 'org' ? '组织与部门' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : '系统公告'}</button>
         ))}
       </div>
 
@@ -435,16 +435,16 @@ export default function BasicInfoManagement() {
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             {/* 左：组织树 */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button onClick={() => { resetOrgForm(); setOrgFormType('org'); setShowOrgModal(true); }}>新增组织</button>
-                <button onClick={() => setCollapsedOrg(new Set())}>展开全部</button>
-                <button onClick={() => setCollapsedOrg(new Set(orgList.filter((n: any) => orgList.some((c: any) => c.parentId === n.id)).map((n: any) => n.id)))}>折叠全部</button>
-                <input placeholder="搜索组织/部门..." value={orgSearch} onChange={e => setOrgSearch(e.target.value)} style={{ width: 200 }} />
-                {orgSearch.trim() && (() => { const q = orgSearch.trim().toLowerCase(); const c = orgList.filter((x: any) => x.name && x.name.toLowerCase().includes(q)).length; return <span style={{ fontSize: 12, color: '#1890ff' }}>命中 {c} 个</span>; })()}
-                <span style={{ fontSize: 12, color: '#888' }}>共 {orgList.length} 节点（组织 {orgList.filter((n: any) => n.type !== 'dept').length} / 部门 {orgList.filter((n: any) => n.type === 'dept').length}）</span>
+              <div className="ui-toolbar" style={{ marginBottom: 12 }}>
+                <button className="ui-btn ui-btn--primary ui-btn--sm" onClick={() => { resetOrgForm(); setOrgFormType('org'); setShowOrgModal(true); }}>新增组织</button>
+                <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={() => setCollapsedOrg(new Set())}>展开全部</button>
+                <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={() => setCollapsedOrg(new Set(orgList.filter((n: any) => orgList.some((c: any) => c.parentId === n.id)).map((n: any) => n.id)))}>折叠全部</button>
+                <input className="ui-input" style={{ width: 200 }} placeholder="搜索组织/部门..." value={orgSearch} onChange={e => setOrgSearch(e.target.value)} />
+                {orgSearch.trim() && (() => { const q = orgSearch.trim().toLowerCase(); const c = orgList.filter((x: any) => x.name && x.name.toLowerCase().includes(q)).length; return <span className="ui-tag" style={{ color: 'var(--color-primary-600)' }}>命中 {c} 个</span>; })()}
+                <span className="ui-tag">共 {orgList.length} 节点（组织 {orgList.filter((n: any) => n.type !== 'dept').length} / 部门 {orgList.filter((n: any) => n.type === 'dept').length}）</span>
               </div>
-              <div style={{ maxHeight: 560, overflow: 'auto', border: '1px solid #eee', borderRadius: 6 }}>
-                <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div style={{ maxHeight: 560, overflow: 'auto', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
+                <table className="ui-table ui-table--compact">
                   <thead><tr><th style={{ textAlign: 'left' }}>名称</th><th>类型</th><th>编码</th><th>上级</th><th>状态</th></tr></thead>
                   <tbody>
                     {(() => {
@@ -579,7 +579,7 @@ export default function BasicInfoManagement() {
       {subTab === 'personnel' && (
         <div>
           <button onClick={() => { resetPForm(); setShowPModal(true); }}>新增人员</button>
-          <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
+          <table className="ui-table" style={{ marginTop: 12 }}>
             <thead><tr><th>姓名</th><th>用户名</th><th>组织</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>
               {pList.map(p => (
@@ -605,7 +605,7 @@ export default function BasicInfoManagement() {
       {subTab === 'permissions' && (
         <div>
           <button onClick={() => { resetPermForm(); setShowPermModal(true); }}>新增角色</button>
-          <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
+          <table className="ui-table" style={{ marginTop: 12 }}>
             <thead><tr><th>角色</th><th>可访问分类</th><th>权限</th><th>操作</th></tr></thead>
             <tbody>
                 {permList.map(r => (
@@ -858,7 +858,7 @@ export default function BasicInfoManagement() {
           </div>
           {ssoMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{ssoMsg}</div>}
           <div style={{ maxHeight: 380, overflow: 'auto', marginTop: 12, border: '1px solid #ddd' }}>
-            <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table className="ui-table">
               <thead style={{ position: 'sticky', top: 0, background: '#fafafa' }}><tr><th><input type="checkbox" checked={allSsoSelected} onChange={toggleSelectAllSso} /></th><th>账号</th><th>姓名</th><th>部门</th><th>备注</th><th>添加人</th><th>添加时间</th><th>操作</th></tr></thead>
               <tbody>
                 {ssoList.map((x: any) => (
