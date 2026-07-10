@@ -577,387 +577,459 @@ export default function BasicInfoManagement() {
 
       {/* 人员信息 */}
       {subTab === 'personnel' && (
-        <div>
-          <button onClick={() => { resetPForm(); setShowPModal(true); }}>新增人员</button>
-          <table className="ui-table" style={{ marginTop: 12 }}>
-            <thead><tr><th>姓名</th><th>用户名</th><th>组织</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
-            <tbody>
-              {pList.map(p => (
-                <tr key={p.id}>
-                  <td>{p.name}</td>
-                  <td>{p.username}</td>
-                  <td>{p.orgName || '-'}</td>
-                  <td>{p.roleName || '-'}</td>
-                  <td>{p.isActive ? '启用' : '禁用'}</td>
-                  <td>
-                    <button onClick={() => editP(p)}>编辑</button>
-                    <button onClick={() => { setResetPwdPersonId(p.id); setResetPwdNew(''); setResetPwdConfirm(''); setShowResetPwdModal(true); }} style={{ marginLeft: 8 }}>重置密码</button>
-                    <button onClick={() => delP(p.id)} style={{ marginLeft: 8 }}>删除</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="ui-card">
+          <div className="ui-card__header">
+            <span className="ui-card__title">人员信息</span>
+            <button className="ui-btn ui-btn--primary ui-btn--sm" onClick={() => { resetPForm(); setShowPModal(true); }}>＋ 新增人员</button>
+          </div>
+          <div className="ui-card__body ui-card__body--flush">
+            <table className="ui-table">
+              <thead><tr><th>姓名</th><th>用户名</th><th>组织</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody>
+                {pList.map(p => (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td>{p.username}</td>
+                    <td>{p.orgName || '-'}</td>
+                    <td>{p.roleName || '-'}</td>
+                    <td>{p.isActive ? '启用' : '禁用'}</td>
+                    <td>
+                      <button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => editP(p)}>编辑</button>
+                      <button className="ui-btn ui-btn--secondary ui-btn--sm" style={{ marginLeft: 8 }} onClick={() => { setResetPwdPersonId(p.id); setResetPwdNew(''); setResetPwdConfirm(''); setShowResetPwdModal(true); }}>重置密码</button>
+                      <button className="ui-btn ui-btn--danger ui-btn--sm" style={{ marginLeft: 8 }} onClick={() => delP(p.id)}>删除</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* 权限管理 */}
       {subTab === 'permissions' && (
-        <div>
-          <button onClick={() => { resetPermForm(); setShowPermModal(true); }}>新增角色</button>
-          <table className="ui-table" style={{ marginTop: 12 }}>
-            <thead><tr><th>角色</th><th>可访问分类</th><th>权限</th><th>操作</th></tr></thead>
-            <tbody>
+        <div className="ui-card">
+          <div className="ui-card__header">
+            <span className="ui-card__title">权限管理</span>
+            <button className="ui-btn ui-btn--primary ui-btn--sm" onClick={() => { resetPermForm(); setShowPermModal(true); }}>＋ 新增角色</button>
+          </div>
+          <div className="ui-card__body ui-card__body--flush">
+            <table className="ui-table">
+              <thead><tr><th>角色</th><th>可访问分类</th><th>权限</th><th>操作</th></tr></thead>
+              <tbody>
                 {permList.map(r => (
                 <tr key={r.id}>
-                  <td>{r.roleName}{r.isSystem && <span style={{ color: '#999', fontSize: 12 }}>（系统）</span>}</td>
+                  <td>{r.roleName}{r.isSystem && <span className="ui-tag">系统</span>}</td>
                   <td>{r.categoryName || '全部'}</td>
                   <td>
-                    <span style={{ background: '#e6f7ff', color: '#1890ff', borderRadius: 10, padding: '1px 8px', fontSize: 12, marginRight: 6 }}>{ (r.permissions || []).length } 项</span>
+                    <span className="ui-badge ui-badge--primary" style={{ marginRight: 6 }}>{ (r.permissions || []).length } 项</span>
                     <span style={{ color: '#666', fontSize: 13 }}>{formatPerms(r.permissions || [])}</span>
                   </td>
                   <td>
                     {!r.isSystem && (
                       <>
-                        <button onClick={() => editPerm(r)}>编辑</button>
-                        <button onClick={() => delPerm(r.id)} style={{ marginLeft: 8 }}>删除</button>
+                        <button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => editPerm(r)}>编辑</button>
+                        <button className="ui-btn ui-btn--danger ui-btn--sm" style={{ marginLeft: 8 }} onClick={() => delPerm(r.id)}>删除</button>
                       </>
                     )}
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* 致远 OA 对接 */}
       {subTab === 'oa' && (
-        <div style={{ maxWidth: 700 }}>
-          <div style={{ background: '#f6f8fa', padding: 12, borderRadius: 6, marginBottom: 12 }}>
-            <label><input type="checkbox" checked={oa.enabled} onChange={e => setOa({ ...oa, enabled: e.target.checked })} /> 启用致远OA对接</label>
+        <div className="ui-card">
+          <div className="ui-card__header">
+            <span className="ui-card__title">致远 OA 对接</span>
+            <span className="ui-tag">连接状态：{oaTest ? (oaTest.success ? '✅ 已连通' : '❌ 失败') : '未测试'}</span>
           </div>
-          <div style={{ marginTop: 8 }}>服务地址：<input value={oa.baseUrl} onChange={e => setOa({ ...oa, baseUrl: e.target.value })} placeholder="http://IP:端口" style={{ width: 380 }} /></div>
-          <div style={{ marginTop: 8 }}>API账号：<input value={oa.username} onChange={e => setOa({ ...oa, username: e.target.value })} style={{ width: 240 }} /></div>
-          <div style={{ marginTop: 8 }}>API密钥：<input type="password" value={oa.secret} onChange={e => setOa({ ...oa, secret: e.target.value })} placeholder="已配置则留空" style={{ width: 320 }} /></div>
-          <div style={{ marginTop: 8 }}>固定Token(可选)：<input type="password" value={oa.fixedToken} onChange={e => setOa({ ...oa, fixedToken: e.target.value })} placeholder="已配置则留空" style={{ width: 320 }} /></div>
-          <div style={{ marginTop: 16 }}>
-            <button onClick={saveOA}>保存配置</button>
-            <button onClick={testOA} style={{ marginLeft: 8 }}>测试连接</button>
-            <button onClick={syncOAOrg} style={{ marginLeft: 8 }}>同步组织架构</button>
-            <button onClick={syncOAMembers} style={{ marginLeft: 8, background: '#52c41a', color: '#fff', border: 'none' }}>🔄 同步全部人员</button>
-          </div>
-          <div style={{ marginTop: 12, padding: 12, border: '1px dashed #d9d9d9', borderRadius: 6 }}>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>部门识别规则</div>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>部门（中心/组/部等）现由 OA 的 orgDepartments 接口自动同步为「部门」并保留上下级关系；下方规则仅用于把某个组织单位（Account）强制识别为部门（可选）。多个值用逗号分隔。</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span>名称含：<input value={oaDeptRule.nameKw} onChange={e => setOaDeptRule(s => ({ ...s, nameKw: e.target.value }))} placeholder="如 部门,科,组" style={{ width: 200 }} /></span>
-              <span>编码前缀：<input value={oaDeptRule.codePre} onChange={e => setOaDeptRule(s => ({ ...s, codePre: e.target.value }))} placeholder="如 D,DEP" style={{ width: 120 }} /></span>
-              <span>oaId：<input value={oaDeptRule.oaId} onChange={e => setOaDeptRule(s => ({ ...s, oaId: e.target.value }))} placeholder="如 123,456" style={{ width: 160 }} /></span>
-              <button onClick={saveOA}>保存规则</button>
-            </div>
-          </div>
+          <div className="ui-card__body">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <input type="checkbox" checked={oa.enabled} onChange={e => setOa({ ...oa, enabled: e.target.checked })} /> 启用致远 OA 对接
+            </label>
 
-          {/* SSO 单点登录白名单 */}
-          <div style={{ marginTop: 16, padding: 12, border: '1px solid #1677ff', borderRadius: 6, background: '#f0f7ff' }}>
-            <h4 style={{ margin: '0 0 8px' }}>🔑 OA 单点登录（SSO）白名单</h4>
-            <div style={{ fontSize: 13, color: '#555', marginBottom: 10 }}>
-              OA 在用户登录后调用下方接口，RAG 校验工号是否在清单中，在则放行、不在则拒绝。<br />
-              提供给 OA 的接口地址：<code style={{ background: '#fff', padding: '2px 6px', borderRadius: 4 }}>{oaSso.ssoUrl}</code>
+            <div className="ui-form-row"><label>服务地址</label><input className="ui-input" value={oa.baseUrl} onChange={e => setOa({ ...oa, baseUrl: e.target.value })} placeholder="http://IP:端口" /></div>
+            <div className="ui-form-row"><label>API 账号</label><input className="ui-input" value={oa.username} onChange={e => setOa({ ...oa, username: e.target.value })} placeholder="OA 接口账号" /></div>
+            <div className="ui-form-row"><label>API 密钥</label><input className="ui-input" type="password" value={oa.secret} onChange={e => setOa({ ...oa, secret: e.target.value })} placeholder="已配置则留空" /></div>
+            <div className="ui-form-row"><label>固定 Token</label><input className="ui-input" type="password" value={oa.fixedToken} onChange={e => setOa({ ...oa, fixedToken: e.target.value })} placeholder="可选，已配置则留空" /></div>
+
+            <div className="ui-toolbar">
+              <button className="ui-btn ui-btn--primary" onClick={saveOA}>保存配置</button>
+              <button className="ui-btn ui-btn--secondary" onClick={testOA}>测试连接</button>
+              <button className="ui-btn ui-btn--secondary" onClick={syncOAOrg}>同步组织架构</button>
+              <button className="ui-btn ui-btn--primary" onClick={syncOAMembers}>🔄 同步全部人员</button>
             </div>
 
-            <div style={{ marginBottom: 10 }}>
-              模式：
-              <select value={oaSso.mode} onChange={e => { const mode = e.target.value; setOaSso(s => ({ ...s, mode })); saveSSO({ mode }); }}>
-                <option value="whitelist">白名单模式（仅允许清单内工号）</option>
-                <option value="open">放开模式（允许任意已同步 OA 人员）</option>
-              </select>
-              <label style={{ marginLeft: 16 }}>
-                <input type="checkbox" checked={oaSso.requireSign} onChange={e => { const requireSign = e.target.checked; setOaSso(s => ({ ...s, requireSign })); saveSSO({ requireSign }); }} /> 启用签名校验（HMAC-SHA256，防伪造）
-              </label>
-            </div>
-
-            <div style={{ marginBottom: 10 }}>
-              签名密钥（与 OA 共享）：
-              <input type="password" value={oaSsoSecret} onChange={e => setOaSsoSecret(e.target.value)} placeholder={oaSso.hasSignSecret ? ('已配置（' + (oaSso.signSecretMasked || '') + '），留空不改') : '未配置'} style={{ width: 280, marginLeft: 6 }} />
-              <button style={{ marginLeft: 8 }} onClick={async () => { await saveSSO({ signSecret: oaSsoSecret }); setOaSsoSecret(''); }}>保存密钥</button>
-            </div>
-
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ marginBottom: 4 }}>信任来源 IP（留空=信任全部，建议填 OA 服务器 IP）：</div>
-              {(oaSso.trustedIps || []).map((ip: string) => (
-                <span key={ip} style={{ display: 'inline-block', background: '#fff', border: '1px solid #ccc', borderRadius: 4, padding: '2px 8px', margin: '0 6px 6px 0' }}>
-                  {ip} <span style={{ cursor: 'pointer', color: '#f5222d' }} onClick={async () => { const ips = oaSso.trustedIps.filter((x: string) => x !== ip); await saveSSO({ trustedIps: ips }); setOaSso(s => ({ ...s, trustedIps: ips })); }}>✕</span>
-                </span>
-              ))}
-              <input value={oaSsoNewIp} onChange={e => setOaSsoNewIp(e.target.value)} placeholder="如 172.17.6.4" style={{ width: 160 }} />
-              <button style={{ marginLeft: 6 }} onClick={async () => { const ip = oaSsoNewIp.trim(); if (!ip) return; const ips = [...(oaSso.trustedIps || []), ip]; await saveSSO({ trustedIps: ips }); setOaSso(s => ({ ...s, trustedIps: ips })); setOaSsoNewIp(''); }}>添加IP</button>
-            </div>
-
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ marginBottom: 6 }}>允许登录工号清单（{oaSso.count || 0} 个）：
-                <button style={{ marginLeft: 8 }} onClick={syncAllSso}>一键导入全部 OA 人员工号</button>
+            <div className="ui-card" style={{ marginTop: 16 }}>
+              <div className="ui-card__header"><span className="ui-card__title">部门识别规则</span></div>
+              <div className="ui-card__body">
+                <p className="ui-text" style={{ fontSize: 13, color: '#888', marginTop: 0, marginBottom: 12 }}>部门（中心/组/部等）现由 OA 的 orgDepartments 接口自动同步为「部门」并保留上下级关系；下方规则仅用于把某个组织单位（Account）强制识别为部门（可选）。多个值用逗号分隔。</p>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div className="ui-form-row"><label>名称含</label><input className="ui-input" value={oaDeptRule.nameKw} onChange={e => setOaDeptRule(s => ({ ...s, nameKw: e.target.value }))} placeholder="如 部门,科,组" /></div>
+                  <div className="ui-form-row"><label>编码前缀</label><input className="ui-input" value={oaDeptRule.codePre} onChange={e => setOaDeptRule(s => ({ ...s, codePre: e.target.value }))} placeholder="如 D,DEP" /></div>
+                  <div className="ui-form-row"><label>oaId</label><input className="ui-input" value={oaDeptRule.oaId} onChange={e => setOaDeptRule(s => ({ ...s, oaId: e.target.value }))} placeholder="如 123,456" /></div>
+                  <button className="ui-btn ui-btn--primary" onClick={saveOA}>保存规则</button>
+                </div>
               </div>
-              <div style={{ maxHeight: 180, overflow: 'auto', background: '#fff', border: '1px solid #e0e0e0', borderRadius: 4, padding: 6 }}>
-                {(oaSso.whitelist || []).length === 0 && <span style={{ color: '#999' }}>清单为空，所有工号均无法 SSO 登录（请添加或一键导入）</span>}
-                {(oaSso.whitelist || []).map((id: string) => (
-                  <div key={id} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #f0f0f0' }}>
-                    <span style={{ fontFamily: 'monospace' }}>{id}</span>
-                    <span style={{ cursor: 'pointer', color: '#f5222d' }} onClick={() => removeSsoId(id)}>移除</span>
+            </div>
+
+            {/* SSO 单点登录白名单 */}
+            <div className="ui-card" style={{ marginTop: 16 }}>
+              <div className="ui-card__header"><span className="ui-card__title">🔑 OA 单点登录（SSO）白名单</span></div>
+              <div className="ui-card__body">
+                <p className="ui-text" style={{ fontSize: 13, color: '#555', marginTop: 0, marginBottom: 12 }}>
+                  OA 在用户登录后调用下方接口，RAG 校验工号是否在清单中，在则放行、不在则拒绝。<br />
+                  提供给 OA 的接口地址：<code style={{ background: '#f6f8fa', padding: '2px 6px', borderRadius: 4 }}>{oaSso.ssoUrl}</code>
+                </p>
+
+                <div className="ui-form-row ui-form-row--inline">
+                  <label>模式</label>
+                  <select className="ui-select" value={oaSso.mode} onChange={e => { const mode = e.target.value; setOaSso(s => ({ ...s, mode })); saveSSO({ mode }); }}>
+                    <option value="whitelist">白名单模式（仅允许清单内工号）</option>
+                    <option value="open">放开模式（允许任意已同步 OA 人员）</option>
+                  </select>
+                  <label style={{ minWidth: 'auto' }}><input type="checkbox" checked={oaSso.requireSign} onChange={e => { const requireSign = e.target.checked; setOaSso(s => ({ ...s, requireSign })); saveSSO({ requireSign }); }} /> 启用签名校验（HMAC-SHA256，防伪造）</label>
+                </div>
+
+                <div className="ui-form-row ui-form-row--inline">
+                  <label>签名密钥</label>
+                  <input className="ui-input" type="password" value={oaSsoSecret} onChange={e => setOaSsoSecret(e.target.value)} placeholder={oaSso.hasSignSecret ? ('已配置（' + (oaSso.signSecretMasked || '') + '），留空不改') : '未配置'} style={{ flex: 1, minWidth: 240 }} />
+                  <button className="ui-btn ui-btn--secondary" onClick={async () => { await saveSSO({ signSecret: oaSsoSecret }); setOaSsoSecret(''); }}>保存密钥</button>
+                </div>
+
+                <div className="ui-form-row">
+                  <label>信任来源 IP（留空=信任全部，建议填 OA 服务器 IP）</label>
+                  <div>
+                    {(oaSso.trustedIps || []).map((ip: string) => (
+                      <span key={ip} className="ui-tag" style={{ marginRight: 6, marginBottom: 6, cursor: 'default' }}>
+                        {ip} <span style={{ cursor: 'pointer', color: '#f5222d', marginLeft: 4 }} onClick={async () => { const ips = oaSso.trustedIps.filter((x: string) => x !== ip); await saveSSO({ trustedIps: ips }); setOaSso(s => ({ ...s, trustedIps: ips })); }}>✕</span>
+                      </span>
+                    ))}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                      <input className="ui-input" value={oaSsoNewIp} onChange={e => setOaSsoNewIp(e.target.value)} placeholder="如 172.17.6.4" />
+                      <button className="ui-btn ui-btn--secondary" onClick={async () => { const ip = oaSsoNewIp.trim(); if (!ip) return; const ips = [...(oaSso.trustedIps || []), ip]; await saveSSO({ trustedIps: ips }); setOaSso(s => ({ ...s, trustedIps: ips })); setOaSsoNewIp(''); }}>添加 IP</button>
+                    </div>
                   </div>
-                ))}
-              </div>
-              <div style={{ marginTop: 6 }}>
-                <input value={oaSsoNewId} onChange={e => setOaSsoNewId(e.target.value)} placeholder="输入工号后点击添加" style={{ width: 240 }} onKeyDown={e => { if (e.key === 'Enter') addSsoId(); }} />
-                <button style={{ marginLeft: 8 }} onClick={addSsoId}>添加工号</button>
+                </div>
+
+                <div className="ui-form-row">
+                  <label>允许登录工号清单（<span className="ui-badge ui-badge--primary">{oaSso.count || 0}</span> 个）</label>
+                  <div>
+                    <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={syncAllSso}>一键导入全部 OA 人员工号</button>
+                    <div style={{ maxHeight: 180, overflow: 'auto', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 6, marginTop: 8, background: 'var(--color-bg-secondary)' }}>
+                      {(oaSso.whitelist || []).length === 0 && <span style={{ color: '#999' }}>清单为空，所有工号均无法 SSO 登录（请添加或一键导入）</span>}
+                      {(oaSso.whitelist || []).map((id: string) => (
+                        <div key={id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--color-border)' }}>
+                          <span style={{ fontFamily: 'monospace' }}>{id}</span>
+                          <span style={{ cursor: 'pointer', color: '#f5222d' }} onClick={() => removeSsoId(id)}>移除</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <input className="ui-input" value={oaSsoNewId} onChange={e => setOaSsoNewId(e.target.value)} placeholder="输入工号后点击添加" onKeyDown={e => { if (e.key === 'Enter') addSsoId(); }} />
+                      <button className="ui-btn ui-btn--primary" onClick={addSsoId}>添加工号</button>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="ui-text" style={{ fontSize: 12, color: '#888', marginBottom: 0 }}>
+                  签名算法（供 OA 侧配置）：HMAC-SHA256，消息 = <code>工号|时间戳(秒)</code>，密钥 = 上方签名密钥；RAG 校验签名且时间戳 5 分钟内有效。
+                </p>
+                {oaSsoMsg && <div className="ui-alert ui-alert--info" style={{ marginTop: 12 }}>{oaSsoMsg}</div>}
               </div>
             </div>
 
-            <div style={{ fontSize: 12, color: '#888' }}>
-              签名算法（供 OA 侧配置）：HMAC-SHA256，消息 = <code>工号|时间戳(秒)</code>，密钥 = 上方签名密钥；RAG 校验签名且时间戳 5 分钟内有效。
-            </div>
-            {oaSsoMsg && <div style={{ marginTop: 8, color: '#1677ff' }}>{oaSsoMsg}</div>}
+            {oaMsg && <div className="ui-alert ui-alert--info" style={{ marginTop: 12 }}>{oaMsg}</div>}
+            {oaTest && (
+              <div className={`ui-alert ${oaTest.success ? 'ui-alert--success' : 'ui-alert--error'}`} style={{ marginTop: 12 }}>
+                连接测试：{oaTest.success ? '成功' : '失败'}{oaTest.tokenMasked ? '（token ' + oaTest.tokenMasked + '）' : ''}
+                {oaTest.sampleAccount ? ' ｜ 示例组织：' + oaTest.sampleAccount.name : ''}
+              </div>
+            )}
           </div>
-
-          {oaMsg && <div style={{ marginTop: 12, color: '#1890ff' }}>{oaMsg}</div>}
-          {oaTest && (
-            <div style={{ marginTop: 12, color: oaTest.success ? '#52c41a' : '#f5222d' }}>
-              连接测试：{oaTest.success ? '成功' : '失败'}{oaTest.tokenMasked ? '（token ' + oaTest.tokenMasked + '）' : ''}
-              {oaTest.sampleAccount ? ' ｜ 示例组织：' + oaTest.sampleAccount.name : ''}
-            </div>
-          )}
         </div>
       )}
 
       {/* 软件信息 */}
       {subTab === 'software' && (
-        <div style={{ maxWidth: 700 }}>
-          <div style={{ marginTop: 8 }}>公司名称：<input value={software.companyName} onChange={e => setSoftware({ ...software, companyName: e.target.value })} style={{ width: 360 }} /></div>
-          <div style={{ marginTop: 8 }}>软件名称：<input value={software.softwareName} onChange={e => setSoftware({ ...software, softwareName: e.target.value })} style={{ width: 360 }} /></div>
-          <div style={{ marginTop: 8 }}>助手名称：<input value={software.assistantName} onChange={e => setSoftware({ ...software, assistantName: e.target.value })} style={{ width: 240 }} /></div>
-          <div style={{ marginTop: 8 }}>知识库名称：<input value={software.knowledgeBaseName} onChange={e => setSoftware({ ...software, knowledgeBaseName: e.target.value })} style={{ width: 360 }} /></div>
-          <div style={{ marginTop: 8 }}>欢迎语：</div>
-          <div style={{ marginTop: 4 }}>
-            <textarea
-              value={software.welcomeMessage}
-              onChange={e => setSoftware({ ...software, welcomeMessage: e.target.value })}
-              rows={3}
-              style={{ width: '100%', maxWidth: 560, fontSize: 14, padding: 6 }}
-            />
-          </div>
+        <div className="ui-card">
+          <div className="ui-card__header"><span className="ui-card__title">软件信息</span></div>
+          <div className="ui-card__body">
+            <div className="ui-form-row"><label>公司名称</label><input className="ui-input" value={software.companyName} onChange={e => setSoftware({ ...software, companyName: e.target.value })} /></div>
+            <div className="ui-form-row"><label>软件名称</label><input className="ui-input" value={software.softwareName} onChange={e => setSoftware({ ...software, softwareName: e.target.value })} /></div>
+            <div className="ui-form-row"><label>助手名称</label><input className="ui-input" value={software.assistantName} onChange={e => setSoftware({ ...software, assistantName: e.target.value })} /></div>
+            <div className="ui-form-row"><label>知识库名称</label><input className="ui-input" value={software.knowledgeBaseName} onChange={e => setSoftware({ ...software, knowledgeBaseName: e.target.value })} /></div>
+            <div className="ui-form-row"><label>欢迎语</label>
+              <textarea className="ui-textarea" value={software.welcomeMessage} onChange={e => setSoftware({ ...software, welcomeMessage: e.target.value })} rows={3} style={{ maxWidth: 560 }} />
+            </div>
 
-          {/* 界面图片上传 */}
-          <div style={{ marginTop: 20, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-            {([
-              { field: 'loginImage', label: '登录界面图片', hint: '显示在登录页顶部（建议正方形或横向 Logo，PNG/JPG，≤5MB）' },
-              { field: 'chatImage', label: '聊天界面图片', hint: '聊天页助手头像 / Logo（建议正方形，PNG/JPG，≤5MB）' },
-            ] as { field: 'loginImage' | 'chatImage'; label: string; hint: string }[]).map(({ field, label, hint }) => (
-              <div key={field} style={{ border: '1px solid #e8e8e8', borderRadius: 8, padding: 14, width: 300 }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
-                <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>{hint}</div>
-                <div style={{
-                  width: '100%', height: 130, border: '1px dashed #d9d9d9', borderRadius: 6,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                  background: '#fafafa', marginBottom: 10
-                }}>
-                  {software[field]
-                    ? <img src={software[field]} alt={label} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                    : <span style={{ color: '#bbb', fontSize: 13 }}>暂无图片</span>}
+            <div className="ui-section-title">界面图片</div>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+              {([
+                { field: 'loginImage', label: '登录界面图片', hint: '显示在登录页顶部（建议正方形或横向 Logo，PNG/JPG，≤5MB）' },
+                { field: 'chatImage', label: '聊天界面图片', hint: '聊天页助手头像 / Logo（建议正方形，PNG/JPG，≤5MB）' },
+              ] as { field: 'loginImage' | 'chatImage'; label: string; hint: string }[]).map(({ field, label, hint }) => (
+                <div key={field} className="ui-card" style={{ width: 300 }}>
+                  <div className="ui-card__body">
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>{hint}</div>
+                    <div style={{
+                      width: '100%', height: 130, border: '1px dashed var(--color-border)', borderRadius: 'var(--radius-md)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                      background: 'var(--color-bg-tertiary)', marginBottom: 10
+                    }}>
+                      {software[field]
+                        ? <img src={software[field]} alt={label} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                        : <span style={{ color: '#bbb', fontSize: 13 }}>暂无图片</span>}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label className="ui-btn ui-btn--secondary ui-btn--sm" style={{ marginBottom: 0 }}>
+                        {uploadingImg === field ? '上传中…' : '选择图片'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          disabled={uploadingImg === field}
+                          onChange={e => { uploadSoftwareImage(field, e.target.files?.[0] || null); e.target.value = ''; }}
+                        />
+                      </label>
+                      {software[field] && (
+                        <button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => setSoftware((s: any) => ({ ...s, [field]: '' }))}>移除</button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label style={{ cursor: 'pointer', padding: '5px 12px', border: '1px solid #1890ff', color: '#1890ff', borderRadius: 4, fontSize: 13, background: '#fff' }}>
-                    {uploadingImg === field ? '上传中…' : '选择图片'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      disabled={uploadingImg === field}
-                      onChange={e => { uploadSoftwareImage(field, e.target.files?.[0] || null); e.target.value = ''; }}
-                    />
-                  </label>
-                  {software[field] && (
-                    <button onClick={() => setSoftware((s: any) => ({ ...s, [field]: '' }))} style={{ padding: '5px 12px', fontSize: 13 }}>移除</button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
-          <div style={{ marginTop: 16 }}>
-            <button onClick={saveSoftware}>保存软件信息</button>
+            <div className="ui-toolbar">
+              <button className="ui-btn ui-btn--primary" onClick={saveSoftware}>保存软件信息</button>
+            </div>
+            {softwareMsg && <div className="ui-alert ui-alert--success" style={{ marginTop: 12 }}>{softwareMsg}</div>}
           </div>
-          {softwareMsg && <div style={{ marginTop: 12, color: '#52c41a' }}>{softwareMsg}</div>}
         </div>
       )}
 
       {/* 系统配置 */}
       {subTab === 'config' && (
-        <div>
-          <h3>统一系统配置</h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-            <fieldset style={{ flex: 1, minWidth: 280 }}>
-              <legend>对话生成</legend>
-              模型温度：<input type="number" step="0.1" value={config.chat?.temperature ?? 0} onChange={e => setConfig({ ...config, chat: { ...config.chat, temperature: Number(e.target.value) } })} style={{ width: 80 }} /><br />
-              TopP：<input type="number" step="0.1" value={config.chat?.topP ?? 0} onChange={e => setConfig({ ...config, chat: { ...config.chat, topP: Number(e.target.value) } })} style={{ width: 80 }} /><br />
-              最大Token：<input type="number" value={config.chat?.maxTokens ?? 0} onChange={e => setConfig({ ...config, chat: { ...config.chat, maxTokens: Number(e.target.value) } })} style={{ width: 100 }} />
-            </fieldset>
-            <fieldset style={{ flex: 1, minWidth: 280 }}>
-              <legend>检索</legend>
-              召回条数 TopK：<input type="number" value={config.retrieval?.topK ?? 0} onChange={e => setConfig({ ...config, retrieval: { ...config.retrieval, topK: Number(e.target.value) } })} style={{ width: 80 }} /><br />
-              相似度阈值：<input type="number" step="0.05" value={config.retrieval?.scoreThreshold ?? 0} onChange={e => setConfig({ ...config, retrieval: { ...config.retrieval, scoreThreshold: Number(e.target.value) } })} style={{ width: 80 }} /><br />
-              启用重排序：<input type="checkbox" checked={!!config.retrieval?.enableRerank} onChange={e => setConfig({ ...config, retrieval: { ...config.retrieval, enableRerank: e.target.checked } })} />
-            </fieldset>
-            <fieldset style={{ flex: 1, minWidth: 280 }}>
-              <legend>会话</legend>
-              回答超时(ms)：<input type="number" value={config.conversation?.timeoutMs ?? 0} onChange={e => setConfig({ ...config, conversation: { ...config.conversation, timeoutMs: Number(e.target.value) } })} style={{ width: 100 }} /><br />
-              答案口语化：<input type="checkbox" checked={!!config.conversation?.enableRewrite} onChange={e => setConfig({ ...config, conversation: { ...config.conversation, enableRewrite: e.target.checked } })} /><br />
-              对话记忆：<input type="checkbox" checked={!!config.conversation?.enableMemory} onChange={e => setConfig({ ...config, conversation: { ...config.conversation, enableMemory: e.target.checked } })} />
-            </fieldset>
-          </div>
-          <fieldset style={{ marginTop: 12 }}>
-            <legend>多部门隔离</legend>
-            启用：<input type="checkbox" checked={!!config.multiDeptEnabled} onChange={e => setConfig({ ...config, multiDeptEnabled: e.target.checked })} /> （开启后，人员/对话列表可按部门过滤）<br />
-            默认部门：<select value={config.defaultDepartment || ''} onChange={e => setConfig({ ...config, defaultDepartment: e.target.value })} style={{ width: 240 }}>
-              <option value="">-- 无 --</option>
-              {deptList.map((d: any) => <option key={d.id} value={d.id}>{d.name}{d.code ? '（' + d.code + '）' : ''}</option>)}
-            </select> <span style={{ color: '#999', fontSize: 12 }}>（部门即组织树中 type=部门 的节点）</span>
-          </fieldset>
-          <div style={{ marginTop: 12 }}>
-            <button onClick={saveConfig}>保存配置</button>
-            <button style={{ marginLeft: 8 }} onClick={async () => { const r = await fetch(API + '/config/export', { headers: getAuthHeaders() }); const blob = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'system-config-backup.json'; a.click(); }}>导出配置备份</button>
-            <label style={{ marginLeft: 8 }}>
-              导入备份：<input type="file" accept="application/json" onChange={async (e: any) => {
+        <div className="ui-card">
+          <div className="ui-card__header"><span className="ui-card__title">统一系统配置</span></div>
+          <div className="ui-card__body">
+            <div className="ui-grid ui-grid--3">
+              <div className="ui-card">
+                <div className="ui-card__header"><span className="ui-card__title">对话生成</span></div>
+                <div className="ui-card__body">
+                  <div className="ui-form-row ui-form-row--inline"><label>模型温度</label><input className="ui-input" type="number" step="0.1" value={config.chat?.temperature ?? 0} onChange={e => setConfig({ ...config, chat: { ...config.chat, temperature: Number(e.target.value) } })} style={{ maxWidth: 120 }} /></div>
+                  <div className="ui-form-row ui-form-row--inline"><label>TopP</label><input className="ui-input" type="number" step="0.1" value={config.chat?.topP ?? 0} onChange={e => setConfig({ ...config, chat: { ...config.chat, topP: Number(e.target.value) } })} style={{ maxWidth: 120 }} /></div>
+                  <div className="ui-form-row ui-form-row--inline"><label>最大 Token</label><input className="ui-input" type="number" value={config.chat?.maxTokens ?? 0} onChange={e => setConfig({ ...config, chat: { ...config.chat, maxTokens: Number(e.target.value) } })} style={{ maxWidth: 120 }} /></div>
+                </div>
+              </div>
+              <div className="ui-card">
+                <div className="ui-card__header"><span className="ui-card__title">检索</span></div>
+                <div className="ui-card__body">
+                  <div className="ui-form-row ui-form-row--inline"><label>召回 TopK</label><input className="ui-input" type="number" value={config.retrieval?.topK ?? 0} onChange={e => setConfig({ ...config, retrieval: { ...config.retrieval, topK: Number(e.target.value) } })} style={{ maxWidth: 120 }} /></div>
+                  <div className="ui-form-row ui-form-row--inline"><label>相似度阈值</label><input className="ui-input" type="number" step="0.05" value={config.retrieval?.scoreThreshold ?? 0} onChange={e => setConfig({ ...config, retrieval: { ...config.retrieval, scoreThreshold: Number(e.target.value) } })} style={{ maxWidth: 120 }} /></div>
+                  <div className="ui-form-row ui-form-row--inline"><label>启用重排序</label><input type="checkbox" checked={!!config.retrieval?.enableRerank} onChange={e => setConfig({ ...config, retrieval: { ...config.retrieval, enableRerank: e.target.checked } })} /></div>
+                </div>
+              </div>
+              <div className="ui-card">
+                <div className="ui-card__header"><span className="ui-card__title">会话</span></div>
+                <div className="ui-card__body">
+                  <div className="ui-form-row ui-form-row--inline"><label>超时(ms)</label><input className="ui-input" type="number" value={config.conversation?.timeoutMs ?? 0} onChange={e => setConfig({ ...config, conversation: { ...config.conversation, timeoutMs: Number(e.target.value) } })} style={{ maxWidth: 120 }} /></div>
+                  <div className="ui-form-row ui-form-row--inline"><label>答案口语化</label><input type="checkbox" checked={!!config.conversation?.enableRewrite} onChange={e => setConfig({ ...config, conversation: { ...config.conversation, enableRewrite: e.target.checked } })} /></div>
+                  <div className="ui-form-row ui-form-row--inline"><label>对话记忆</label><input type="checkbox" checked={!!config.conversation?.enableMemory} onChange={e => setConfig({ ...config, conversation: { ...config.conversation, enableMemory: e.target.checked } })} /></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="ui-card" style={{ marginTop: 16 }}>
+              <div className="ui-card__header"><span className="ui-card__title">多部门隔离</span></div>
+              <div className="ui-card__body">
+                <div className="ui-form-row ui-form-row--inline"><label>启用</label><input type="checkbox" checked={!!config.multiDeptEnabled} onChange={e => setConfig({ ...config, multiDeptEnabled: e.target.checked })} /><span className="ui-tag">开启后，人员/对话列表可按部门过滤</span></div>
+                <div className="ui-form-row ui-form-row--inline"><label>默认部门</label>
+                  <select className="ui-select" value={config.defaultDepartment || ''} onChange={e => setConfig({ ...config, defaultDepartment: e.target.value })} style={{ minWidth: 240 }}>
+                    <option value="">-- 无 --</option>
+                    {deptList.map((d: any) => <option key={d.id} value={d.id}>{d.name}{d.code ? '（' + d.code + '）' : ''}</option>)}
+                  </select>
+                  <span className="ui-tag">部门即组织树中 type=部门 的节点</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="ui-toolbar">
+              <button className="ui-btn ui-btn--primary" onClick={saveConfig}>保存配置</button>
+              <button className="ui-btn ui-btn--secondary" onClick={async () => { const r = await fetch(API + '/config/export', { headers: getAuthHeaders() }); const blob = await r.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'system-config-backup.json'; a.click(); }}>导出配置备份</button>
+              <label className="ui-btn ui-btn--secondary">导入备份<input type="file" accept="application/json" style={{ display: 'none' }} onChange={async (e: any) => {
                 const f = e.target.files?.[0]; if (!f) return;
                 const text = await f.text();
                 try { const bundle = JSON.parse(text); const r = await fetch(API + '/config/import', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ bundle }) }); const d = await r.json(); if (d.success) { setConfigMsg('已恢复：' + (d.imported || []).join(',')); loadConfig(); } else setConfigMsg('恢复失败：' + (d.error || '')); } catch (err: any) { setConfigMsg('解析失败：' + err.message); }
-              }} />
-            </label>
+              }} /></label>
+            </div>
+            {configMsg && <div className="ui-alert ui-alert--success" style={{ marginTop: 12 }}>{configMsg}</div>}
           </div>
-          {configMsg && <div style={{ marginTop: 12, color: '#52c41a' }}>{configMsg}</div>}
         </div>
       )}
 
       {/* SSO 白名单 */}
       {subTab === 'sso' && (
-        <div>
-          <h3>SSO 登录白名单</h3>
-          <p style={{ fontSize: 12, color: '#888', margin: '0 0 10px' }}>本页为「系统 SSO 登录白名单」（账号存于 data/sso-whitelist.json，控制谁可用 SSO 登录系统）。与「致远OA对接」页里的 SSO 白名单（控制 OA 跳转登录工号）相互独立，注意区分。</p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span>账号(工号)：<input value={ssoAccount} onChange={e => setSsoAccount(e.target.value)} placeholder="如 GK88888" /></span>
-            <span>姓名：<input value={ssoName} onChange={e => setSsoName(e.target.value)} /></span>
-            <span>备注：<input value={ssoNote} onChange={e => setSsoNote(e.target.value)} /></span>
-            <button onClick={addSSO}>添加</button>
+        <div className="ui-card">
+          <div className="ui-card__header">
+            <span className="ui-card__title">SSO 登录白名单</span>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input value={ssoSearch} onChange={e => setSsoSearch(e.target.value)} placeholder="搜索账号/姓名/部门/添加人" style={{ width: 260 }} onKeyDown={e => { if (e.key === 'Enter') loadSsoWhitelist(ssoSearch); }} />
-            <button onClick={() => loadSsoWhitelist(ssoSearch)}>查询</button>
-            <button onClick={() => { setSsoSearch(''); loadSsoWhitelist(''); }}>重置</button>
-            <button onClick={batchDelSSO} disabled={!ssoSelected.length} style={{ marginLeft: 'auto' }}>
-              批量移除{ssoSelected.length ? '（' + ssoSelected.length + '）' : ''}
-            </button>
+          <div className="ui-card__body">
+            <p className="ui-text" style={{ fontSize: 12, color: '#888', marginTop: 0, marginBottom: 12 }}>本页为「系统 SSO 登录白名单」（账号存于 data/sso-whitelist.json，控制谁可用 SSO 登录系统）。与「致远OA对接」页里的 SSO 白名单（控制 OA 跳转登录工号）相互独立，注意区分。</p>
+            <div className="ui-toolbar">
+              <input className="ui-input" value={ssoAccount} onChange={e => setSsoAccount(e.target.value)} placeholder="账号(工号) 如 GK88888" />
+              <input className="ui-input" value={ssoName} onChange={e => setSsoName(e.target.value)} placeholder="姓名" />
+              <input className="ui-input" value={ssoNote} onChange={e => setSsoNote(e.target.value)} placeholder="备注" />
+              <button className="ui-btn ui-btn--primary" onClick={addSSO}>添加</button>
+            </div>
+            <div className="ui-toolbar">
+              <input className="ui-input" value={ssoSearch} onChange={e => setSsoSearch(e.target.value)} placeholder="搜索账号/姓名/部门/添加人" style={{ minWidth: 260 }} onKeyDown={e => { if (e.key === 'Enter') loadSsoWhitelist(ssoSearch); }} />
+              <button className="ui-btn ui-btn--primary" onClick={() => loadSsoWhitelist(ssoSearch)}>查询</button>
+              <button className="ui-btn ui-btn--secondary" onClick={() => { setSsoSearch(''); loadSsoWhitelist(''); }}>重置</button>
+              <button className="ui-btn ui-btn--danger" style={{ marginLeft: 'auto' }} onClick={batchDelSSO} disabled={!ssoSelected.length}>
+                批量移除{ssoSelected.length ? '（' + ssoSelected.length + '）' : ''}
+              </button>
+            </div>
+            {ssoMsg && <div className="ui-alert ui-alert--success" style={{ marginTop: 12 }}>{ssoMsg}</div>}
+            <div className="ui-table__scroll" style={{ maxHeight: 380, marginTop: 12 }}>
+              <table className="ui-table">
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--color-bg-tertiary)' }}><tr><th><input type="checkbox" checked={allSsoSelected} onChange={toggleSelectAllSso} /></th><th>账号</th><th>姓名</th><th>部门</th><th>备注</th><th>添加人</th><th>添加时间</th><th>操作</th></tr></thead>
+                <tbody>
+                  {ssoList.map((x: any) => (
+                    <tr key={x.account}>
+                      <td><input type="checkbox" checked={ssoSelected.includes(x.account)} onChange={() => toggleSsoSelect(x.account)} /></td>
+                      <td>{x.account}</td><td>{x.name || '-'}</td><td>{x.department || '-'}</td><td>{x.note || '-'}</td><td>{x.addedBy || '-'}</td><td>{x.addedAt ? x.addedAt.slice(0, 19).replace('T', ' ') : '-'}</td><td><button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => delSSO(x.account)}>移除</button></td>
+                    </tr>
+                  ))}
+                  {ssoList.length === 0 && <tr><td colSpan={8}>暂无白名单</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <p className="ui-text" style={{ color: '#999', fontSize: 12, marginTop: 8, marginBottom: 0 }}>白名单变更已自动同步至 OA 配置并写入审计日志。勾选后可批量移除，支持按账号 / 姓名 / 部门查询。</p>
           </div>
-          {ssoMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{ssoMsg}</div>}
-          <div style={{ maxHeight: 380, overflow: 'auto', marginTop: 12, border: '1px solid #ddd' }}>
-            <table className="ui-table">
-              <thead style={{ position: 'sticky', top: 0, background: '#fafafa' }}><tr><th><input type="checkbox" checked={allSsoSelected} onChange={toggleSelectAllSso} /></th><th>账号</th><th>姓名</th><th>部门</th><th>备注</th><th>添加人</th><th>添加时间</th><th>操作</th></tr></thead>
-              <tbody>
-                {ssoList.map((x: any) => (
-                  <tr key={x.account}>
-                    <td><input type="checkbox" checked={ssoSelected.includes(x.account)} onChange={() => toggleSsoSelect(x.account)} /></td>
-                    <td>{x.account}</td><td>{x.name || '-'}</td><td>{x.department || '-'}</td><td>{x.note || '-'}</td><td>{x.addedBy || '-'}</td><td>{x.addedAt ? x.addedAt.slice(0, 19).replace('T', ' ') : '-'}</td><td><button onClick={() => delSSO(x.account)}>移除</button></td>
-                  </tr>
-                ))}
-                {ssoList.length === 0 && <tr><td colSpan={8}>暂无白名单</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          <p style={{ color: '#999', fontSize: 12, marginTop: 8 }}>白名单变更已自动同步至 OA 配置并写入审计日志。勾选后可批量移除，支持按账号 / 姓名 / 部门查询。</p>
         </div>
       )}
 
       {/* 同义词 / 停用词 */}
       {subTab === 'dict' && (
-        <div>
-          <h3>同义词 / 停用词</h3>
-          <div style={{ display: 'flex', gap: 24 }}>
-            <div style={{ flex: 1 }}>
-              <h4>同义词组</h4>
-              词语（逗号或空格分隔，至少2个）：<br />
-              <input value={synWords} onChange={e => setSynWords(e.target.value)} style={{ width: '100%' }} placeholder="如：发票, 票据, 发飘" /><br />
-              备注：<input value={synNote} onChange={e => setSynNote(e.target.value)} style={{ width: '100%' }} /><br />
-              <button style={{ marginTop: 8 }} onClick={addSyn}>添加同义词组</button>
-              <ul>{synList.map((s: any) => (<li key={s.id}>{s.words.join(' / ')} {s.note ? ('(' + s.note + ')') : ''} <button onClick={() => delSyn(s.id)}>删</button></li>))}</ul>
-            </div>
-            <div style={{ flex: 1 }}>
-              <h4>停用词</h4>
-              停用词：<input value={stopWord} onChange={e => setStopWord(e.target.value)} /> <button onClick={addStop}>添加</button>
-              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {stopList.map((w: string) => (<span key={w} style={{ border: '1px solid #d9d9d9', padding: '2px 8px', borderRadius: 4 }}>{w} <button onClick={() => delStop(w)} style={{ border: 'none', background: 'none', color: '#f5222d', cursor: 'pointer' }}>×</button></span>))}
-                {stopList.length === 0 && <span style={{ color: '#999' }}>暂无</span>}
+        <div className="ui-card">
+          <div className="ui-card__header"><span className="ui-card__title">同义词 / 停用词</span></div>
+          <div className="ui-card__body">
+            <div className="ui-grid ui-grid--2">
+              <div className="ui-card">
+                <div className="ui-card__header"><span className="ui-card__title">同义词组</span></div>
+                <div className="ui-card__body">
+                  <div className="ui-form-row"><label>词语（逗号或空格分隔，至少 2 个）</label><input className="ui-input" value={synWords} onChange={e => setSynWords(e.target.value)} placeholder="如：发票, 票据, 发飘" /></div>
+                  <div className="ui-form-row"><label>备注</label><input className="ui-input" value={synNote} onChange={e => setSynNote(e.target.value)} placeholder="可选" /></div>
+                  <button className="ui-btn ui-btn--primary" onClick={addSyn}>添加同义词组</button>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+                    {synList.map((s: any) => (
+                      <span key={s.id} className="ui-tag" style={{ cursor: 'default' }}>
+                        {s.words.join(' / ')}{s.note ? '（' + s.note + '）' : ''}
+                        <span style={{ cursor: 'pointer', color: '#f5222d', marginLeft: 4 }} onClick={() => delSyn(s.id)}>✕</span>
+                      </span>
+                    ))}
+                    {synList.length === 0 && <span className="ui-empty__text">暂无同义词组</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="ui-card">
+                <div className="ui-card__header"><span className="ui-card__title">停用词</span></div>
+                <div className="ui-card__body">
+                  <div className="ui-toolbar">
+                    <input className="ui-input" value={stopWord} onChange={e => setStopWord(e.target.value)} placeholder="输入停用词" />
+                    <button className="ui-btn ui-btn--primary" onClick={addStop}>添加</button>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+                    {stopList.map((w: string) => (
+                      <span key={w} className="ui-tag" style={{ cursor: 'default' }}>
+                        {w}
+                        <span style={{ cursor: 'pointer', color: '#f5222d', marginLeft: 4 }} onClick={() => delStop(w)}>✕</span>
+                      </span>
+                    ))}
+                    {stopList.length === 0 && <span className="ui-empty__text">暂无停用词</span>}
+                  </div>
+                </div>
               </div>
             </div>
+            {dictMsg && <div className="ui-alert ui-alert--success" style={{ marginTop: 12 }}>{dictMsg}</div>}
           </div>
-          {dictMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{dictMsg}</div>}
         </div>
       )}
 
       {/* 系统公告 */}
       {subTab === 'announcement' && (
-        <div>
-          <h3>系统公告 / Banner</h3>
-          <div><label><input type="checkbox" checked={!!ann.enabled} onChange={e => setAnn({ ...ann, enabled: e.target.checked })} /> 启用公告</label></div>
-          <div style={{ marginTop: 8 }}>级别：
-            <select value={ann.level} onChange={e => setAnn({ ...ann, level: e.target.value })}>
-              <option value="info">普通(info)</option><option value="warning">警告(warning)</option><option value="success">成功(success)</option><option value="error">错误(error)</option>
-            </select>
+        <div className="ui-card">
+          <div className="ui-card__header"><span className="ui-card__title">系统公告 / Banner</span></div>
+          <div className="ui-card__body">
+            <div className="ui-form-row ui-form-row--inline"><label>启用公告</label><input type="checkbox" checked={!!ann.enabled} onChange={e => setAnn({ ...ann, enabled: e.target.checked })} /></div>
+            <div className="ui-form-row ui-form-row--inline"><label>级别</label>
+              <select className="ui-select" value={ann.level} onChange={e => setAnn({ ...ann, level: e.target.value })}>
+                <option value="info">普通(info)</option><option value="warning">警告(warning)</option><option value="success">成功(success)</option><option value="error">错误(error)</option>
+              </select>
+            </div>
+            <div className="ui-form-row"><label>标题</label><input className="ui-input" value={ann.title} onChange={e => setAnn({ ...ann, title: e.target.value })} /></div>
+            <div className="ui-form-row"><label>内容</label><textarea className="ui-textarea" value={ann.content} onChange={e => setAnn({ ...ann, content: e.target.value })} rows={4} style={{ maxWidth: 600 }} /></div>
+            <div className="ui-toolbar">
+              <button className="ui-btn ui-btn--primary" onClick={saveAnnouncement}>保存公告</button>
+            </div>
+            {annMsg && <div className="ui-alert ui-alert--success" style={{ marginTop: 12 }}>{annMsg}</div>}
           </div>
-          <div style={{ marginTop: 8 }}>标题：<input value={ann.title} onChange={e => setAnn({ ...ann, title: e.target.value })} style={{ width: 360 }} /></div>
-          <div style={{ marginTop: 8 }}>内容：<br /><textarea value={ann.content} onChange={e => setAnn({ ...ann, content: e.target.value })} rows={4} style={{ width: '100%', maxWidth: 600 }} /></div>
-          <div style={{ marginTop: 12 }}><button onClick={saveAnnouncement}>保存公告</button></div>
-          {annMsg && <div style={{ marginTop: 8, color: '#52c41a' }}>{annMsg}</div>}
         </div>
       )}
 
       {/* 组织架构弹窗 */}
       {showOrgModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowOrgModal(false)}>
-          <div style={{ background: '#fff', padding: 24, borderRadius: 8, minWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <h3>{editingOrg ? ('编辑' + (orgFormType === 'dept' ? '部门' : '组织')) : (orgFormType === 'dept' ? '新增部门' : '新增组织')}</h3>
-            <div style={{ marginTop: 12 }}>类型：
-              <select value={orgFormType} onChange={e => setOrgFormType(e.target.value as 'org' | 'dept')}>
-                <option value="org">组织</option>
-                <option value="dept">部门</option>
-              </select>
+        <div className="ui-modal__backdrop" onClick={() => setShowOrgModal(false)}>
+          <div className="ui-modal" onClick={e => e.stopPropagation()}>
+            <div className="ui-modal__header">
+              <span>{editingOrg ? ('编辑' + (orgFormType === 'dept' ? '部门' : '组织')) : (orgFormType === 'dept' ? '新增部门' : '新增组织')}</span>
+              <button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => setShowOrgModal(false)}>✕</button>
             </div>
-            <div style={{ marginTop: 8 }}>名称：<input value={orgName} onChange={e => setOrgName(e.target.value)} style={{ width: 260 }} /></div>
-            <div style={{ marginTop: 8 }}>上级：
-              <select value={orgParent} onChange={e => setOrgParent(e.target.value)} style={{ maxWidth: 300 }}>
-                <option value="">-- 无 --</option>
-                {(() => {
-                  const cm: Record<string, string[]> = {};
-                  orgList.forEach((o: any) => { if (o.parentId) (cm[o.parentId] = cm[o.parentId] || []).push(o.id); });
-                  const forbid = new Set<string>();
-                  if (editingOrg) {
-                    const stack = [editingOrg.id];
-                    while (stack.length) { const cur = stack.pop()!; (cm[cur] || []).forEach((c: string) => { if (!forbid.has(c)) { forbid.add(c); stack.push(c); } }); }
-                  }
-                  const parentOf: Record<string, string> = {};
-                  orgList.forEach((o: any) => { if (o.parentId) parentOf[o.id] = o.parentId; });
-                  const depthOf = (id: string) => { let d = 0; let cur = parentOf[id]; while (cur) { d++; cur = parentOf[cur]; } return d; };
-                  return orgList.filter((o: any) => o.id !== (editingOrg?.id) && !forbid.has(o.id)).map((o: any) => <option key={o.id} value={o.id}>{'\u00A0'.repeat(depthOf(o.id) * 2)}{o.name}</option>);
-                })()}
-              </select>
+            <div className="ui-modal__body">
+              <div className="ui-form-row ui-form-row--inline"><label>类型</label>
+                <select className="ui-select" value={orgFormType} onChange={e => setOrgFormType(e.target.value as 'org' | 'dept')}>
+                  <option value="org">组织</option>
+                  <option value="dept">部门</option>
+                </select>
+              </div>
+              <div className="ui-form-row"><label>名称</label><input className="ui-input" value={orgName} onChange={e => setOrgName(e.target.value)} /></div>
+              <div className="ui-form-row"><label>上级</label>
+                <select className="ui-select" value={orgParent} onChange={e => setOrgParent(e.target.value)} style={{ maxWidth: 320 }}>
+                  <option value="">-- 无 --</option>
+                  {(() => {
+                    const cm: Record<string, string[]> = {};
+                    orgList.forEach((o: any) => { if (o.parentId) (cm[o.parentId] = cm[o.parentId] || []).push(o.id); });
+                    const forbid = new Set<string>();
+                    if (editingOrg) {
+                      const stack = [editingOrg.id];
+                      while (stack.length) { const cur = stack.pop()!; (cm[cur] || []).forEach((c: string) => { if (!forbid.has(c)) { forbid.add(c); stack.push(c); } }); }
+                    }
+                    const parentOf: Record<string, string> = {};
+                    orgList.forEach((o: any) => { if (o.parentId) parentOf[o.id] = o.parentId; });
+                    const depthOf = (id: string) => { let d = 0; let cur = parentOf[id]; while (cur) { d++; cur = parentOf[cur]; } return d; };
+                    return orgList.filter((o: any) => o.id !== (editingOrg?.id) && !forbid.has(o.id)).map((o: any) => <option key={o.id} value={o.id}>{'\u00A0'.repeat(depthOf(o.id) * 2)}{o.name}</option>);
+                  })()}
+                </select>
+              </div>
+              <div className="ui-form-row"><label>描述</label><input className="ui-input" value={orgDesc} onChange={e => setOrgDesc(e.target.value)} /></div>
+              <div className="ui-form-row ui-form-row--inline"><label>状态</label>
+                <select className="ui-select" value={orgActive ? 'true' : 'false'} onChange={e => setOrgActive(e.target.value === 'true')}>
+                  <option value="true">启用</option>
+                  <option value="false">禁用</option>
+                </select>
+              </div>
             </div>
-            <div style={{ marginTop: 8 }}>描述：<input value={orgDesc} onChange={e => setOrgDesc(e.target.value)} style={{ width: 260 }} /></div>
-            <div style={{ marginTop: 8 }}>状态：
-              <select value={orgActive ? 'true' : 'false'} onChange={e => setOrgActive(e.target.value === 'true')}>
-                <option value="true">启用</option>
-                <option value="false">禁用</option>
-              </select>
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <button onClick={saveOrg}>保存</button>
-              <button onClick={() => setShowOrgModal(false)} style={{ marginLeft: 8 }}>取消</button>
+            <div className="ui-modal__footer">
+              <button className="ui-btn ui-btn--secondary" onClick={() => setShowOrgModal(false)}>取消</button>
+              <button className="ui-btn ui-btn--primary" onClick={saveOrg}>保存</button>
             </div>
           </div>
         </div>
@@ -965,28 +1037,33 @@ export default function BasicInfoManagement() {
 
       {/* 人员弹窗 */}
       {showPModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowPModal(false)}>
-          <div style={{ background: '#fff', padding: 24, borderRadius: 8, minWidth: 400 }} onClick={e => e.stopPropagation()}>
-            <h3>{editingP ? '编辑人员' : '新增人员'}</h3>
-            <div style={{ marginTop: 12 }}>姓名：<input value={pName} onChange={e => setPName(e.target.value)} /></div>
-            <div style={{ marginTop: 8 }}>用户名：<input value={pUser} onChange={e => setPUser(e.target.value)} /></div>
-            <div style={{ marginTop: 8 }}>密码{editingP ? '(留空不修改)' : ''}：<input type="password" value={pPass} onChange={e => setPPass(e.target.value)} /></div>
-            <div style={{ marginTop: 8 }}>组织：
-              <select value={pOrgId} onChange={e => setPOrgId(e.target.value)}>
-                <option value="">-- 无 --</option>
-                {orgList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </select>
+        <div className="ui-modal__backdrop" onClick={() => setShowPModal(false)}>
+          <div className="ui-modal" onClick={e => e.stopPropagation()}>
+            <div className="ui-modal__header">
+              <span>{editingP ? '编辑人员' : '新增人员'}</span>
+              <button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => setShowPModal(false)}>✕</button>
             </div>
-            <div style={{ marginTop: 8 }}>角色：<input value={pRole} onChange={e => setPRole(e.target.value)} /></div>
-            <div style={{ marginTop: 8 }}>状态：
-              <select value={pActive ? 'true' : 'false'} onChange={e => setPActive(e.target.value === 'true')}>
-                <option value="true">启用</option>
-                <option value="false">禁用</option>
-              </select>
+            <div className="ui-modal__body">
+              <div className="ui-form-row"><label>姓名</label><input className="ui-input" value={pName} onChange={e => setPName(e.target.value)} /></div>
+              <div className="ui-form-row"><label>用户名</label><input className="ui-input" value={pUser} onChange={e => setPUser(e.target.value)} /></div>
+              <div className="ui-form-row"><label>密码{editingP ? '（留空不修改）' : ''}</label><input className="ui-input" type="password" value={pPass} onChange={e => setPPass(e.target.value)} /></div>
+              <div className="ui-form-row"><label>组织</label>
+                <select className="ui-select" value={pOrgId} onChange={e => setPOrgId(e.target.value)}>
+                  <option value="">-- 无 --</option>
+                  {orgList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+              <div className="ui-form-row"><label>角色</label><input className="ui-input" value={pRole} onChange={e => setPRole(e.target.value)} /></div>
+              <div className="ui-form-row ui-form-row--inline"><label>状态</label>
+                <select className="ui-select" value={pActive ? 'true' : 'false'} onChange={e => setPActive(e.target.value === 'true')}>
+                  <option value="true">启用</option>
+                  <option value="false">禁用</option>
+                </select>
+              </div>
             </div>
-            <div style={{ marginTop: 16 }}>
-              <button onClick={saveP}>保存</button>
-              <button onClick={() => setShowPModal(false)} style={{ marginLeft: 8 }}>取消</button>
+            <div className="ui-modal__footer">
+              <button className="ui-btn ui-btn--secondary" onClick={() => setShowPModal(false)}>取消</button>
+              <button className="ui-btn ui-btn--primary" onClick={saveP}>保存</button>
             </div>
           </div>
         </div>
@@ -994,14 +1071,19 @@ export default function BasicInfoManagement() {
 
       {/* 重置密码弹窗 */}
       {showResetPwdModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowResetPwdModal(false)}>
-          <div style={{ background: '#fff', padding: 24, borderRadius: 8, minWidth: 400 }} onClick={e => e.stopPropagation()}>
-            <h3>重置密码</h3>
-            <div style={{ marginTop: 12 }}>新密码：<input type="password" value={resetPwdNew} onChange={e => setResetPwdNew(e.target.value)} style={{ width: 200 }} /></div>
-            <div style={{ marginTop: 8 }}>确认密码：<input type="password" value={resetPwdConfirm} onChange={e => setResetPwdConfirm(e.target.value)} style={{ width: 200 }} /></div>
-            <div style={{ marginTop: 16 }}>
-              <button onClick={resetPassword}>重置</button>
-              <button onClick={() => setShowResetPwdModal(false)} style={{ marginLeft: 8 }}>取消</button>
+        <div className="ui-modal__backdrop" onClick={() => setShowResetPwdModal(false)}>
+          <div className="ui-modal" onClick={e => e.stopPropagation()}>
+            <div className="ui-modal__header">
+              <span>重置密码</span>
+              <button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => setShowResetPwdModal(false)}>✕</button>
+            </div>
+            <div className="ui-modal__body">
+              <div className="ui-form-row"><label>新密码</label><input className="ui-input" type="password" value={resetPwdNew} onChange={e => setResetPwdNew(e.target.value)} /></div>
+              <div className="ui-form-row"><label>确认密码</label><input className="ui-input" type="password" value={resetPwdConfirm} onChange={e => setResetPwdConfirm(e.target.value)} /></div>
+            </div>
+            <div className="ui-modal__footer">
+              <button className="ui-btn ui-btn--secondary" onClick={() => setShowResetPwdModal(false)}>取消</button>
+              <button className="ui-btn ui-btn--primary" onClick={resetPassword}>重置</button>
             </div>
           </div>
         </div>
@@ -1009,54 +1091,62 @@ export default function BasicInfoManagement() {
 
       {/* 权限弹窗 */}
       {showPermModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowPermModal(false)}>
-          <div style={{ background: '#fff', padding: 24, borderRadius: 8, minWidth: 400 }} onClick={e => e.stopPropagation()}>
-            <h3>{editingPerm ? '编辑角色' : '新增角色'}</h3>
-            <div style={{ marginTop: 12 }}>角色名称：<input value={permName} onChange={e => setPermName(e.target.value)} /></div>
-            <div style={{ marginTop: 8 }}>可访问分类：
-              <select value={permCatId} onChange={e => { const c = cats.find((x: any) => x.id === e.target.value); setPermCatId(e.target.value); setPermCatName(c?.name || '全部'); }}>
-                <option value="">-- 全部 --</option>
-                {cats.filter((c: any) => !c.parentId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+        <div className="ui-modal__backdrop" onClick={() => setShowPermModal(false)}>
+          <div className="ui-modal ui-modal--lg" onClick={e => e.stopPropagation()}>
+            <div className="ui-modal__header">
+              <span>{editingPerm ? '编辑角色' : '新增角色'}</span>
+              <button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => setShowPermModal(false)}>✕</button>
             </div>
-            <div style={{ marginTop: 8 }}>权限：
-              <div style={{ marginTop: 4, marginBottom: 8 }}>
-                <button onClick={() => setPermArr([...permCatalog.flatMap(g => g.items.map(i => i.code))])}>全选</button>
-                <button onClick={() => setPermArr([])} style={{ marginLeft: 8 }}>清空</button>
+            <div className="ui-modal__body">
+              <div className="ui-form-row"><label>角色名称</label><input className="ui-input" value={permName} onChange={e => setPermName(e.target.value)} /></div>
+              <div className="ui-form-row"><label>可访问分类</label>
+                <select className="ui-select" value={permCatId} onChange={e => { const c = cats.find((x: any) => x.id === e.target.value); setPermCatId(e.target.value); setPermCatName(c?.name || '全部'); }}>
+                  <option value="">-- 全部 --</option>
+                  {cats.filter((c: any) => !c.parentId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
               </div>
-              <div style={{ maxHeight: 340, overflow: 'auto', border: '1px solid #eee', padding: 12, borderRadius: 6 }}>
-                {permCatalog.map(g => {
-                  const groupCodes = g.items.map(i => i.code);
-                  const allChecked = groupCodes.every(c => (permArr || []).includes(c));
-                  const toggleGroup = () => setPermArr(allChecked ? permArr.filter(c => !groupCodes.includes(c)) : [...new Set([...permArr, ...groupCodes])]);
-                  return (
-                    <div key={g.group} style={{ marginBottom: 14 }}>
-                      <div style={{ fontWeight: 600, marginBottom: 6, color: '#1890ff', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                          <input type="checkbox" checked={allChecked} onChange={toggleGroup} />
-                          {g.group}
-                        </label>
-                        <span style={{ color: '#999', fontSize: 12, fontWeight: 400 }}>({groupCodes.filter(c => (permArr || []).includes(c)).length}/{groupCodes.length})</span>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, paddingLeft: 20 }}>
-                        {g.items.map(i => (
-                          <label key={i.code} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, minWidth: 120 }}>
-                            <input type="checkbox" checked={(permArr || []).includes(i.code)} onChange={e => {
-                              const next = e.target.checked ? [...permArr, i.code] : permArr.filter((c: string) => c !== i.code);
-                              setPermArr(next);
-                            }} />
-                            {i.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="ui-form-row">
+                <label>权限</label>
+                <div>
+                  <div className="ui-toolbar" style={{ marginBottom: 8 }}>
+                    <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={() => setPermArr([...permCatalog.flatMap(g => g.items.map(i => i.code))])}>全选</button>
+                    <button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => setPermArr([])}>清空</button>
+                  </div>
+                  <div style={{ maxHeight: 340, overflow: 'auto', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 12 }}>
+                    {permCatalog.map(g => {
+                      const groupCodes = g.items.map(i => i.code);
+                      const allChecked = groupCodes.every(c => (permArr || []).includes(c));
+                      const toggleGroup = () => setPermArr(allChecked ? permArr.filter(c => !groupCodes.includes(c)) : [...new Set([...permArr, ...groupCodes])]);
+                      return (
+                        <div key={g.group} style={{ marginBottom: 14 }}>
+                          <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--color-primary-600)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                              <input type="checkbox" checked={allChecked} onChange={toggleGroup} />
+                              {g.group}
+                            </label>
+                            <span style={{ color: '#999', fontSize: 12, fontWeight: 400 }}>({groupCodes.filter(c => (permArr || []).includes(c)).length}/{groupCodes.length})</span>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, paddingLeft: 20 }}>
+                            {g.items.map(i => (
+                              <label key={i.code} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, minWidth: 120 }}>
+                                <input type="checkbox" checked={(permArr || []).includes(i.code)} onChange={e => {
+                                  const next = e.target.checked ? [...permArr, i.code] : permArr.filter((c: string) => c !== i.code);
+                                  setPermArr(next);
+                                }} />
+                                {i.label}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
-            <div style={{ marginTop: 16 }}>
-              <button onClick={savePerm}>保存</button>
-              <button onClick={() => setShowPermModal(false)} style={{ marginLeft: 8 }}>取消</button>
+            <div className="ui-modal__footer">
+              <button className="ui-btn ui-btn--secondary" onClick={() => setShowPermModal(false)}>取消</button>
+              <button className="ui-btn ui-btn--primary" onClick={savePerm}>保存</button>
             </div>
           </div>
         </div>
