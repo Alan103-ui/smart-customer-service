@@ -88,6 +88,9 @@ export default function BasicInfoManagement() {
   const [orgDesc, setOrgDesc] = useState('');
   const [orgActive, setOrgActive] = useState(true);
   const [collapsedOrg, setCollapsedOrg] = useState<Set<string>>(new Set()); // 树形折叠的节点 id
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null); // 当前选中的组织树节点
+  const [orgSearch, setOrgSearch] = useState(''); // 组织树搜索关键字
+  const [orgFormType, setOrgFormType] = useState<'org' | 'dept'>('org'); // 新增/编辑弹窗的节点类型
 
   // 人员
   const [pList, setPList] = useState<any[]>([]);
@@ -278,7 +281,7 @@ export default function BasicInfoManagement() {
 
   // ==================== 组织架构保存 ====================
   const saveOrg = async () => {
-    const body = { type: 'org', name: orgName, parentId: orgParent || null, description: orgDesc, isActive: orgActive };
+    const body = { type: orgFormType, name: orgName, parentId: orgParent || null, description: orgDesc, isActive: orgActive };
     const url = editingOrg ? (API + '/org/' + editingOrg.id) : (API + '/org');
     const method = editingOrg ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(body) });
@@ -286,8 +289,8 @@ export default function BasicInfoManagement() {
     if (data.success) { setShowOrgModal(false); resetOrgForm(); loadOrg(); }
     else alert(data.error || '保存失败');
   };
-  const resetOrgForm = () => { setOrgName(''); setOrgParent(''); setOrgDesc(''); setOrgActive(true); setEditingOrg(null); };
-  const editOrg = (o: any) => { setEditingOrg(o); setOrgName(o.name); setOrgParent(o.parentId || ''); setOrgDesc(o.description || ''); setOrgActive(o.isActive); setShowOrgModal(true); };
+  const resetOrgForm = () => { setOrgName(''); setOrgParent(''); setOrgDesc(''); setOrgActive(true); setOrgFormType('org'); setEditingOrg(null); };
+  const editOrg = (o: any) => { setEditingOrg(o); setOrgFormType(o.type === 'dept' ? 'dept' : 'org'); setOrgName(o.name); setOrgParent(o.parentId || ''); setOrgDesc(o.description || ''); setOrgActive(o.isActive); setShowOrgModal(true); };
   const delOrg = async (id: string) => { if (!confirm('确定？')) return; const r = await fetch(API + '/org/' + id, { method: 'DELETE', headers: getAuthHeaders() }).then(r => r.json()); if (r.success) loadOrg(); else alert(r.error); };
 
   // ==================== 人员保存 ====================
@@ -429,87 +432,146 @@ export default function BasicInfoManagement() {
       {/* 组织与部门（合并为一个管理功能） */}
       {subTab === 'org' && (
         <div>
-          <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button onClick={() => { resetOrgForm(); setShowOrgModal(true); }}>新增组织</button>
-            <button onClick={() => setCollapsedOrg(new Set())}>展开全部</button>
-            <button onClick={() => setCollapsedOrg(new Set(orgList.filter((n: any) => orgList.some((c: any) => c.parentId === n.id)).map((n: any) => n.id)))}>折叠全部</button>
-            <span style={{ fontSize: 12, color: '#888' }}>共 {orgList.length} 个节点（组织 {orgList.filter((n: any) => n.type !== 'dept').length} / 部门 {orgList.filter((n: any) => n.type === 'dept').length}）</span>
-          </div>
-          <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><th style={{ textAlign: 'left' }}>名称</th><th>类型</th><th>编码</th><th>上级</th><th>状态</th><th>操作</th></tr></thead>
-            <tbody>
-              {(() => {
-                const allNodes: any[] = orgList; // 统一组织树：组织(type=org) + 部门(type=dept)
-                const nameMap: Record<string, string> = {};
-                const idSet = new Set<string>();
-                allNodes.forEach((n: any) => { nameMap[n.id] = n.name; idSet.add(n.id); });
-                // 1) 按 parentId 建 children 映射（同级按 sortOrder、再按 name 排序）
-                const childrenMap: Record<string, any[]> = {};
-                const roots: any[] = [];
-                allNodes.forEach((n: any) => {
-                  const pid = n.parentId && idSet.has(n.parentId) ? n.parentId : '__root__';
-                  if (pid === '__root__') roots.push(n);
-                  else (childrenMap[pid] = childrenMap[pid] || []).push(n);
-                });
-                const sortFn = (a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || String(a.name).localeCompare(String(b.name), 'zh');
-                roots.sort(sortFn);
-                Object.values(childrenMap).forEach((arr) => arr.sort(sortFn));
-                // 2) DFS 展平为带层级的行（跳过被折叠节点的后代）
-                const rows: { node: any; depth: number; hasChildren: boolean }[] = [];
-                const walk = (node: any, depth: number) => {
-                  const kids = childrenMap[node.id] || [];
-                  rows.push({ node, depth, hasChildren: kids.length > 0 });
-                  if (kids.length && !collapsedOrg.has(node.id)) kids.forEach((k) => walk(k, depth + 1));
-                };
-                roots.forEach((r) => walk(r, 0));
-                return rows.map(({ node: n, depth, hasChildren }) => {
-                  const isDept = n.type === 'dept'; // 缺省 type 的节点按组织渲染（兼容旧数据）
-                  const collapsed = collapsedOrg.has(n.id);
-                  return (
-                  <tr key={n.id}>
-                    <td style={{ textAlign: 'left' }}>
-                      <span style={{ display: 'inline-block', width: depth * 20 }} />
-                      {hasChildren ? (
-                        <span
-                          onClick={() => setCollapsedOrg((prev) => { const s = new Set(prev); s.has(n.id) ? s.delete(n.id) : s.add(n.id); return s; })}
-                          style={{ cursor: 'pointer', display: 'inline-block', width: 16, userSelect: 'none', color: '#888' }}
-                        >{collapsed ? '▶' : '▼'}</span>
-                      ) : (
-                        <span style={{ display: 'inline-block', width: 16 }} />
-                      )}
-                      <span style={{ marginRight: 4 }}>{isDept ? '📁' : '🏢'}</span>
-                      {n.name}
-                      {hasChildren && <span style={{ fontSize: 11, color: '#bbb', marginLeft: 6 }}>({(childrenMap[n.id] || []).length})</span>}
-                    </td>
-                    <td style={{ textAlign: 'center' }}><span style={{ fontSize: 12, padding: '1px 8px', borderRadius: 10, background: isDept ? '#f6ffed' : '#e6f7ff', color: isDept ? '#52c41a' : '#1890ff' }}>{isDept ? '部门' : '组织'}</span></td>
-                    <td style={{ textAlign: 'center' }}>{isDept ? (n.code || '-') : (n.code || '-')}</td>
-                    <td>{nameMap[n.parentId] || '-'}</td>
-                    <td style={{ textAlign: 'center' }}>{isDept ? '-' : (n.isActive ? '启用' : '禁用')}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      {isDept ? (
-                        <button onClick={() => delDept(n.id)}>删除</button>
-                      ) : (
-                        <>
-                          <button onClick={() => editOrg(n)}>编辑</button>
-                          <button onClick={() => delOrg(n.id)} style={{ marginLeft: 8 }}>删除</button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                  );
-                });
-              })()}
-              {orgList.length === 0 && <tr><td colSpan={6}>暂无数据</td></tr>}
-            </tbody>
-          </table>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            {/* 左：组织树 */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button onClick={() => { resetOrgForm(); setOrgFormType('org'); setShowOrgModal(true); }}>新增组织</button>
+                <button onClick={() => setCollapsedOrg(new Set())}>展开全部</button>
+                <button onClick={() => setCollapsedOrg(new Set(orgList.filter((n: any) => orgList.some((c: any) => c.parentId === n.id)).map((n: any) => n.id)))}>折叠全部</button>
+                <input placeholder="搜索组织/部门..." value={orgSearch} onChange={e => setOrgSearch(e.target.value)} style={{ width: 200 }} />
+                {orgSearch.trim() && (() => { const q = orgSearch.trim().toLowerCase(); const c = orgList.filter((x: any) => x.name && x.name.toLowerCase().includes(q)).length; return <span style={{ fontSize: 12, color: '#1890ff' }}>命中 {c} 个</span>; })()}
+                <span style={{ fontSize: 12, color: '#888' }}>共 {orgList.length} 节点（组织 {orgList.filter((n: any) => n.type !== 'dept').length} / 部门 {orgList.filter((n: any) => n.type === 'dept').length}）</span>
+              </div>
+              <div style={{ maxHeight: 560, overflow: 'auto', border: '1px solid #eee', borderRadius: 6 }}>
+                <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr><th style={{ textAlign: 'left' }}>名称</th><th>类型</th><th>编码</th><th>上级</th><th>状态</th></tr></thead>
+                  <tbody>
+                    {(() => {
+                      const allNodes: any[] = orgList; // 统一组织树：组织(type=org) + 部门(type=dept)
+                      const nameMap: Record<string, string> = {};
+                      const idSet = new Set<string>();
+                      allNodes.forEach((n: any) => { nameMap[n.id] = n.name; idSet.add(n.id); });
+                      // 1) 按 parentId 建 children 映射（同级按 sortOrder、再按 name 排序）
+                      const childrenMap: Record<string, any[]> = {};
+                      const roots: any[] = [];
+                      allNodes.forEach((n: any) => {
+                        const pid = n.parentId && idSet.has(n.parentId) ? n.parentId : '__root__';
+                        if (pid === '__root__') roots.push(n);
+                        else (childrenMap[pid] = childrenMap[pid] || []).push(n);
+                      });
+                      const sortFn = (a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || String(a.name).localeCompare(String(b.name), 'zh');
+                      roots.sort(sortFn);
+                      Object.values(childrenMap).forEach((arr) => arr.sort(sortFn));
+                      // 2) 搜索过滤：保留命中节点及其祖先；过滤态下强制展开
+                      const q = orgSearch.trim().toLowerCase();
+                      const filterMode = q !== '';
+                      const matched = new Set(filterMode ? allNodes.filter((n: any) => n.name && n.name.toLowerCase().includes(q)).map((n: any) => n.id) : []);
+                      const keepSet = new Set<string>();
+                      const computeKeep = (node: any): boolean => {
+                        const kids = childrenMap[node.id] || [];
+                        const childKept = kids.some((k: any) => computeKeep(k));
+                        if (matched.has(node.id) || childKept) { keepSet.add(node.id); return true; }
+                        return false;
+                      };
+                      if (filterMode) roots.forEach(computeKeep);
+                      const highlight = (name: string) => {
+                        if (!filterMode) return name;
+                        const idx = name.toLowerCase().indexOf(q);
+                        if (idx < 0) return name;
+                        return (<>{name.slice(0, idx)}<span style={{ background: '#ffe58f' }}>{name.slice(idx, idx + q.length)}</span>{name.slice(idx + q.length)}</>);
+                      };
+                      // 3) DFS 展平为带层级的行
+                      const rows: { node: any; depth: number; hasChildren: boolean }[] = [];
+                      const walk = (node: any, depth: number) => {
+                        if (filterMode && !keepSet.has(node.id)) return;
+                        const kids = (childrenMap[node.id] || []).filter((k: any) => !filterMode || keepSet.has(k.id));
+                        rows.push({ node, depth, hasChildren: kids.length > 0 });
+                        if (kids.length && (!collapsedOrg.has(node.id) || filterMode)) kids.forEach((k: any) => walk(k, depth + 1));
+                      };
+                      roots.forEach((r: any) => walk(r, 0));
+                      return rows.map(({ node: n, depth, hasChildren }) => {
+                        const isDept = n.type === 'dept'; // 缺省 type 的节点按组织渲染（兼容旧数据）
+                        const collapsed = collapsedOrg.has(n.id);
+                        const selected = selectedOrgId === n.id;
+                        return (
+                          <tr key={n.id} onClick={() => setSelectedOrgId(n.id)} style={{ cursor: 'pointer', background: selected ? '#e6f7ff' : undefined }}>
+                            <td style={{ textAlign: 'left' }}>
+                              <span style={{ display: 'inline-block', width: depth * 20 }} />
+                              {hasChildren ? (
+                                <span
+                                  onClick={(e) => { e.stopPropagation(); setCollapsedOrg((prev) => { const s = new Set(prev); if (s.has(n.id)) s.delete(n.id); else s.add(n.id); return s; }); }}
+                                  style={{ cursor: 'pointer', display: 'inline-block', width: 16, userSelect: 'none', color: '#888' }}
+                                >{collapsed && !filterMode ? '▶' : '▼'}</span>
+                              ) : (
+                                <span style={{ display: 'inline-block', width: 16 }} />
+                              )}
+                              <span style={{ marginRight: 4 }}>{isDept ? '📁' : '🏢'}</span>
+                              {highlight(n.name)}
+                              {hasChildren && !filterMode && <span style={{ fontSize: 11, color: '#bbb', marginLeft: 6 }}>{(childrenMap[n.id] || []).length}</span>}
+                            </td>
+                            <td style={{ textAlign: 'center' }}><span style={{ fontSize: 12, padding: '1px 8px', borderRadius: 10, background: isDept ? '#f6ffed' : '#e6f7ff', color: isDept ? '#52c41a' : '#1890ff' }}>{isDept ? '部门' : '组织'}</span></td>
+                            <td style={{ textAlign: 'center' }}>{n.code || '-'}</td>
+                            <td>{nameMap[n.parentId] || '-'}</td>
+                            <td style={{ textAlign: 'center' }}>{isDept ? '-' : (n.isActive ? '启用' : '禁用')}</td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                    {orgList.length === 0 && <tr><td colSpan={5}>暂无数据</td></tr>}
+                  </tbody>
+                </table>
+              </div>
 
-          <h3 style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 16 }}>新增部门（多部门隔离基础）</h3>
-          <div>名称：<input value={deptName} onChange={e => setDeptName(e.target.value)} />
-            编码：<input value={deptCode} onChange={e => setDeptCode(e.target.value)} />
-            上级：<select value={deptParent} onChange={e => setDeptParent(e.target.value)}><option value="">-- 无 --</option>{deptList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
-            <button style={{ marginLeft: 8 }} onClick={saveDept}>添加部门</button>
+              <h3 style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 16 }}>新增部门（多部门隔离基础）</h3>
+              <div>名称：<input value={deptName} onChange={e => setDeptName(e.target.value)} />
+                编码：<input value={deptCode} onChange={e => setDeptCode(e.target.value)} />
+                上级：<select value={deptParent} onChange={e => setDeptParent(e.target.value)}><option value="">-- 无 --</option>{deptList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
+                <button style={{ marginLeft: 8 }} onClick={saveDept}>添加部门</button>
+              </div>
+              {deptMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{deptMsg}</div>}
+            </div>
+
+            {/* 右：选中节点详情/编辑 */}
+            <div style={{ width: 320, flexShrink: 0, border: '1px solid #eee', borderRadius: 6, padding: 16, alignSelf: 'stretch' }}>
+              {(() => {
+                const nm: Record<string, string> = {};
+                orgList.forEach((x: any) => { nm[x.id] = x.name; });
+                const sel = orgList.find((n: any) => n.id === selectedOrgId);
+                if (!sel) return (<div style={{ color: '#999', fontSize: 13, lineHeight: 1.8 }}>👈 点击左侧任意节点<br />查看与编辑详情<br /><br />· 搜索框可定位组织/部门<br />· 点击三角展开/折叠<br />· 点击行选中后在右侧编辑</div>);
+                const isDept = sel.type === 'dept';
+                return (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <span style={{ fontSize: 22 }}>{isDept ? '📁' : '🏢'}</span>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 15 }}>{sel.name}</div>
+                        <span style={{ fontSize: 12, padding: '1px 8px', borderRadius: 10, background: isDept ? '#f6ffed' : '#e6f7ff', color: isDept ? '#52c41a' : '#1890ff' }}>{isDept ? '部门' : '组织'}</span>
+                      </div>
+                    </div>
+                    <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                      <tbody>
+                        <tr><td style={{ color: '#888', padding: '5px 0', width: 96 }}>编码</td><td>{sel.code || '-'}</td></tr>
+                        <tr><td style={{ color: '#888', padding: '5px 0' }}>上级</td><td>{nm[sel.parentId] || '-'}</td></tr>
+                        <tr><td style={{ color: '#888', padding: '5px 0', verticalAlign: 'top' }}>上级ID</td><td style={{ wordBreak: 'break-all' }}>{sel.superior || '-'}</td></tr>
+                        <tr><td style={{ color: '#888', padding: '5px 0', verticalAlign: 'top' }}>OA ID</td><td style={{ wordBreak: 'break-all' }}>{sel.oaId || '-'}</td></tr>
+                        <tr><td style={{ color: '#888', padding: '5px 0' }}>来源</td><td>{sel.source || '-'}</td></tr>
+                        <tr><td style={{ color: '#888', padding: '5px 0' }}>状态</td><td>{isDept ? '-' : (sel.isActive ? '启用' : '禁用')}</td></tr>
+                        {sel.description ? (<tr><td style={{ color: '#888', padding: '5px 0', verticalAlign: 'top' }}>描述</td><td>{sel.description}</td></tr>) : null}
+                      </tbody>
+                    </table>
+                    <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button onClick={() => editOrg(sel)}>编辑</button>
+                      <button onClick={async () => { if (sel.type === 'dept') await delDept(sel.id); else await delOrg(sel.id); setSelectedOrgId(null); }}>删除</button>
+                      <button onClick={() => { resetOrgForm(); setOrgFormType('org'); setOrgParent(sel.id); setShowOrgModal(true); }}>新增子组织</button>
+                      <button onClick={() => { resetOrgForm(); setOrgFormType('dept'); setOrgParent(sel.id); setShowOrgModal(true); }}>新增子部门</button>
+                      <button onClick={() => setSelectedOrgId(null)} style={{ marginLeft: 'auto' }}>取消选中</button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
-          {deptMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{deptMsg}</div>}
         </div>
       )}
 
@@ -859,16 +921,34 @@ export default function BasicInfoManagement() {
       {/* 组织架构弹窗 */}
       {showOrgModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowOrgModal(false)}>
-          <div style={{ background: '#fff', padding: 24, borderRadius: 8, minWidth: 400 }} onClick={e => e.stopPropagation()}>
-            <h3>{editingOrg ? '编辑组织' : '新增组织'}</h3>
-            <div style={{ marginTop: 12 }}>名称：<input value={orgName} onChange={e => setOrgName(e.target.value)} /></div>
-            <div style={{ marginTop: 8 }}>上级：
-              <select value={orgParent} onChange={e => setOrgParent(e.target.value)}>
-                <option value="">-- 无 --</option>
-                {orgList.filter((o: any) => !o.parentId).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+          <div style={{ background: '#fff', padding: 24, borderRadius: 8, minWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <h3>{editingOrg ? ('编辑' + (orgFormType === 'dept' ? '部门' : '组织')) : (orgFormType === 'dept' ? '新增部门' : '新增组织')}</h3>
+            <div style={{ marginTop: 12 }}>类型：
+              <select value={orgFormType} onChange={e => setOrgFormType(e.target.value as 'org' | 'dept')}>
+                <option value="org">组织</option>
+                <option value="dept">部门</option>
               </select>
             </div>
-            <div style={{ marginTop: 8 }}>描述：<input value={orgDesc} onChange={e => setOrgDesc(e.target.value)} /></div>
+            <div style={{ marginTop: 8 }}>名称：<input value={orgName} onChange={e => setOrgName(e.target.value)} style={{ width: 260 }} /></div>
+            <div style={{ marginTop: 8 }}>上级：
+              <select value={orgParent} onChange={e => setOrgParent(e.target.value)} style={{ maxWidth: 300 }}>
+                <option value="">-- 无 --</option>
+                {(() => {
+                  const cm: Record<string, string[]> = {};
+                  orgList.forEach((o: any) => { if (o.parentId) (cm[o.parentId] = cm[o.parentId] || []).push(o.id); });
+                  const forbid = new Set<string>();
+                  if (editingOrg) {
+                    const stack = [editingOrg.id];
+                    while (stack.length) { const cur = stack.pop()!; (cm[cur] || []).forEach((c: string) => { if (!forbid.has(c)) { forbid.add(c); stack.push(c); } }); }
+                  }
+                  const parentOf: Record<string, string> = {};
+                  orgList.forEach((o: any) => { if (o.parentId) parentOf[o.id] = o.parentId; });
+                  const depthOf = (id: string) => { let d = 0; let cur = parentOf[id]; while (cur) { d++; cur = parentOf[cur]; } return d; };
+                  return orgList.filter((o: any) => o.id !== (editingOrg?.id) && !forbid.has(o.id)).map((o: any) => <option key={o.id} value={o.id}>{'\u00A0'.repeat(depthOf(o.id) * 2)}{o.name}</option>);
+                })()}
+              </select>
+            </div>
+            <div style={{ marginTop: 8 }}>描述：<input value={orgDesc} onChange={e => setOrgDesc(e.target.value)} style={{ width: 260 }} /></div>
             <div style={{ marginTop: 8 }}>状态：
               <select value={orgActive ? 'true' : 'false'} onChange={e => setOrgActive(e.target.value === 'true')}>
                 <option value="true">启用</option>
