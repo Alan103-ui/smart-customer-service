@@ -391,45 +391,57 @@ export default function BasicInfoManagement() {
       <h2>基础信息管理</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {(['org', 'personnel', 'permissions', 'oa', 'software', 'config', 'sso', 'dict', 'announcement'] as SubTab[]).map(k => (
-          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织架构（含部门）' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : '系统公告'}</button>
+          <button key={k} onClick={() => setSubTab(k)} style={{ padding: '6px 16px', borderRadius: 4, border: '1px solid #d9d9d9', background: subTab === k ? '#1890ff' : '#fff', color: subTab === k ? '#fff' : '#333' }}>{k === 'org' ? '组织与部门' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : '系统公告'}</button>
         ))}
       </div>
 
-      {/* 组织架构 */}
+      {/* 组织与部门（合并为一个管理功能） */}
       {subTab === 'org' && (
         <div>
-          <button onClick={() => { resetOrgForm(); setShowOrgModal(true); }}>新增组织</button>
-          <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><th>名称</th><th>上级</th><th>状态</th><th>操作</th></tr></thead>
+          <div style={{ marginBottom: 12 }}>
+            <button onClick={() => { resetOrgForm(); setShowOrgModal(true); }}>新增组织</button>
+          </div>
+          <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th>名称</th><th>类型</th><th>编码</th><th>上级</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>
-              {orgList.map(o => (
-                <tr key={o.id}>
-                  <td>{o.name}</td>
-                  <td>{orgList.find((p: any) => p.id === o.parentId)?.name || '-'}</td>
-                  <td>{o.isActive ? '启用' : '禁用'}</td>
-                  <td>
-                    <button onClick={() => editOrg(o)}>编辑</button>
-                    <button onClick={() => delOrg(o.id)} style={{ marginLeft: 8 }}>删除</button>
-                  </td>
-                </tr>
-              ))}
+              {(() => {
+                const allNodes: any[] = [
+                  ...orgList.map((o: any) => ({ ...o, _type: 'org' })),
+                  ...deptList.map((d: any) => ({ ...d, _type: 'dept' })),
+                ];
+                const nameMap: Record<string, string> = {};
+                allNodes.forEach((n: any) => { nameMap[n.id] = n.name; });
+                return allNodes.map((n: any) => (
+                  <tr key={n._type + ':' + n.id}>
+                    <td>{n.name}</td>
+                    <td><span style={{ fontSize: 12, padding: '1px 8px', borderRadius: 10, background: n._type === 'org' ? '#e6f7ff' : '#f6ffed', color: n._type === 'org' ? '#1890ff' : '#52c41a' }}>{n._type === 'org' ? '组织' : '部门'}</span></td>
+                    <td>{n._type === 'dept' ? (n.code || '-') : '-'}</td>
+                    <td>{nameMap[n.parentId] || '-'}</td>
+                    <td>{n._type === 'org' ? (n.isActive ? '启用' : '禁用') : '-'}</td>
+                    <td>
+                      {n._type === 'org' ? (
+                        <>
+                          <button onClick={() => editOrg(n)}>编辑</button>
+                          <button onClick={() => delOrg(n.id)} style={{ marginLeft: 8 }}>删除</button>
+                        </>
+                      ) : (
+                        <button onClick={() => delDept(n.id)}>删除</button>
+                      )}
+                    </td>
+                  </tr>
+                ));
+              })()}
+              {orgList.length === 0 && deptList.length === 0 && <tr><td colSpan={6}>暂无数据</td></tr>}
             </tbody>
           </table>
 
-          <h3 style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 16 }}>部门管理（多部门隔离基础）</h3>
+          <h3 style={{ marginTop: 24, borderTop: '1px solid #eee', paddingTop: 16 }}>新增部门（多部门隔离基础）</h3>
           <div>名称：<input value={deptName} onChange={e => setDeptName(e.target.value)} />
             编码：<input value={deptCode} onChange={e => setDeptCode(e.target.value)} />
             上级：<select value={deptParent} onChange={e => setDeptParent(e.target.value)}><option value="">-- 无 --</option>{deptList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
             <button style={{ marginLeft: 8 }} onClick={saveDept}>添加部门</button>
           </div>
           {deptMsg && <div style={{ color: '#52c41a', marginTop: 8 }}>{deptMsg}</div>}
-          <table border={1} cellPadding={8} style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><th>名称</th><th>编码</th><th>上级</th><th>操作</th></tr></thead>
-            <tbody>
-              {deptList.map((d: any) => (<tr key={d.id}><td>{d.name}</td><td>{d.code || '-'}</td><td>{deptList.find(x => x.id === d.parentId)?.name || '-'}</td><td><button onClick={() => delDept(d.id)}>删除</button></td></tr>))}
-              {deptList.length === 0 && <tr><td colSpan={4}>暂无部门</td></tr>}
-            </tbody>
-          </table>
         </div>
       )}
 
