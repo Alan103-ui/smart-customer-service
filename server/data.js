@@ -24,7 +24,6 @@ const SYNONYMS_PATH = path.join(__dirname, '../data/synonyms.json');
 const STOPWORDS_PATH = path.join(__dirname, '../data/stopwords.json');
 const ANNOUNCEMENT_PATH = path.join(__dirname, '../data/announcement.json');
 const SSO_WHITELIST_PATH = path.join(__dirname, '../data/sso-whitelist.json');
-const DEPARTMENTS_PATH = path.join(__dirname, '../data/departments.json');
 
 // ============ FAQ 知识库（带缓存） ============
 let FAQ_KNOWLEDGE_BASE = [];
@@ -386,15 +385,6 @@ function saveSSOWhitelist(data) {
   fs.writeFileSync(SSO_WHITELIST_PATH, JSON.stringify(data, null, 2));
 }
 
-// ============ 部门目录（多部门隔离基础）============
-function loadDepartments() {
-  if (!fs.existsSync(DEPARTMENTS_PATH)) return [];
-  try { return JSON.parse(fs.readFileSync(DEPARTMENTS_PATH, 'utf8')); } catch (e) { return []; }
-}
-function saveDepartments(data) {
-  fs.writeFileSync(DEPARTMENTS_PATH, JSON.stringify(data, null, 2));
-}
-
 // ============ 初始化 ============
 // 初始化时执行一次（规范化FAQ分类）
 setTimeout(() => { try { normalizeFAQCategories(); } catch(e) {} }, 1000);
@@ -461,10 +451,6 @@ module.exports = {
   loadSSOWhitelist,
   saveSSOWhitelist,
 
-  // 部门
-  loadDepartments,
-  saveDepartments,
-
   // 路径常量（供其他模块使用）
   CATEGORIES_PATH,
   FAQ_PATH,
@@ -479,6 +465,5 @@ module.exports = {
   SYNONYMS_PATH,
   STOPWORDS_PATH,
   ANNOUNCEMENT_PATH,
-  SSO_WHITELIST_PATH,
-  DEPARTMENTS_PATH
+  SSO_WHITELIST_PATH
 };

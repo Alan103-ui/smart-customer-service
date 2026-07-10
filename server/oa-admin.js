@@ -257,6 +257,7 @@ router.post('/sync-org', async (req, res) => {
         sortOrder: idx >= 0 ? merged[idx].sortOrder : merged.length,
         description: a.shortName ? 'OA:' + a.shortName : '致远OA同步',
         isActive: a.enabled,
+        type: 'org',
         oaId: a.oaId,
         oaCode: a.code,
         source: 'oa',

@@ -112,15 +112,6 @@ function loadCategories() {
 }
 function saveCategories(data) { fs.writeFileSync(CATEGORIES_PATH, JSON.stringify(data, null, 2)); }
 
-// ============ 基础信息：组织架构 ============
-const ORG_PATH = path.join(__dirname, '../data/org_structure.json');
-function loadOrg() {
-  if (!fs.existsSync(ORG_PATH)) return [];
-  try { return JSON.parse(fs.readFileSync(ORG_PATH, 'utf8')); } catch (e) { return []; }
-}
-function saveOrg(data) { fs.writeFileSync(ORG_PATH, JSON.stringify(data, null, 2)); }
-
-
 // ============ 数据存储（JSON 文件） ============
 const DB_DIR = path.join(__dirname, '../data');
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });

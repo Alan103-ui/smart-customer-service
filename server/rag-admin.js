@@ -49,9 +49,8 @@ const {
   loadStopwords, saveStopwords,
   loadAnnouncement, saveAnnouncement,
   loadSSOWhitelist, saveSSOWhitelist,
-  loadDepartments, saveDepartments,
   CATEGORIES_PATH, FAQ_PATH, ORG_PATH, PERSONNEL_PATH, PERMISSIONS_PATH, A8_CONFIG_PATH, KNOWLEDGE_BASES_PATH,
-  SYSTEM_CONFIG_PATH, SYNONYMS_PATH, STOPWORDS_PATH, ANNOUNCEMENT_PATH, SSO_WHITELIST_PATH, DEPARTMENTS_PATH
+  SYSTEM_CONFIG_PATH, SYNONYMS_PATH, STOPWORDS_PATH, ANNOUNCEMENT_PATH, SSO_WHITELIST_PATH
 } = data;
 
 // ============ 日志系统 ============
@@ -1130,25 +1129,28 @@ router.get('/org', (req, res) => {
 
 router.post('/org', (req, res) => {
   try {
-    const { name, parentId, description } = req.body;
-    if (!name || !name.trim()) return res.status(400).json({ error: '组织名称必填' });
+    const { name, parentId, description, type, code } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: '名称必填' });
+    const nodeType = type === 'dept' ? 'dept' : 'org';
     const list = loadOrg();
     const newOrg = {
-      id: 'org_' + Date.now(),
+      id: (nodeType === 'dept' ? 'dept_' : 'org_') + Date.now(),
       name: name.trim(),
       parentId: parentId || null,
+      type: nodeType,
       sortOrder: list.length,
       description: description || '',
       isActive: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
+    if (nodeType === 'dept') newOrg.code = (code || '').trim();
     list.push(newOrg);
     saveOrg(list);
-    auditLog('org_create', req.user ? req.user.username : 'unknown', { id: newOrg.id, name: newOrg.name });
+    auditLog(nodeType === 'dept' ? '新增部门' : 'org_create', req.user ? req.user.username : 'unknown', { id: newOrg.id, name: newOrg.name });
     res.json({ success: true, data: newOrg });
   } catch (err) {
-    errorLog('新增组织失败', err, req.body);
+    errorLog('新增组织/部门失败', err, req.body);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1158,12 +1160,14 @@ router.put('/org/:id', (req, res) => {
     const list = loadOrg();
     const idx = list.findIndex(o => o.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Not found' });
-    const { name, parentId, description, isActive, sortOrder } = req.body;
+    const { name, parentId, description, isActive, sortOrder, type, code } = req.body;
     if (name && name.trim()) list[idx].name = name.trim();
     if (parentId !== undefined) list[idx].parentId = parentId || null;
     if (description !== undefined) list[idx].description = description;
     if (isActive !== undefined) list[idx].isActive = isActive;
     if (sortOrder !== undefined) list[idx].sortOrder = sortOrder;
+    if (type !== undefined) list[idx].type = type === 'dept' ? 'dept' : 'org';
+    if (code !== undefined) list[idx].code = code;
     list[idx].updatedAt = new Date().toISOString();
     saveOrg(list);
     res.json({ success: true, data: list[idx] });
@@ -1706,51 +1710,9 @@ router.delete('/stopwords/:word', auth.authMiddleware, auth.adminOnly, (req, res
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ==========================================
-// 十四、部门目录（多部门隔离基础）
-// ==========================================
-router.get('/departments', auth.authMiddleware, auth.adminOnly, (req, res) => {
-  try { res.json({ success: true, data: loadDepartments() }); } catch (err) { res.status(500).json({ error: err.message }); }
-});
-router.post('/departments', auth.authMiddleware, auth.adminOnly, (req, res) => {
-  try {
-    const { name, code, parentId, sortOrder } = req.body || {};
-    if (!name || !name.trim()) return res.status(400).json({ error: '部门名称必填' });
-    const list = loadDepartments();
-    const entry = { id: 'dept_' + Date.now(), name: name.trim(), code: (code || '').trim(), parentId: parentId || null, sortOrder: Number(sortOrder) || 0, createdAt: new Date().toISOString() };
-    list.push(entry);
-    saveDepartments(list);
-    auditLog('新增部门', req.user ? req.user.username : 'unknown', { name: entry.name, code: entry.code });
-    res.json({ success: true, data: entry });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-router.put('/departments/:id', auth.authMiddleware, auth.adminOnly, (req, res) => {
-  try {
-    const list = loadDepartments();
-    const idx = list.findIndex(d => d.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: '部门不存在' });
-    const { name, code, parentId, sortOrder } = req.body || {};
-    if (name !== undefined) list[idx].name = name.trim();
-    if (code !== undefined) list[idx].code = code.trim();
-    if (parentId !== undefined) list[idx].parentId = parentId || null;
-    if (sortOrder !== undefined) list[idx].sortOrder = Number(sortOrder) || 0;
-    saveDepartments(list);
-    auditLog('更新部门', req.user ? req.user.username : 'unknown', { id: req.params.id });
-    res.json({ success: true, data: list[idx] });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-router.delete('/departments/:id', auth.authMiddleware, auth.adminOnly, (req, res) => {
-  try {
-    const list = loadDepartments();
-    const next = list.filter(d => d.id !== req.params.id);
-    if (next.length === list.length) return res.status(404).json({ error: '部门不存在' });
-    saveDepartments(next);
-    auditLog('删除部门', req.user ? req.user.username : 'unknown', { id: req.params.id });
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
 // 为人员打部门标签（多部门隔离的数据归属）
+// 说明：部门已是组织树（org_structure.json）中 type==='dept' 的节点，
+// 此处 department 字段存的就是该组织树节点的 id。
 router.put('/personnel/:id/department', auth.authMiddleware, auth.adminOnly, (req, res) => {
   try {
     const { department } = req.body || {};
@@ -1814,7 +1776,8 @@ function buildConfigBundle() {
       stopwords: loadStopwords(),
       announcement: loadAnnouncement(),
       ssoWhitelist: loadSSOWhitelist(),
-      departments: loadDepartments(),
+      // 部门已是组织树中 type==='dept' 的节点，从 org 树派生
+      departments: loadOrg().filter((n) => n.type === 'dept'),
       permissions: loadPermissions(),
       categories: loadCategories(),
       knowledgeBases: loadKnowledgeBases(),
@@ -1854,7 +1817,12 @@ router.post('/config/import', auth.authMiddleware, auth.adminOnly, (req, res) =>
     apply('stopwords', saveStopwords);
     apply('announcement', saveAnnouncement);
     apply('ssoWhitelist', (v) => { saveSSOWhitelist(v); syncOAConfigWhitelist(v.map(x => x.account)); });
-    apply('departments', saveDepartments);
+    // 部门节点合并回组织树（保留非部门节点）
+    apply('departments', (depts) => {
+      const org = loadOrg();
+      const others = org.filter((n) => n.type !== 'dept');
+      saveOrg([...others, ...depts]);
+    });
     apply('permissions', savePermissions);
     apply('categories', saveCategories);
     apply('knowledgeBases', saveKnowledgeBases);

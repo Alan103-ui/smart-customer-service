@@ -133,7 +133,7 @@ export default function BasicInfoManagement() {
   const [oaSsoMsg, setOaSsoMsg] = useState('');
 
   // ==================== 数据获取 ====================
-  const loadOrg = () => safeFetch<any[]>(API + '/org').then(setOrgList).catch(e => { console.error('加载组织失败:', e); setOrgList([]); });
+  const loadOrg = () => safeFetch<any[]>(API + '/org').then((list: any[]) => { setOrgList(list); setDeptList(list.filter((n: any) => n.type === 'dept')); }).catch(e => { console.error('加载组织失败:', e); setOrgList([]); setDeptList([]); });
   const loadP = () => safeFetch<any[]>(API + '/personnel').then(setPList).catch(e => { console.error('加载人员失败:', e); setPList([]); });
   const loadPerm = () => {
     safeFetch<any[]>(API + '/categories').then(setCats).catch(() => {});
@@ -209,20 +209,20 @@ export default function BasicInfoManagement() {
   };
   const delStop = async (w: string) => { const r = await fetch(API + '/stopwords/' + encodeURIComponent(w), { method: 'DELETE', headers: getAuthHeaders() }); const d = await r.json(); if (d.success) loadDict(); else alert(d.error || '删除失败'); };
 
-  // ==================== 部门管理 ====================
+  // ==================== 部门（已并入组织树，type==='dept'）====================
+  // deptList 由 loadOrg 从统一组织树中按 type==='dept' 派生，不再单独请求 /departments
   const [deptList, setDeptList] = useState<any[]>([]);
   const [deptName, setDeptName] = useState('');
   const [deptCode, setDeptCode] = useState('');
   const [deptParent, setDeptParent] = useState('');
   const [deptMsg, setDeptMsg] = useState('');
-  const loadDepts = () => fetch(API + '/departments', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { data: [] }).then((d: any) => setDeptList(Array.isArray(d.data) ? d.data : [])).catch(() => {});
   const saveDept = async () => {
     if (!deptName.trim()) { setDeptMsg('部门名称必填'); return; }
-    const res = await fetch(API + '/departments', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ name: deptName.trim(), code: deptCode.trim(), parentId: deptParent || null }) });
+    const res = await fetch(API + '/org', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ type: 'dept', name: deptName.trim(), code: deptCode.trim(), parentId: deptParent || null }) });
     const d = await res.json();
-    if (d.success) { setDeptName(''); setDeptCode(''); setDeptParent(''); setDeptMsg('部门已添加'); loadDepts(); } else setDeptMsg('保存失败：' + (d.error || ''));
+    if (d.success) { setDeptName(''); setDeptCode(''); setDeptParent(''); setDeptMsg('部门已添加'); loadOrg(); } else setDeptMsg('保存失败：' + (d.error || ''));
   };
-  const delDept = async (id: string) => { if (!confirm('删除该部门？')) return; const r = await fetch(API + '/departments/' + id, { method: 'DELETE', headers: getAuthHeaders() }); const d = await r.json(); if (d.success) loadDepts(); else alert(d.error || '删除失败'); };
+  const delDept = async (id: string) => { if (!confirm('删除该部门？')) return; const r = await fetch(API + '/org/' + id, { method: 'DELETE', headers: getAuthHeaders() }); const d = await r.json(); if (d.success) loadOrg(); else alert(d.error || '删除失败'); };
 
   // ==================== 系统公告 ====================
   const [ann, setAnn] = useState<any>({ enabled: false, title: '', content: '', level: 'info' });
@@ -237,12 +237,12 @@ export default function BasicInfoManagement() {
   // 操作审计已迁移至「日志管理」标签页（见 AdminDashboard 日志管理子页）
 
   useEffect(() => {
-    if (subTab === 'org') { loadOrg(); loadDepts(); }
+    if (subTab === 'org') { loadOrg(); }
     if (subTab === 'personnel') loadP();
     if (subTab === 'permissions') loadPerm();
     if (subTab === 'oa') { loadOA(); loadSSO(); }
     if (subTab === 'software') loadSoftware();
-    if (subTab === 'config') loadConfig();
+    if (subTab === 'config') { loadConfig(); loadOrg(); }
     if (subTab === 'sso') loadSsoWhitelist();
     if (subTab === 'dict') loadDict();
     if (subTab === 'announcement') loadAnnouncement();
@@ -250,7 +250,7 @@ export default function BasicInfoManagement() {
 
   // ==================== 组织架构保存 ====================
   const saveOrg = async () => {
-    const body = { name: orgName, parentId: orgParent || null, description: orgDesc, isActive: orgActive };
+    const body = { type: 'org', name: orgName, parentId: orgParent || null, description: orgDesc, isActive: orgActive };
     const url = editingOrg ? (API + '/org/' + editingOrg.id) : (API + '/org');
     const method = editingOrg ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(body) });
@@ -405,21 +405,18 @@ export default function BasicInfoManagement() {
             <thead><tr><th>名称</th><th>类型</th><th>编码</th><th>上级</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>
               {(() => {
-                const allNodes: any[] = [
-                  ...orgList.map((o: any) => ({ ...o, _type: 'org' })),
-                  ...deptList.map((d: any) => ({ ...d, _type: 'dept' })),
-                ];
+                const allNodes: any[] = orgList; // 统一组织树：组织(type=org) + 部门(type=dept)
                 const nameMap: Record<string, string> = {};
                 allNodes.forEach((n: any) => { nameMap[n.id] = n.name; });
                 return allNodes.map((n: any) => (
-                  <tr key={n._type + ':' + n.id}>
+                  <tr key={n.id}>
                     <td>{n.name}</td>
-                    <td><span style={{ fontSize: 12, padding: '1px 8px', borderRadius: 10, background: n._type === 'org' ? '#e6f7ff' : '#f6ffed', color: n._type === 'org' ? '#1890ff' : '#52c41a' }}>{n._type === 'org' ? '组织' : '部门'}</span></td>
-                    <td>{n._type === 'dept' ? (n.code || '-') : '-'}</td>
+                    <td><span style={{ fontSize: 12, padding: '1px 8px', borderRadius: 10, background: n.type === 'org' ? '#e6f7ff' : '#f6ffed', color: n.type === 'org' ? '#1890ff' : '#52c41a' }}>{n.type === 'org' ? '组织' : '部门'}</span></td>
+                    <td>{n.type === 'dept' ? (n.code || '-') : '-'}</td>
                     <td>{nameMap[n.parentId] || '-'}</td>
-                    <td>{n._type === 'org' ? (n.isActive ? '启用' : '禁用') : '-'}</td>
+                    <td>{n.type === 'org' ? (n.isActive ? '启用' : '禁用') : '-'}</td>
                     <td>
-                      {n._type === 'org' ? (
+                      {n.type === 'org' ? (
                         <>
                           <button onClick={() => editOrg(n)}>编辑</button>
                           <button onClick={() => delOrg(n.id)} style={{ marginLeft: 8 }}>删除</button>
@@ -431,7 +428,7 @@ export default function BasicInfoManagement() {
                   </tr>
                 ));
               })()}
-              {orgList.length === 0 && deptList.length === 0 && <tr><td colSpan={6}>暂无数据</td></tr>}
+              {orgList.length === 0 && <tr><td colSpan={6}>暂无数据</td></tr>}
             </tbody>
           </table>
 
@@ -677,7 +674,10 @@ export default function BasicInfoManagement() {
           <fieldset style={{ marginTop: 12 }}>
             <legend>多部门隔离</legend>
             启用：<input type="checkbox" checked={!!config.multiDeptEnabled} onChange={e => setConfig({ ...config, multiDeptEnabled: e.target.checked })} /> （开启后，人员/对话列表可按部门过滤）<br />
-            默认部门：<input value={config.defaultDepartment || ''} onChange={e => setConfig({ ...config, defaultDepartment: e.target.value })} style={{ width: 240 }} />
+            默认部门：<select value={config.defaultDepartment || ''} onChange={e => setConfig({ ...config, defaultDepartment: e.target.value })} style={{ width: 240 }}>
+              <option value="">-- 无 --</option>
+              {deptList.map((d: any) => <option key={d.id} value={d.id}>{d.name}{d.code ? '（' + d.code + '）' : ''}</option>)}
+            </select> <span style={{ color: '#999', fontSize: 12 }}>（部门即组织树中 type=部门 的节点）</span>
           </fieldset>
           <div style={{ marginTop: 12 }}>
             <button onClick={saveConfig}>保存配置</button>
