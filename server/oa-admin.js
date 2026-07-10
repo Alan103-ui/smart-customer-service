@@ -293,6 +293,8 @@ router.post('/sync-org', async (req, res) => {
         code: a.code,
         oaId: a.oaId,
         oaCode: a.code,
+        superior: a.parentId ? String(a.parentId) : null, // 上级：OA 组织单位的父单位 id
+        superiorName: '',
         source: 'oa',
         createdAt: idx >= 0 ? merged[idx].createdAt : now(),
         updatedAt: now(),
@@ -327,6 +329,8 @@ router.post('/sync-org', async (req, res) => {
           code: d.code || '',
           oaId: d.oaId,
           oaCode: d.code || '',
+          superior: sup || null, // 上级：OA 部门的 superior（父部门 id 或 account 根 id）
+          superiorName: d.superiorName || '',
           source: 'oa',
           createdAt: idx >= 0 ? merged[idx].createdAt : now(),
           updatedAt: now(),

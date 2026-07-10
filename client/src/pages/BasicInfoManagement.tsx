@@ -87,6 +87,7 @@ export default function BasicInfoManagement() {
   const [orgParent, setOrgParent] = useState('');
   const [orgDesc, setOrgDesc] = useState('');
   const [orgActive, setOrgActive] = useState(true);
+  const [collapsedOrg, setCollapsedOrg] = useState<Set<string>>(new Set()); // 树形折叠的节点 id
 
   // 人员
   const [pList, setPList] = useState<any[]>([]);
@@ -428,26 +429,63 @@ export default function BasicInfoManagement() {
       {/* 组织与部门（合并为一个管理功能） */}
       {subTab === 'org' && (
         <div>
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
             <button onClick={() => { resetOrgForm(); setShowOrgModal(true); }}>新增组织</button>
+            <button onClick={() => setCollapsedOrg(new Set())}>展开全部</button>
+            <button onClick={() => setCollapsedOrg(new Set(orgList.filter((n: any) => orgList.some((c: any) => c.parentId === n.id)).map((n: any) => n.id)))}>折叠全部</button>
+            <span style={{ fontSize: 12, color: '#888' }}>共 {orgList.length} 个节点（组织 {orgList.filter((n: any) => n.type !== 'dept').length} / 部门 {orgList.filter((n: any) => n.type === 'dept').length}）</span>
           </div>
           <table border={1} cellPadding={8} style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><th>名称</th><th>类型</th><th>编码</th><th>上级</th><th>状态</th><th>操作</th></tr></thead>
+            <thead><tr><th style={{ textAlign: 'left' }}>名称</th><th>类型</th><th>编码</th><th>上级</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>
               {(() => {
                 const allNodes: any[] = orgList; // 统一组织树：组织(type=org) + 部门(type=dept)
                 const nameMap: Record<string, string> = {};
-                allNodes.forEach((n: any) => { nameMap[n.id] = n.name; });
-                return allNodes.map((n: any) => {
+                const idSet = new Set<string>();
+                allNodes.forEach((n: any) => { nameMap[n.id] = n.name; idSet.add(n.id); });
+                // 1) 按 parentId 建 children 映射（同级按 sortOrder、再按 name 排序）
+                const childrenMap: Record<string, any[]> = {};
+                const roots: any[] = [];
+                allNodes.forEach((n: any) => {
+                  const pid = n.parentId && idSet.has(n.parentId) ? n.parentId : '__root__';
+                  if (pid === '__root__') roots.push(n);
+                  else (childrenMap[pid] = childrenMap[pid] || []).push(n);
+                });
+                const sortFn = (a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || String(a.name).localeCompare(String(b.name), 'zh');
+                roots.sort(sortFn);
+                Object.values(childrenMap).forEach((arr) => arr.sort(sortFn));
+                // 2) DFS 展平为带层级的行（跳过被折叠节点的后代）
+                const rows: { node: any; depth: number; hasChildren: boolean }[] = [];
+                const walk = (node: any, depth: number) => {
+                  const kids = childrenMap[node.id] || [];
+                  rows.push({ node, depth, hasChildren: kids.length > 0 });
+                  if (kids.length && !collapsedOrg.has(node.id)) kids.forEach((k) => walk(k, depth + 1));
+                };
+                roots.forEach((r) => walk(r, 0));
+                return rows.map(({ node: n, depth, hasChildren }) => {
                   const isDept = n.type === 'dept'; // 缺省 type 的节点按组织渲染（兼容旧数据）
+                  const collapsed = collapsedOrg.has(n.id);
                   return (
                   <tr key={n.id}>
-                    <td>{n.name}</td>
-                    <td><span style={{ fontSize: 12, padding: '1px 8px', borderRadius: 10, background: isDept ? '#f6ffed' : '#e6f7ff', color: isDept ? '#52c41a' : '#1890ff' }}>{isDept ? '部门' : '组织'}</span></td>
-                    <td>{isDept ? (n.code || '-') : '-'}</td>
+                    <td style={{ textAlign: 'left' }}>
+                      <span style={{ display: 'inline-block', width: depth * 20 }} />
+                      {hasChildren ? (
+                        <span
+                          onClick={() => setCollapsedOrg((prev) => { const s = new Set(prev); s.has(n.id) ? s.delete(n.id) : s.add(n.id); return s; })}
+                          style={{ cursor: 'pointer', display: 'inline-block', width: 16, userSelect: 'none', color: '#888' }}
+                        >{collapsed ? '▶' : '▼'}</span>
+                      ) : (
+                        <span style={{ display: 'inline-block', width: 16 }} />
+                      )}
+                      <span style={{ marginRight: 4 }}>{isDept ? '📁' : '🏢'}</span>
+                      {n.name}
+                      {hasChildren && <span style={{ fontSize: 11, color: '#bbb', marginLeft: 6 }}>({(childrenMap[n.id] || []).length})</span>}
+                    </td>
+                    <td style={{ textAlign: 'center' }}><span style={{ fontSize: 12, padding: '1px 8px', borderRadius: 10, background: isDept ? '#f6ffed' : '#e6f7ff', color: isDept ? '#52c41a' : '#1890ff' }}>{isDept ? '部门' : '组织'}</span></td>
+                    <td style={{ textAlign: 'center' }}>{isDept ? (n.code || '-') : (n.code || '-')}</td>
                     <td>{nameMap[n.parentId] || '-'}</td>
-                    <td>{isDept ? '-' : (n.isActive ? '启用' : '禁用')}</td>
-                    <td>
+                    <td style={{ textAlign: 'center' }}>{isDept ? '-' : (n.isActive ? '启用' : '禁用')}</td>
+                    <td style={{ textAlign: 'center' }}>
                       {isDept ? (
                         <button onClick={() => delDept(n.id)}>删除</button>
                       ) : (
