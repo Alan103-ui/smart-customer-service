@@ -408,25 +408,28 @@ export default function BasicInfoManagement() {
                 const allNodes: any[] = orgList; // 统一组织树：组织(type=org) + 部门(type=dept)
                 const nameMap: Record<string, string> = {};
                 allNodes.forEach((n: any) => { nameMap[n.id] = n.name; });
-                return allNodes.map((n: any) => (
+                return allNodes.map((n: any) => {
+                  const isDept = n.type === 'dept'; // 缺省 type 的节点按组织渲染（兼容旧数据）
+                  return (
                   <tr key={n.id}>
                     <td>{n.name}</td>
-                    <td><span style={{ fontSize: 12, padding: '1px 8px', borderRadius: 10, background: n.type === 'org' ? '#e6f7ff' : '#f6ffed', color: n.type === 'org' ? '#1890ff' : '#52c41a' }}>{n.type === 'org' ? '组织' : '部门'}</span></td>
-                    <td>{n.type === 'dept' ? (n.code || '-') : '-'}</td>
+                    <td><span style={{ fontSize: 12, padding: '1px 8px', borderRadius: 10, background: isDept ? '#f6ffed' : '#e6f7ff', color: isDept ? '#52c41a' : '#1890ff' }}>{isDept ? '部门' : '组织'}</span></td>
+                    <td>{isDept ? (n.code || '-') : '-'}</td>
                     <td>{nameMap[n.parentId] || '-'}</td>
-                    <td>{n.type === 'org' ? (n.isActive ? '启用' : '禁用') : '-'}</td>
+                    <td>{isDept ? '-' : (n.isActive ? '启用' : '禁用')}</td>
                     <td>
-                      {n.type === 'org' ? (
+                      {isDept ? (
+                        <button onClick={() => delDept(n.id)}>删除</button>
+                      ) : (
                         <>
                           <button onClick={() => editOrg(n)}>编辑</button>
                           <button onClick={() => delOrg(n.id)} style={{ marginLeft: 8 }}>删除</button>
                         </>
-                      ) : (
-                        <button onClick={() => delDept(n.id)}>删除</button>
                       )}
                     </td>
                   </tr>
-                ));
+                  );
+                });
               })()}
               {orgList.length === 0 && <tr><td colSpan={6}>暂无数据</td></tr>}
             </tbody>
