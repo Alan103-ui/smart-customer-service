@@ -1,43 +1,5 @@
 [
   {
-    "id": "faq_001",
-    "question": "财务管理原则是什么？",
-    "answer": "<p>按部门统一归口，分级授权审批相结合的原则，实行预算管理。</p>",
-    "keywords": [
-      "管理原则",
-      "财务管理",
-      "预算管理"
-    ],
-    "intent": "custom",
-    "category": "财务类",
-    "attachments": [
-      {
-        "id": "6d022825-dc26-4bbc-bec3-03f0f4d45ffb",
-        "filename": "1781679862757-687561374.png",
-        "originalName": "设备购买时间.png",
-        "size": 37076,
-        "mimeType": "image/png",
-        "uploadedAt": "2026-06-17T07:04:22.759Z"
-      },
-      {
-        "id": "7507d84a-fb30-4f34-80f2-b818db7e2b0e",
-        "filename": "1781686066284-406469726.txt",
-        "originalName": "test-upload.txt",
-        "size": 19,
-        "mimeType": "text/plain",
-        "uploadedAt": "2026-06-17T08:47:46.290Z"
-      },
-      {
-        "id": "f0b06b57-d608-4874-bcba-3e405bce0e30",
-        "filename": "1782094831759-130123380.txt",
-        "originalName": "test-attachment.txt",
-        "size": 19,
-        "mimeType": "text/plain",
-        "uploadedAt": "2026-06-22T02:20:31.762Z"
-      }
-    ]
-  },
-  {
     "id": "faq_002",
     "question": "费用报销的会计确认要求是什么？",
     "answer": "享受通讯费、交通费补贴职员按月报销或发放、其他费用报销或提供计提依据（包括但不限于合同或协议等）时间不超过费用发生当季末，跨年度报销费用最晚不超过下一年度3月底。",
@@ -59,18 +21,6 @@
       "预算核查",
       "单据审核",
       "合同管理"
-    ],
-    "intent": "custom",
-    "category": "财务类"
-  },
-  {
-    "id": "faq_004",
-    "question": "公司月结费用报销如何审批？",
-    "answer": "公司规定的可月结的费用报销的，各费用承担部门确认后，审核无误即可报销。",
-    "keywords": [
-      "月结",
-      "费用报销",
-      "审批流程"
     ],
     "intent": "custom",
     "category": "财务类"

@@ -96,7 +96,7 @@ export default function DataStatistics({ onBack }: DataStatisticsProps) {
 
   useEffect(() => {
     fetchStats();
-    const timer = setInterval(() => { fetchStats(); }, 30000); // 30秒刷新一次
+    const timer = setInterval(() => { fetchStats(); }, 60000); // 60秒刷新一次
     return () => clearInterval(timer);
   }, []);
 

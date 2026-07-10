@@ -316,6 +316,15 @@
   justify-content: flex-end;
 }
 
+.message-sender-modern {
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+.message-bubble-modern.user .message-sender-modern {
+  color: rgba(255, 255, 255, 0.95);
+}
+
 .message-intent-modern,
 .message-fallback-modern {
   padding: 2px 8px;

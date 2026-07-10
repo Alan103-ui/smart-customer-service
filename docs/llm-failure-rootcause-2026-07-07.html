@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>广康AI客服 · LLM 成功率 53% 排查与修复报告</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "PingFang SC","Microsoft YaHei",-apple-system,Segoe UI,sans-serif; background: #f4f6fa; color: #1f2937; line-height: 1.6; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 32px 24px 56px; }
+  header { background: linear-gradient(135deg,#1f3a5f,#2c5282); color:#fff; border-radius: 14px; padding: 26px 30px; margin-bottom: 24px; }
+  header h1 { margin: 0 0 6px; font-size: 22px; }
+  header p { margin: 0; opacity: .85; font-size: 14px; }
+  .badges { margin-top: 14px; display:flex; gap:10px; flex-wrap:wrap; }
+  .badge { background: rgba(255,255,255,.15); padding:5px 12px; border-radius: 20px; font-size:13px; }
+  .badge.ok { background: #27ae60; }
+  section { background:#fff; border-radius: 12px; padding: 20px 24px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  h2 { font-size: 17px; margin: 0 0 12px; color:#1f3a5f; border-left: 4px solid #2c5282; padding-left: 10px; }
+  h3 { font-size: 15px; margin: 16px 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; }
+  th { background: #f0f4f8; }
+  code { background:#f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 12.5px; color:#b91c1c; }
+  .ok { color:#27ae60; font-weight: 600; }
+  .bad { color:#e74c3c; font-weight: 600; }
+  .warn { color:#e67e22; font-weight: 600; }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 5px 0; }
+  .pill { display:inline-block; padding:2px 9px; border-radius: 10px; font-size:12px; font-weight:600; }
+  .pill.a { background:#fde8e8; color:#c0392b; }
+  .pill.b { background:#fff4e0; color:#b9770e; }
+  .pill.c { background:#e8f8ef; color:#1e8449; }
+  footer { text-align:center; color:#94a3b8; font-size:12px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🔍 广康 AI 客服 · LLM 成功率 53% 排查与修复报告</h1>
+    <p>时间：2026-07-07 ｜ 服务：localhost:3001 ｜ 模型：qwen2.5:14b @ 172.17.6.18:11434</p>
+    <div class="badges">
+      <span class="badge ok">✅ 根因已定位</span>
+      <span class="badge ok">✅ 修复已落地</span>
+      <span class="badge ok">✅ 已验证</span>
+      <span class="badge">已提交 Git e425f7e</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>一、现象</h2>
+    <p>性能监控页显示 <span class="bad">LLM 成功率约 53%</span>（部分时段告警），告警来源为 <code>model-performance.json</code> 中 <code>llm.successRate</code>。但真实对话时而"看起来还能用"，监控数字与实际体验存在明显矛盾。</p>
+  </section>
+
+  <section>
+    <h2>二、根因分析（两层）</h2>
+
+    <h3><span class="pill a">根因 ①</span> 监控指标失真 —— 导致"显示 53%"的直接原因</h3>
+    <ul>
+      <li>健康检查函数 <code>checkOllamaHealth()</code> 探测的是 <code>/api/show</code>（模型<strong>元数据</strong>接口），返回 200 即记为 success，<strong>从不触发真实推理</strong>。</li>
+      <li>历史上曾有 <strong>306 次</strong> <code>/api/show</code> 返回 <code>404</code>（早期 Ollama 配置/版本问题），这些失败被<strong>永久累计</strong>进 <code>model-performance.json</code>，把整体成功率钉在 53%。</li>
+      <li>近期 <code>/api/show</code> 已恢复正常（200），所以近期探测全是 success，但<strong>累计值被历史 404 污染</strong>，前端仍展示 53%。</li>
+      <li>结论：这个 53% 反映的只是历史 <code>/api/show</code> 可达性，<strong>根本不反映真实对话中 LLM 的推理可用性</strong>。</li>
+    </ul>
+
+    <h3><span class="pill b">根因 ②</span> 真实推理冷启动 —— 隐藏的真正隐患</h3>
+    <ul>
+      <li>实测 <code>/api/ps</code> 返回 <code>{"models":[]}</code>：<strong>qwen2.5:14b（9.46GB）根本没有被常驻在显存</strong>，Ollama 默认 <code>keep_alive=5min</code>，空闲即卸载。</li>
+      <li>一次真实 <code>/api/chat</code> 冷加载实测：<code>load_duration = 26.1s</code>，逼近 <code>ollama-client</code> 的 60s 超时上限，<strong>首问体验极差且存在超时风险</strong>。</li>
+      <li>而健康检查用 <code>/api/show</code> 永远不加载模型、永远 6-7ms 成功，<strong>监控完全发现不了冷启动问题</strong>——这正是"监控说失败率高、但对话有时又能用"的矛盾来源。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>三、关键证据（实测）</h2>
+    <table>
+      <tr><th>检查项</th><th>实测结果</th><th>说明</th></tr>
+      <tr><td>健康检查探测路径</td><td><code>/api/show</code></td><td>只查元数据，不推理 → 假成功</td></tr>
+      <tr><td>历史失败计数</td><td class="bad">failed=306, error="状态码: 404"</td><td>早期 /api/show 不可用，累计污染</td></tr>
+      <tr><td>模型常驻状态</td><td class="bad"><code>/api/ps</code> = 空</td><td>qwen2.5:14b 未常驻显存</td></tr>
+      <tr><td>冷加载耗时</td><td class="warn">load_duration = 26.1s</td><td>首次请求需重新加载模型</td></tr>
+      <tr><td>模型常驻后延迟</td><td class="ok">/v1/chat/completions = 1.88s</td><td>模型在显存时推理正常</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>四、已落地修复（✅）</h2>
+    <ul>
+      <li><span class="pill c">修复A</span> <strong>消除冷启动</strong>：在 <code>ollama-client.js</code> 的 <code>callOllamaChat</code> / <code>callOllamaGenerate</code> 请求体加入 <code>keep_alive: '10m'</code>，每次对话续命模型，使其常驻显存，首问从 26s → ~2s。</li>
+      <li><span class="pill c">修复B</span> <strong>修复监控盲区</strong>：<code>checkOllamaHealth()</code> 对 LLM 改为<strong>真实 <code>/api/chat</code> 推理探测</strong>（≤2 token，带 <code>keep_alive</code>，超时放宽至 60s），让成功率真正反映推理可用性；embed/rerank 保持轻量探测。该探测本身也持续续命模型，双保险。</li>
+      <li><span class="pill c">修复C</span> <strong>清除历史污染</strong>：重置 <code>model-performance.json</code> 的 <code>llm</code> 段，让仪表盘回到真实水平。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>五、验证结果（✅）</h2>
+    <table>
+      <tr><th>验证项</th><th>结果</th></tr>
+      <tr><td>服务重启后健康检查日志</td><td class="ok">嵌入 ✅ ｜ LLM(qwen2.5:14b) ✅（真实 /api/chat 探测）｜ Rerank ✅</td></tr>
+      <tr><td>模型常驻显存</td><td class="ok"><code>/api/ps</code> 显示 qwen2.5:14b <code>size_vram=9.46GB</code></td></tr>
+      <tr><td>真实推理延迟</td><td class="ok">/v1/chat/completions HTTP 200，~2s 返回</td></tr>
+      <tr><td>历史 404 污染</td><td class="ok">已清除，成功率重置为初始</td></tr>
+      <tr><td>代码已提交</td><td class="ok">Git <code>e425f7e</code> 已 push 至 master</td></tr>
+    </table>
+    <p class="warn">注：重启后首次健康检查因冷加载出现一次 27s 响应时间告警（一次性），之后模型常驻，单次探测回落到 ~2s，告警不再触发。</p>
+  </section>
+
+  <section>
+    <h2>六、后续建议（可选）</h2>
+    <ul>
+      <li>性能告警阈值对 LLM 仍按 5000ms 判定，建议区分"冷加载首次"与"真实超时"，避免重启初期误报。</li>
+      <li>embed/rerank 模型若也出现冷启动，可同样加 <code>keep_alive</code>（当前 embed 走专用端点，建议后续统一处理）。</li>
+      <li>若显存紧张（RTX 5000 16GB 已占 ~11.8GB），可评估把 <code>keep_alive</code> 调为 <code>5m</code> 平衡内存，或常驻优先保证 LLM。</li>
+      <li>对话流程已有 LLM 失败降级（返回 FAQ 原文 + 转人工提示），建议补充短超时重试一次，进一步抗抖动。</li>
+    </ul>
+  </section>
+
+  <footer>本报告由排查过程自动生成 · 广康集团 AI 智能客服系统</footer>
+</div>
+</body>
+</html>

@@ -5,7 +5,35 @@
     "roleKey": "admin",
     "categoryId": null,
     "categoryName": "全部",
-    "permissions": ["faq:read", "faq:write", "faq:delete", "category:manage", "personnel:manage", "org:manage", "permission:manage", "a8:config"],
+    "permissions": [
+      "faq:read",
+      "faq:write",
+      "faq:delete",
+      "category:manage",
+      "personnel:manage",
+      "org:manage",
+      "permission:manage",
+      "a8:config",
+      "chat:access",
+      "user:manage",
+      "rag:manage",
+      "rag:test",
+      "rag:eval",
+      "vector:rebuild",
+      "rewrite:manage",
+      "intent:manage",
+      "conversation:view",
+      "conversation:delete",
+      "memory:view",
+      "stats:view",
+      "feedback:view",
+      "log:view",
+      "log:clean",
+      "oa:manage",
+      "oa:sso",
+      "upload:manage",
+      "model:manage"
+    ],
     "isSystem": true,
     "createdAt": "2026-06-10T00:00:00.000Z",
     "updatedAt": "2026-06-10T00:00:00.000Z"
@@ -16,7 +44,10 @@
     "roleKey": "agent",
     "categoryId": null,
     "categoryName": "全部",
-    "permissions": ["faq:read", "faq:write"],
+    "permissions": [
+      "faq:read",
+      "faq:write"
+    ],
     "isSystem": false,
     "createdAt": "2026-06-10T00:00:00.000Z",
     "updatedAt": "2026-06-10T00:00:00.000Z"
@@ -27,7 +58,9 @@
     "roleKey": "user",
     "categoryId": null,
     "categoryName": "全部",
-    "permissions": ["chat:access"],
+    "permissions": [
+      "chat:access"
+    ],
     "isSystem": false,
     "createdAt": "2026-06-10T01:50:00.000Z",
     "updatedAt": "2026-06-10T01:50:00.000Z"
