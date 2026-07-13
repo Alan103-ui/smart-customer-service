@@ -556,6 +556,50 @@ router.delete('/faq/:id', (req, res) => {
   }
 });
 
+// 读取文本文件并按编码解码：优先 UTF-8（严格），失败回退 GBK/GB18030（兼容 Windows ANSI 中文文档），最后兜底 utf8
+function readTextWithEncoding(filePath) {
+  const buf = fs.readFileSync(filePath);
+  try {
+    // 严格 UTF-8：含非法序列则抛错，转入 GBK 分支
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+  } catch (e) {
+    try {
+      return new TextDecoder('gbk').decode(buf);
+    } catch (e2) {
+      return buf.toString('utf8');
+    }
+  }
+}
+
+// 无显式 Q/A 标记的纯文本：按段落（连续非空行）切分为多条 FAQ，便于检索
+function splitDocToFaq(text) {
+  const lines = text.split(/\r?\n/);
+  const paras = [];
+  let cur = [];
+  for (const ln of lines) {
+    if (ln.trim() === '') {
+      if (cur.length) { paras.push(cur.join('\n').trim()); cur = []; }
+    } else {
+      cur.push(ln.trim());
+    }
+  }
+  if (cur.length) paras.push(cur.join('\n').trim());
+
+  const out = [];
+  for (let p of paras) {
+    if (p.length < 4) continue; // 过滤过短噪声
+    const m = p.match(/^(.*[？?])\s*([\s\S]+)$/); // 含问号则按问号拆成 问题/答案
+    if (m && m[2].trim()) {
+      out.push({ question: m[1].trim().slice(0, 200), answer: m[2].trim().slice(0, 2000) });
+    } else {
+      const firstSentence = p.split(/[。！\n]/)[0].trim();
+      const q = firstSentence.length > 80 ? firstSentence.slice(0, 80) + '…' : firstSentence;
+      out.push({ question: q, answer: p.slice(0, 2000) });
+    }
+  }
+  return out;
+}
+
 // FAQ 文件上传 + 自动提取
 router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (req, res) => {
   console.log('[UPLOAD] body=', JSON.stringify(req.body), 'query.category=', req.query.category);
@@ -568,7 +612,7 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
 
     try {
       if (ext === '.txt' || ext === '.md') {
-        text = fs.readFileSync(filePath, 'utf8');
+        text = readTextWithEncoding(filePath);
       } else if (ext === '.pdf') {
         try {
           const pdfParse = require('pdf-parse');
@@ -576,7 +620,7 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
           const pdfData = await pdfParse(dataBuffer);
           text = pdfData.text;
         } catch (e) {
-          text = fs.readFileSync(filePath, 'utf8');
+          text = readTextWithEncoding(filePath);
         }
       } else if (ext === '.docx' || ext === '.doc') {
         try {
@@ -584,7 +628,7 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
           const result = await mammoth.extractRawText({ path: filePath });
           text = result.value;
         } catch (e) {
-          text = fs.readFileSync(filePath, 'utf8');
+          text = readTextWithEncoding(filePath);
         }
       } else if (ext === '.xlsx' || ext === '.xls') {
         try {
@@ -598,7 +642,7 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
           }
           text = sheets.join('\n\n');
         } catch (e) {
-          text = fs.readFileSync(filePath, 'utf8');
+          text = readTextWithEncoding(filePath);
         }
       } else {
         fs.unlinkSync(filePath);
@@ -633,9 +677,15 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
     }
     if (currentQ && currentA) extracted.push({ question: currentQ, answer: currentA, category: uploadCategory || '其他', keywords: [] });
 
-    // 如果没提取到，就把整个文本作为一个 FAQ
+    // 如果没识别到 Q/A 对，则按段落切分为多条 FAQ（避免整篇塞进一条）
     if (extracted.length === 0 && text.trim()) {
-      extracted.push({ question: originalName, answer: text.trim().slice(0, 2000), category: uploadCategory || '其他', keywords: [] });
+      const blocks = splitDocToFaq(text.trim());
+      if (blocks.length > 0) {
+        extracted.push(...blocks.map(b => ({ question: b.question, answer: b.answer, category: uploadCategory || '其他', keywords: [] })));
+      } else {
+        // 极端情况：文本非空但无法切分，仍保留一条
+        extracted.push({ question: originalName, answer: text.trim().slice(0, 2000), category: uploadCategory || '其他', keywords: [] });
+      }
     }
 
     const list = getFAQ();
