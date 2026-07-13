@@ -354,7 +354,10 @@ export default function BasicInfoManagement() {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('originalName', file.name);
-      const res = await fetch(API + '/upload-media', { method: 'POST', headers: getAuthHeaders(), body: fd });
+      const headers: Record<string, string> = {};
+      const token = localStorage.getItem('cs_token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(API + '/upload-media', { method: 'POST', headers, body: fd });
       const r = await res.json();
       if (r.success && r.url) {
         setSoftware((s: any) => ({ ...s, [field]: r.url }));
@@ -362,8 +365,8 @@ export default function BasicInfoManagement() {
       } else {
         setSoftwareMsg('上传失败：' + (r.error || ''));
       }
-    } catch (e) {
-      setSoftwareMsg('上传异常：' + String(e));
+    } catch (e: any) {
+      setSoftwareMsg('上传异常：' + (e?.message || String(e)));
     } finally {
       setUploadingImg('');
     }

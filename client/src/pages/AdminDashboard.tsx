@@ -664,11 +664,16 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     let url = `${API_BASE}/faq/upload`;
     if (uploadCategory) url += `?category=${encodeURIComponent(uploadCategory)}`;
     try {
-      const res = await fetch(url, { method: 'POST', headers: getAuthHeaders({}), body: formData });
+      // 上传 FormData 必须让浏览器自动设置 Content-Type（multipart/form-data; boundary=...），
+      // 不能带 application/json，否则后端 body-parser 会按 JSON 解析 multipart body 报错。
+      const headers: Record<string, string> = {};
+      const token = localStorage.getItem('cs_token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(url, { method: 'POST', headers, body: formData });
       const data = await res.json();
       if (data.success) { alert(`文件解析完成！新增 ${data.added} 条 FAQ，当前共 ${data.total} 条。`); fetchFAQ(); }
       else alert('上传失败：' + (data.error || '未知错误'));
-    } catch (err) { alert('上传失败，请检查文件格式（支持 .txt/.md/.pdf/.doc/.docx/.xls/.xlsx）'); }
+    } catch (err: any) { alert('上传失败：' + (err?.message || '网络或解析异常，请重试')); }
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -1606,17 +1611,22 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                   const formData = new FormData();
                   for (const file of files) formData.append('files', file);
                   try {
+                    const headers: Record<string, string> = {};
+                    const token = localStorage.getItem('cs_token');
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
                     const res = await fetch(`${API_BASE}/faq/${editingFaq?.id || faqForm.id}/attachments`, {
                       method: 'POST',
-                      headers: getAuthHeaders({}),
+                      headers,
                       body: formData
                     });
                     const data = await res.json();
                     if (data.success) {
                       setFaqForm(f => ({ ...f, attachments: data.attachments }));
                       alert(`成功上传${data.attachments.length}个附件`);
+                    } else {
+                      alert('上传失败：' + (data.error || '未知错误'));
                     }
-                  } catch (err: any) { alert('上传失败：' + err.message); }
+                  } catch (err: any) { alert('上传失败：' + (err?.message || '网络或解析异常，请重试')); }
                 }}
                 style={{ marginTop: 8 }}
               />

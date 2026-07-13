@@ -1518,6 +1518,18 @@ app.get('*', (req, res, next) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// 全局错误处理：把 body-parser / 同步异常转为 JSON，避免返回 HTML 错误页导致前端 catch 到固定文案
+app.use((err, req, res, next) => {
+  console.error('[Global Error]', err.stack || err.message || err);
+  if (err instanceof SyntaxError && 'body' in err) {
+    return res.status(400).json({ success: false, error: '请求体格式错误，请检查 Content-Type 是否与 body 匹配：' + err.message });
+  }
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ success: false, error: '文件过大，单文件上限 10MB' });
+  }
+  res.status(err.status || err.statusCode || 500).json({ success: false, error: err.message || '服务器内部错误' });
+});
+
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, '0.0.0.0', async () => {
   console.log(`🤖 ${loadSoftwareInfo().softwareName}后端服务启动成功！`);

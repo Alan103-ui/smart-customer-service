@@ -137,13 +137,48 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => cb(null, 'upload_' + Date.now() + '_' + Math.round(Math.random() * 1E9) + path.extname(file.originalname))
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.txt', '.md', '.pdf', '.doc', '.docx', '.xls', '.xlsx'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error(`不支持的文件格式：${ext || file.originalname}，仅支持 .txt/.md/.pdf/.doc/.docx/.xls/.xlsx`));
+  }
+});
+
+// multer 错误统一转为 JSON（避免 Express 默认返回 HTML 错误页导致前端 catch 到固定文案）
+function uploadSingleWithErrorHandler(uploader, fieldName) {
+  return (req, res, next) => {
+    uploader.single(fieldName)(req, res, (err) => {
+      if (err) {
+        console.error('[UPLOAD] multer error:', err.message, err.code);
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          const limitMB = Math.round((err.limits?.fileSize || 10 * 1024 * 1024) / 1024 / 1024);
+          return res.status(400).json({ success: false, error: `文件过大，单文件上限 ${limitMB}MB` });
+        }
+        return res.status(400).json({ success: false, error: err.message });
+      }
+      next();
+    });
+  };
+}
 
 const mediaStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => cb(null, 'media_' + Date.now() + '_' + Math.round(Math.random() * 1E9) + path.extname(file.originalname))
 });
-const uploadMedia = multer({ storage: mediaStorage });
+const uploadMedia = multer({
+  storage: mediaStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext) || file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('仅支持图片格式（jpg/png/gif/webp/bmp）'));
+  }
+});
 
 // ============ 认证中间件 ============
 // 所有管理后台路由都需要认证 + 管理员权限
@@ -522,7 +557,7 @@ router.delete('/faq/:id', (req, res) => {
 });
 
 // FAQ 文件上传 + 自动提取
-router.post('/faq/upload', upload.single('file'), async (req, res) => {
+router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (req, res) => {
   console.log('[UPLOAD] body=', JSON.stringify(req.body), 'query.category=', req.query.category);
   try {
     if (!req.file) return res.status(400).json({ error: '请上传文件' });
@@ -869,7 +904,7 @@ router.delete('/uploads/:filename', (req, res) => {
 });
 
 // 图片/附件上传（供 FAQ 答案插入图片/链接使用）
-router.post('/upload-media', uploadMedia.single('file'), (req, res) => {
+router.post('/upload-media', uploadSingleWithErrorHandler(uploadMedia, 'file'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '未收到文件' });
     const file = req.file;

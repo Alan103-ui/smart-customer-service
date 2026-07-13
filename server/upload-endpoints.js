@@ -35,6 +35,22 @@ const uploadFaqAttachment = multer({
   }
 });
 
+// multer 错误统一转为 JSON（避免 Express 默认返回 HTML 错误页）
+function uploadArrayWithErrorHandler(mw, maxCount) {
+  return (req, res, next) => {
+    mw.array('files', maxCount)(req, res, (err) => {
+      if (err) {
+        console.error('[UPLOAD] attachment multer error:', err.message, err.code);
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ success: false, error: '文件过大，单文件上限 10MB' });
+        }
+        return res.status(400).json({ success: false, error: err.message });
+      }
+      next();
+    });
+  };
+}
+
 // ============ 富文本编辑器图片上传配置 ============
 const editorImageStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, EDITOR_IMAGE_DIR),
@@ -86,7 +102,7 @@ router.post('/upload/editor-image', uploadEditorImage.single('file'), (req, res)
  * POST /api/admin/faq/:id/attachments
  * 支持多文件上传（最多5个）
  */
-router.post('/faq/:id/attachments', uploadFaqAttachment.array('files', 5), (req, res) => {
+router.post('/faq/:id/attachments', uploadArrayWithErrorHandler(uploadFaqAttachment, 5), (req, res) => {
   try {
     const faqId = req.params.id;
     const faqList = getFAQ();
