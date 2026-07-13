@@ -345,7 +345,8 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const fetchFAQ = async () => {
     setFaqLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/faq`, { headers: getAuthHeaders() });
+      // 拉取全部 FAQ（列表无分页控件，默认 pageSize=10 会导致第 11 条起不可见）
+      const res = await fetch(`${API_BASE}/faq?pageSize=10000`, { headers: getAuthHeaders() });
       const json = await res.json();
       // API 返回 {success, data} 格式，需要解包取 data 数组
       setFaqList(Array.isArray(json) ? json : (json.data || []));
