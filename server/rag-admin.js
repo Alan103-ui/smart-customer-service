@@ -556,6 +556,8 @@ router.delete('/faq/:id', (req, res) => {
   }
 });
 
+
+
 // 读取文本文件并按编码解码：优先 UTF-8（严格），失败回退 GBK/GB18030（兼容 Windows ANSI 中文文档），最后兜底 utf8
 function readTextWithEncoding(filePath) {
   const buf = fs.readFileSync(filePath);
