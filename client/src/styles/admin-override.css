@@ -717,3 +717,29 @@
     padding: 20px;
   }
 }
+
+/* ============ FAQ 分页控件 ============ */
+.faq-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-top: 1px solid #f0f0f0;
+}
+.faq-page-info {
+  font-size: 13px;
+  color: #666;
+}
+.faq-page-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #666;
+}
+.faq-page-ctrl .btn-sm {
+  min-width: 64px;
+}

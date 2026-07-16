@@ -571,33 +571,78 @@ function readTextWithEncoding(filePath) {
   }
 }
 
-// 无显式 Q/A 标记的纯文本：按段落（连续非空行）切分为多条 FAQ，便于检索
-function splitDocToFaq(text) {
-  const lines = text.split(/\r?\n/);
-  const paras = [];
-  let cur = [];
-  for (const ln of lines) {
-    if (ln.trim() === '') {
-      if (cur.length) { paras.push(cur.join('\n').trim()); cur = []; }
-    } else {
-      cur.push(ln.trim());
-    }
-  }
-  if (cur.length) paras.push(cur.join('\n').trim());
+// 无显式 Q/A 标记时，按文档结构智能拆分为多条 FAQ：
+//  - 编号条目：1. / 2、 / 一、 / 二) 等（编号后的文本作为「问题」，后续内容作为「答案」）
+//  - 标题层级：# / ## / 【标题】 等（标题作为「问题」，后续内容作为「答案」）
+//  - 普通段落：以问号结尾的行拆为 问题/答案；无问号则首句作问题、整段作答案
+//  - 空行：普通段落模式作为分隔（每条段落一条）；编号/标题条目内保留为答案换行
+// 将文档按结构智能拆分为多条 FAQ，统一识别以下「块起始」信号：
+//  - 显式 Q/A 标记：问：/答：/问题：/答案：/Q:/A:（答：行给当前块设答案，不开启新块）
+//  - 编号条目：1. / 2、 / 一、 / 二) 等（编号后文本作「问题」，后续作「答案」）
+//  - 标题层级：# / ## / 【标题】 / - 要点 等（标题作「问题」，后续作「答案」）
+//  - 含问号的普通行：问号前作「问题」，问号后作「答案」，并开启新块
+//  - 其余普通行：续接到当前块「答案」
+//  - 空行：普通段落模式作为分隔；编号/标题块内保留为答案换行
+function parseDocToFAQ(text, category) {
+  const reQ = /^(Q|q|问题|问)[:：\s]/;
+  const reA = /^(A|a|答案|答)[:：\s]/;
+  const reNum = /^(\d{1,3}|[一二三四五六七八九十百千零]+)[.、)）\s]+/;
+  const reTitle = /^#{1,6}\s+/;
+  const reBracketTitle = /^[【\[][^】\]]+[】\]]$/;
+  const reBullet = /^[-•*·]\s+/;
+  const hasQmark = (s) => /[？?]/.test(s);
+
+  const firstSentence = (s) => {
+    const f = s.split(/[。！？\?!；;]/)[0].trim();
+    return f.length > 80 ? f.slice(0, 80) + '…' : f;
+  };
 
   const out = [];
-  for (let p of paras) {
-    if (p.length < 4) continue; // 过滤过短噪声
-    const m = p.match(/^(.*[？?])\s*([\s\S]+)$/); // 含问号则按问号拆成 问题/答案
-    if (m && m[2].trim()) {
-      out.push({ question: m[1].trim().slice(0, 200), answer: m[2].trim().slice(0, 2000) });
+  let cur = null;
+
+  const flush = () => {
+    if (!cur) return;
+    const q = (cur.q || '').trim();
+    const a = (cur.a || '').trim();
+    if (a) {
+      out.push({ question: (q || firstSentence(a)).slice(0, 200), answer: a.slice(0, 2000) });
+    } else if (q && cur.kind !== 'title' && cur.kind !== 'bracket') {
+      // 编号/要点/含问号行等无独立答案时，自身文本作为答案保留
+      out.push({ question: q.slice(0, 200), answer: q.slice(0, 2000) });
+    }
+    // 纯标题（#/##/【】）无正文则丢弃，避免无意义自指条目
+    cur = null;
+  };
+
+  for (const raw of text.split(/\r?\n/)) {
+    const t = raw.trim();
+    if (t === '') {
+      if (cur && cur.mode === 'para') flush();
+      continue;
+    }
+    if (reA.test(t)) {
+      if (!cur) cur = { q: '', a: '', mode: 'item', kind: 'qa' };
+      const ans = t.replace(reA, '').trim();
+      cur.a = cur.a ? cur.a + '\n' + ans : ans; // 连续多行「答：」追加而非覆盖
+      continue;
+    }
+    if (reQ.test(t)) { flush(); cur = { q: t.replace(reQ, '').trim(), a: '', mode: 'item', kind: 'qa' }; continue; }
+    if (reNum.test(t)) { flush(); cur = { q: t.replace(reNum, '').trim(), a: '', mode: 'item', kind: 'num' }; continue; }
+    if (reTitle.test(t)) { flush(); cur = { q: t.replace(/^#{1,6}\s+/, '').trim(), a: '', mode: 'item', kind: 'title' }; continue; }
+    if (reBracketTitle.test(t)) { flush(); cur = { q: t, a: '', mode: 'item', kind: 'bracket' }; continue; }
+    if (reBullet.test(t)) { flush(); cur = { q: t.replace(reBullet, '').trim(), a: '', mode: 'item', kind: 'bullet' }; continue; }
+    if (hasQmark(t)) {
+      flush();
+      const idx = t.search(/[？?]/);
+      cur = { q: t.slice(0, idx).trim(), a: t.slice(idx + 1).trim(), mode: 'item', kind: 'qmark' };
     } else {
-      const firstSentence = p.split(/[。！\n]/)[0].trim();
-      const q = firstSentence.length > 80 ? firstSentence.slice(0, 80) + '…' : firstSentence;
-      out.push({ question: q, answer: p.slice(0, 2000) });
+      if (!cur) cur = { q: '', a: '', mode: 'para', kind: 'para' };
+      cur.a = cur.a ? cur.a + '\n' + t : t;
     }
   }
-  return out;
+  flush();
+
+  return out.filter(x => x.question && x.answer && (x.question.length >= 2 || x.answer.length >= 4));
 }
 
 // FAQ 文件上传 + 自动提取
@@ -658,36 +703,16 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
                           : null;
     console.log('[UPLOAD] 最终分类 =', uploadCategory);
 
-    // 使用简单规则提取 FAQ
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const extracted = [];
-    let currentQ = null, currentA = null;
-    for (const line of lines) {
-      if (/^(Q|q|问题|问)[:：\s]/.test(line)) {
-        if (currentQ && currentA) extracted.push({ question: currentQ, answer: currentA, category: uploadCategory || '其他', keywords: [] });
-        currentQ = line.replace(/^(Q|q|问题|问)[:：\s]/, '').trim();
-        currentA = null;
-      } else if (/^(A|a|答案|答)[:：\s]/.test(line)) {
-        currentA = line.replace(/^(A|a|答案|答)[:：\s]/, '').trim();
-      } else if (currentA !== null) {
-        currentA += '\n' + line;
-      } else if (currentQ !== null) {
-        currentA = line;
-      }
-    }
-    if (currentQ && currentA) extracted.push({ question: currentQ, answer: currentA, category: uploadCategory || '其他', keywords: [] });
+    // 是否含显式 Q/A 标记（问：/答：/问题：/答案：/Q:/A:）——优先走原显式解析
+    // 统一按文档结构智能拆分为多条 FAQ（显式 Q/A、编号条目、标题层级、含问号段落均支持）
+    const extracted = parseDocToFAQ(text.trim(), uploadCategory || '其他').map(b => ({
+      question: b.question, answer: b.answer, category: uploadCategory || '其他', keywords: []
+    }));
 
-    // 如果没识别到 Q/A 对，则按段落切分为多条 FAQ（避免整篇塞进一条）
+    // 极端情况兜底：文本非空但未能切分，仍保留一条
     if (extracted.length === 0 && text.trim()) {
-      const blocks = splitDocToFaq(text.trim());
-      if (blocks.length > 0) {
-        extracted.push(...blocks.map(b => ({ question: b.question, answer: b.answer, category: uploadCategory || '其他', keywords: [] })));
-      } else {
-        // 极端情况：文本非空但无法切分，仍保留一条
-        extracted.push({ question: originalName, answer: text.trim().slice(0, 2000), category: uploadCategory || '其他', keywords: [] });
-      }
+      extracted.push({ question: originalName, answer: text.trim().slice(0, 2000), category: uploadCategory || '其他', keywords: [] });
     }
-
     const list = getFAQ();
     let added = 0;
     for (const item of extracted) {

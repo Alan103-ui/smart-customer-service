@@ -50,3 +50,9 @@ coverage/
 # ============ Jest ============
 <EMAIL>/
 data/
+# 保留系统启动必需的种子/配置（其余 data/*.json 为运行时数据，不入库，避免 checkout 回退用户数据）
+!data/users.json
+!data/permissions.json
+!data/categories.json
+!data/knowledge_bases.json
+!data/a8_config.json

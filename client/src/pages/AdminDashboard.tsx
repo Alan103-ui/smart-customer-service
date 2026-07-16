@@ -305,6 +305,11 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const [uploadLevel1Cat, setUploadLevel1Cat] = useState<string>('');
   const [faqFilterCategory, setFaqFilterCategory] = useState<string>('');
   const [faqSearchKeyword, setFaqSearchKeyword] = useState<string>('');
+  // FAQ 分页状态
+  const [faqPage, setFaqPage] = useState(1);
+  const [faqPageSize, setFaqPageSize] = useState(10);
+  const [faqTotal, setFaqTotal] = useState(0);
+  const faqSearchTimer = useRef<any>(null);
   const [selectedFaqIds, setSelectedFaqIds] = useState<Set<string>>(new Set());
   const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>({});
   const resizingRef = useRef<{ colKey: string; startX: number; startWidth: number } | null>(null);
@@ -341,15 +346,25 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     setCatLoading(false);
   };
 
-  // FAQ 数据获取
-  const fetchFAQ = async () => {
+  // FAQ 数据获取（后端真实分页 + 搜索/分类过滤）
+  const fetchFAQ = async (opts: { page?: number; pageSize?: number; search?: string; category?: string } = {}) => {
     setFaqLoading(true);
+    const p = opts.page ?? faqPage;
+    const ps = opts.pageSize ?? faqPageSize;
+    const kw = opts.search ?? faqSearchKeyword;
+    const cat = opts.category ?? faqFilterCategory;
+    const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+    if (kw.trim()) params.set('search', kw.trim());
+    if (cat) params.set('category', cat);
     try {
-      // 拉取全部 FAQ（列表无分页控件，默认 pageSize=10 会导致第 11 条起不可见）
-      const res = await fetch(`${API_BASE}/faq?pageSize=10000`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/faq?${params.toString()}`, { headers: getAuthHeaders() });
       const json = await res.json();
-      // API 返回 {success, data} 格式，需要解包取 data 数组
-      setFaqList(Array.isArray(json) ? json : (json.data || []));
+      // API 返回 {success, data, total} 格式
+      const data = Array.isArray(json) ? json : (json.data || []);
+      setFaqList(data);
+      setFaqTotal(typeof json.total === 'number' ? json.total : data.length);
+      setFaqPage(p);
+      setFaqPageSize(ps);
     } catch (err) { console.error('获取 FAQ 失败', err); }
     setFaqLoading(false);
   };
@@ -528,21 +543,6 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   useEffect(() => {
     if (tab === 'logs' && logView === 'audit') { setAuditOp(''); setAuditOpInput(''); loadAudit(); }
   }, [tab, logView]);
-
-  // FAQ 列表筛选
-  const filteredFaqList = useMemo(() => {
-    let list = faqList;
-    if (faqFilterCategory) list = list.filter(f => f.category === faqFilterCategory);
-    if (faqSearchKeyword.trim()) {
-      const kw = faqSearchKeyword.trim().toLowerCase();
-      list = list.filter(f =>
-        f.question.toLowerCase().includes(kw) ||
-        f.answer.toLowerCase().includes(kw) ||
-        f.keywords.some(k => k.toLowerCase().includes(kw))
-      );
-    }
-    return list;
-  }, [faqList, faqFilterCategory, faqSearchKeyword]);
 
   // ==================== 分类操作 ====================
   const openAddCat = () => {
@@ -869,7 +869,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
               {categories.filter(c => c.parentId === uploadLevel1Cat).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
             </select>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-              <select value={faqFilterCategory} onChange={e => setFaqFilterCategory(e.target.value)} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #d9d9d9' }}>
+              <select value={faqFilterCategory} onChange={e => { setFaqFilterCategory(e.target.value); fetchFAQ({ page: 1, category: e.target.value }); }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #d9d9d9' }}>
                 <option value="">全部分类</option>
                 {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
@@ -877,7 +877,12 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                 type="text"
                 placeholder="搜索问题/答案/关键词..."
                 value={faqSearchKeyword}
-                onChange={e => setFaqSearchKeyword(e.target.value)}
+                onChange={e => {
+                  const v = e.target.value;
+                  setFaqSearchKeyword(v);
+                  if (faqSearchTimer.current) clearTimeout(faqSearchTimer.current);
+                  faqSearchTimer.current = setTimeout(() => fetchFAQ({ page: 1, search: v }), 350);
+                }}
                 style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #d9d9d9', width: 200 }}
               />
             </div>
@@ -927,7 +932,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredFaqList.map((faq, i) => (
+                  {faqList.map((faq, i) => (
                     <tr key={faq.id} className={selectedFaqIds.has(faq.id) ? 'faq-selected' : ''}>
                       <td><input type="checkbox" checked={selectedFaqIds.has(faq.id)} onChange={e => {
                         const next = new Set(selectedFaqIds);
@@ -946,11 +951,28 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                       </td>
                     </tr>
                   ))}
-                  {filteredFaqList.length === 0 && (
+                  {faqList.length === 0 && (
                     <tr><td colSpan={9} className="empty-state">暂无 FAQ 数据，请点击「新增 FAQ」或「批量导入」</td></tr>
                   )}
                 </tbody>
               </table>
+              </div>
+              <div className="faq-pagination">
+                <span className="faq-page-info">共 {faqTotal} 条 · 第 {faqPage} / {Math.max(1, Math.ceil(faqTotal / faqPageSize))} 页</span>
+                <div className="faq-page-ctrl">
+                  <button className="btn-sm" disabled={faqPage <= 1} onClick={() => fetchFAQ({ page: faqPage - 1 })}>上一页</button>
+                  <select value={faqPageSize} onChange={e => fetchFAQ({ page: 1, pageSize: Number(e.target.value) })} style={{ padding: '4px 6px', borderRadius: 6, border: '1px solid #d9d9d9' }}>
+                    {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} 条/页</option>)}
+                  </select>
+                  <button className="btn-sm" disabled={faqPage >= Math.ceil(faqTotal / faqPageSize)} onClick={() => fetchFAQ({ page: faqPage + 1 })}>下一页</button>
+                  <span style={{ marginLeft: 8 }}>跳至
+                    <input
+                      type="number" min={1} max={Math.max(1, Math.ceil(faqTotal / faqPageSize))}
+                      style={{ width: 56, margin: '0 4px', padding: '4px 6px', borderRadius: 6, border: '1px solid #d9d9d9' }}
+                      onKeyDown={e => { if (e.key === 'Enter') { const v = Number((e.target as HTMLInputElement).value); if (v >= 1 && v <= Math.ceil(faqTotal / faqPageSize)) fetchFAQ({ page: v }); } }}
+                    />页
+                  </span>
+                </div>
               </div>
               {selectedFaqIds.size > 0 && (
                 <div style={{ padding: 12, background: '#e6f7ff', borderTop: '1px solid #91d5ff' }}>
