@@ -593,6 +593,7 @@ function parseDocToFAQ(text, category) {
   const reBracketTitle = /^[【\[][^】\]]+[】\]]$/;
   const reBullet = /^[-•*·]\s+/;
   const hasQmark = (s) => /[？?]/.test(s);
+  const hasPunct = (s) => /[。！？！；;？?]/.test(s);
 
   const firstSentence = (s) => {
     const f = s.split(/[。！？\?!；;]/)[0].trim();
@@ -608,28 +609,31 @@ function parseDocToFAQ(text, category) {
     const a = (cur.a || '').trim();
     if (a) {
       out.push({ question: (q || firstSentence(a)).slice(0, 200), answer: a.slice(0, 2000) });
-    } else if (q && cur.kind !== 'title' && cur.kind !== 'bracket') {
-      // 编号/要点/含问号行等无独立答案时，自身文本作为答案保留
-      out.push({ question: q.slice(0, 200), answer: q.slice(0, 2000) });
+    } else if (q) {
+      // 无独立答案时，仅「短标题」（≤12 字且无句末标点/问号）丢弃，避免 Q===A 自指废条：
+      //  - 纯标题（#/##/【】）始终丢弃
+      //  - 编号 + 短标题（如「1 管理职责」「4.1 成本费用」）丢弃
+      //  - 编号 + 长句完整规则（含句末标点）保留；要点（-）即使短也保留（通常是独立规则）
+      const isShortHeading = (cur.kind === 'title' || cur.kind === 'bracket' ||
+        (cur.kind === 'num' && q.length <= 12 && !hasPunct(q)));
+      if (!isShortHeading) {
+        out.push({ question: q.slice(0, 200), answer: q.slice(0, 2000) });
+      }
     }
-    // 纯标题（#/##/【】）无正文则丢弃，避免无意义自指条目
     cur = null;
   };
 
   for (const raw of text.split(/\r?\n/)) {
     const t = raw.trim();
-    if (t === '') {
-      if (cur && cur.mode === 'para') flush();
-      continue;
-    }
+    if (t === '') { flush(); continue; }   // 空行始终结束当前块
     if (reA.test(t)) {
       if (!cur) cur = { q: '', a: '', mode: 'item', kind: 'qa' };
       const ans = t.replace(reA, '').trim();
-      cur.a = cur.a ? cur.a + '\n' + ans : ans; // 连续多行「答：」追加而非覆盖
+      cur.a = cur.a ? cur.a + '\n' + ans : ans;   // 连续多行「答：」追加而非覆盖
       continue;
     }
     if (reQ.test(t)) { flush(); cur = { q: t.replace(reQ, '').trim(), a: '', mode: 'item', kind: 'qa' }; continue; }
-    if (reNum.test(t)) { flush(); cur = { q: t.replace(reNum, '').trim(), a: '', mode: 'item', kind: 'num' }; continue; }
+    if (reNum.test(t)) { flush(); cur = { q: t, a: '', mode: 'item', kind: 'num' }; continue; }
     if (reTitle.test(t)) { flush(); cur = { q: t.replace(/^#{1,6}\s+/, '').trim(), a: '', mode: 'item', kind: 'title' }; continue; }
     if (reBracketTitle.test(t)) { flush(); cur = { q: t, a: '', mode: 'item', kind: 'bracket' }; continue; }
     if (reBullet.test(t)) { flush(); cur = { q: t.replace(reBullet, '').trim(), a: '', mode: 'item', kind: 'bullet' }; continue; }
