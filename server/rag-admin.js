@@ -63,7 +63,7 @@ const {
   getBM25Stats
 } = require('./vector-store');
 
-const { callOllamaChat, callOllamaGenerate } = require('./ollama-client');
+const { callOllamaChat, callOllamaGenerate, callOllamaJSON } = require('./ollama-client');
 
 const {
   understandIntent, batchUnderstandIntents, fallbackIntent, INTENT_TAXONOMY
@@ -692,6 +692,91 @@ function parseDocToFAQ(text, category) {
   );
 }
 
+// ============================================================
+// FAQ 文档解析（混合架构，兼顾「不漏条」与「语义质量」）
+//   1) parseDocToFAQ（正则，确定性）：先保证逐条完整抽取、问答不混同 —— 提取源
+//   2) LLM 批量润色：把每条 question 改写成自然语言问句 + 生成关键词 —— 语义增强
+//   3) LLM 不可用时自动跳过润色，直接返回正则结果（绝不丢条、绝不崩）
+// 设计取舍：纯 LLM 抽取在短文档上召回不稳定（实测同文档 9 条/1 条波动），
+//          故以正则为「完整性」基石，LLM 只做可靠的「质量」增强。
+// ============================================================
+
+// 批量润色提示词：给定若干正则抽取的条目，改写 question 为自然语言、生成关键词
+function buildPolishPrompt(group, category) {
+  const catHint = category && category !== '其他' ? `（文档分类：${category}）` : '';
+  const items = group.map((b, i) =>
+    `[${i}] question: ${b.question}\nanswer: ${b.answer}`
+  ).join('\n\n');
+  return `你是企业FAQ问答润色助手${catHint}。下面是一批从制度文档抽取的FAQ条目（[序号] 为条目id）。
+请为每条做两件事：
+1) 把 question 改写为员工会自然语言提出的问题或条目主题（例如"差旅费的定义是什么""报销时限是多久""借款审批流程是什么"），去除编号前缀（如不要"3.1"），保持简洁（≤30字）
+2) 生成 3-5 个核心检索关键词（如 借款/报销/审批/预算）
+answer 保持不变，不要改写。
+返回 JSON：{"items":[{"id":number,"question":string,"keywords":[string]}]}，只输出 JSON，不要解释。
+条目：
+"""
+${items}
+"""`;
+}
+
+async function parseDocToFAQWithLLM(text, category) {
+  const cleaned = (text || '').trim();
+  if (!cleaned) return [];
+
+  // 1) 确定性正则抽取（完整性基石）
+  const base = parseDocToFAQ(cleaned, category);
+  if (base.length === 0) {
+    return [{ question: cleaned.slice(0, 200).trim(), answer: cleaned.slice(0, 2000), keywords: [] }];
+  }
+
+  // 2) LLM 批量润色（质量增强，失败则保留正则结果）
+  const BATCH = 10;
+  const polished = {};   // id -> {question, keywords}
+  for (let i = 0; i < base.length; i += BATCH) {
+    const group = base.slice(i, i + BATCH);
+    const prompt = buildPolishPrompt(group, category);
+    let parsed = null;
+    try {
+      parsed = await callOllamaJSON(prompt, { temperature: 0, max_tokens: 4096, timeout: 120000 });
+    } catch (e) {
+      console.warn(`[LLM-POLISH] 第 ${Math.floor(i / BATCH) + 1} 批润色失败:`, e.message);
+    }
+    const arr = parsed && Array.isArray(parsed.items) ? parsed.items : [];
+    for (const it of arr) {
+      const id = Number(it.id);
+      if (!Number.isInteger(id) || id < 0 || id >= base.length) continue;
+      const q = (it.question || '').toString().trim();
+      const kw = Array.isArray(it.keywords)
+        ? it.keywords.map(k => k.toString().trim()).filter(Boolean).slice(0, 8)
+        : [];
+      if (q.length >= 2) polished[id] = { question: q.slice(0, 200), keywords: kw };
+    }
+  }
+
+  // 3) 合并：优先用润色结果，缺失则保留正则结果（不删除任何条目，保证完整性）
+  const out = base.map((b, idx) => {
+    const p = polished[idx];
+    return {
+      question: (p && p.question) || b.question,
+      answer: b.answer,
+      keywords: (p && p.keywords && p.keywords.length) ? p.keywords : (b.keywords || [])
+    };
+  });
+
+  // 轻量去重（同问题大小写不敏感）
+  const seen = new Set();
+  const dedup = [];
+  for (const x of out) {
+    const key = x.question.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedup.push(x);
+  }
+
+  console.log(`[LLM-POLISH] 正则提取 ${base.length} 条 → LLM 润色 ${Object.keys(polished).length} 条 → 去重后 ${dedup.length} 条`);
+  return dedup;
+}
+
 // FAQ 文件上传 + 自动提取
 router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (req, res) => {
   console.log('[UPLOAD] body=', JSON.stringify(req.body), 'query.category=', req.query.category);
@@ -750,9 +835,8 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
                           : null;
     console.log('[UPLOAD] 最终分类 =', uploadCategory);
 
-    // 是否含显式 Q/A 标记（问：/答：/问题：/答案：/Q:/A:）——优先走原显式解析
-    // 统一按文档结构智能拆分为多条 FAQ（显式 Q/A、编号条目、标题层级、含问号段落均支持）
-    const extracted = parseDocToFAQ(text.trim(), uploadCategory || '其他').map(b => ({
+    // LLM 语义解析（主方案）：任意格式通吃；LLM 不可用时自动回退正则 parseDocToFAQ
+    const extracted = (await parseDocToFAQWithLLM(text.trim(), uploadCategory || '其他')).map(b => ({
       question: b.question, answer: b.answer, category: uploadCategory || '其他', keywords: b.keywords || []
     }));
 
