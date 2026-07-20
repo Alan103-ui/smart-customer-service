@@ -600,6 +600,17 @@ function parseDocToFAQ(text, category) {
     return f.length > 80 ? f.slice(0, 80) + '…' : f;
   };
 
+  // 去编号/标题/要点前缀后取首分句，作为独立规则行的「问题」（与完整规则区分，避免问答同体）
+  const leadClause = (s) => {
+    const m = s
+      .replace(/^(\d+(\.\d+)*|[一二三四五六七八九十百千零]+)[、)）\s]+/, '')
+      .replace(/^#{1,6}\s+/, '')
+      .replace(/^[-•*·]\s+/, '')
+      .trim();
+    const f = m.split(/[，,：:；;。．.？?！!、]/)[0].trim();
+    return f.length > 80 ? f.slice(0, 80) + '…' : f;
+  };
+
   const out = [];
   let cur = null;
 
@@ -608,16 +619,18 @@ function parseDocToFAQ(text, category) {
     const q = (cur.q || '').trim();
     const a = (cur.a || '').trim();
     if (a) {
-      out.push({ question: (q || firstSentence(a)).slice(0, 200), answer: a.slice(0, 2000) });
+      out.push({ question: (q || leadClause(a)).slice(0, 200), answer: a.slice(0, 2000) });
     } else if (q) {
       // 无独立答案时，仅「短标题」（≤12 字且无句末标点/问号）丢弃，避免 Q===A 自指废条：
       //  - 纯标题（#/##/【】）始终丢弃
       //  - 编号 + 短标题（如「1 管理职责」「4.1 成本费用」）丢弃
       //  - 编号 + 长句完整规则（含句末标点）保留；要点（-）即使短也保留（通常是独立规则）
+      // 保留时问题取「去编号首分句」，答案为完整规则，二者明显不同，避免问答同体
       const isShortHeading = (cur.kind === 'title' || cur.kind === 'bracket' ||
         (cur.kind === 'num' && q.length <= 12 && !hasPunct(q)));
       if (!isShortHeading) {
-        out.push({ question: q.slice(0, 200), answer: q.slice(0, 2000) });
+        const qq = leadClause(q);
+        out.push({ question: (qq || q).slice(0, 200), answer: q.slice(0, 2000) });
       }
     }
     cur = null;
