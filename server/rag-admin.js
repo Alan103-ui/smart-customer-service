@@ -585,152 +585,8 @@ function readTextWithEncoding(filePath) {
 //  - 含问号的普通行：问号前作「问题」，问号后作「答案」，并开启新块
 //  - 其余普通行：续接到当前块「答案」
 //  - 空行：普通段落模式作为分隔；编号/标题块内保留为答案换行
-// 财务/制度类文档常见领域词，用于自动提取关键词
-const FINANCE_TERMS = ['借款','报销','付款','备用金','审批','预算','合同','发票','差旅费','会议费','业务费','办公费','广告费','薪酬','福利','税费','采购','工程','固定资产','OA','ERP','增值税','专用发票','单据','经办人','部门负责人','分管领导','总经理','财务','出纳','稽核','月结','现金','转账','应付款','预付款','押金','备用金借款'];
-
-// ============================================================
-// 预清洗：在正则抽取前剔除高置信噪声行（表格边框/分隔/勾选行、表格单元格行），
-// 目的是净化「审批权限表」之类表格碎片，同时严格「不影响真实规则完整性」——
-// 任何含句末标点/中文句子标志词（的/是/须/应/由/经…）的真实规则都不会被删。
-// ============================================================
-const TABLE_CHECK = new Set(['√', '✓', '×', '✗', '☑', '✅', '✔', '✘', '●', '○', '■', '□', '◻', '▲', '△']);
-const APPROVE_KW = ['审批', '审核', '复核', '核准', '分管', '负责', '总经理', '部门', '权限', '区间', '万元', '以下', '以上'];
-// 真实句子标志词：含这些基本可判定为完整句子而非表格单元格
-const SENT_MARK = /[的是须应由经按需指包含按对于为给向在将可不每各该：，、？?。！；;（）()]/;
-function prefilterText(text) {
-  const lines = (text || '').split(/\r?\n/);
-  const out = [];
-  for (const raw of lines) {
-    const t = raw.trim();
-    if (t === '') { out.push(raw); continue; }
-    // 1) 纯边框/分隔/勾选符行（只含表格线字符）
-    if (/^[\s\u2500-\u257F|+\-=~*·•]+$/.test(t)) continue;
-    // 2) Markdown 表格分隔行 | --- | --- |
-    if (/^\s*\|?[\s:|\-]+\|?\s*$/.test(t)) continue;
-    // 3) 纯勾选符行
-    if (/^[\s√×✓✗●○■□◻✔✘\-]+$/.test(t)) continue;
-    // 4) 含 | 的表格行（≥2 个单元格、无句末标点）
-    if (t.includes('|')) {
-      const cells = t.split('|').map(c => c.trim()).filter(Boolean);
-      if (cells.length >= 2 && !/[。！？；;？?]/.test(t)) continue;
-    }
-    // 5) 空格/制表符分隔的多列短词行（表格数据/表头）：
-    //    段数 ≥3、无句末标点、无真实句子标志词，且（末段为勾选符 或 含审批权限类关键词且各段≤6字）
-    const tokens = t.split(/\s+/).filter(Boolean);
-    if (tokens.length >= 3 && !/[。！？；;？?]/.test(t) && !SENT_MARK.test(t)) {
-      const lastChk = TABLE_CHECK.has(tokens[tokens.length - 1].replace(/^[-]+/, ''));
-      const allShort = tokens.every(tk => tk.replace(/[√×✓✗●○■□◻✔✘\-]/g, '').length <= 6);
-      const hasApprove = tokens.some(tk => APPROVE_KW.some(k => tk.includes(k)));
-      if (lastChk || (hasApprove && allShort)) continue;
-    }
-    out.push(raw);
-  }
-  return out.join('\n');
-}
-
-// 自动提取关键词：书名号引用 + 领域词表命中
-function extractKeywords(q, a) {
-  const text = (q || '') + ' ' + (a || '');
-  const kw = [];
-  const m = text.match(/《([^》]+)》/g);
-  if (m) m.forEach(x => { const w = x.replace(/[《》]/g, '').trim(); if (w && !kw.includes(w)) kw.push(w); });
-  for (const t of FINANCE_TERMS) {
-    if (text.includes(t) && !kw.includes(t)) kw.push(t);
-  }
-  return kw.slice(0, 8);
-}
-
-// 去前缀编号：兼容 1. / 3.1. / 4.1.2. / 3.3分管领导 / 一、 / 二) 等多级写法
-//  - 阿拉伯编号：分隔符可选（允许「3.3分管领导」无空格）
-//  - 中文编号：分隔符必选（避免误剥「一类城市」「三类地区」中的「一/三」）
-const reNumPrefix = /^(\d+(\.\d+)*[.、)）\s]*|[一二三四五六七八九十百千零]+[.、)）\s]+)/;
-const stripNum = (s) => s.replace(reNumPrefix, '').trim();
-
-// 由规则文本派生「问题」：与完整答案明显区分且人类可读
-//  - 定义式（术语：释义，术语≤15字无句末标点）→ 取术语，如「借款、付款」
-//  - 否则取首句（按句末标点截断），过长加省略号
-function deriveQuestion(raw, kind) {
-  let s = stripNum(raw);
-  if (kind === 'title' || kind === 'bracket') {
-    // 纯标题场景：直接作为问题（短标题是否丢弃由调用方 isSectionHeader 决定）
-    return s.length ? s : raw.trim();
-  }
-  // 定义式：X.X. 术语：释义
-  const ci = s.indexOf('：');
-  if (ci > 0 && ci <= 15 && !/[。！？；;]/.test(s.slice(0, ci))) {
-    return s.slice(0, ci).trim();
-  }
-  const first = s.split(/[。！？\?!；;]/)[0].trim();
-  if (first.length >= 4) return first.length > 50 ? first.slice(0, 50) + '…' : first;
-  return s.slice(0, 30);
-}
-
-function parseDocToFAQ(text, category) {
-  const reQ = /^(Q|q|问题|问)[:：\s]/;
-  const reA = /^(A|a|答案|答)[:：\s]/;
-  const reNum = reNumPrefix;
-  const reTitle = /^#{1,6}\s+/;
-  const reBracketTitle = /^[【\[][^】\]]+[】\]]$/;
-  const reBullet = /^[-•*·]\s+/;
-  const hasQmark = (s) => /[？?]/.test(s);
-  const hasSentPunct = (s) => /[。！？！；;？?]/.test(s);
-
-  const out = [];
-  let cur = null;
-
-  const flush = () => {
-    if (!cur) return;
-    const a = (cur.a || '').trim();
-    const qRaw = (cur.q || '').trim();
-    if (a) {
-      // 有独立答案：问题优先用显式 q，否则由答案派生可读标签
-      const q = (qRaw && qRaw.length > 1 ? qRaw : deriveQuestion(a, cur.kind)).slice(0, 200);
-      out.push({ question: q, answer: a.slice(0, 2000) });
-    } else if (qRaw) {
-      // 仅标题/编号行、无正文：章节短标题（≤12字、无句末标点、无「：」）丢弃；
-      // 含实质内容则保留（问题去编号首句，答案为整行）
-      const isSectionHeader = (cur.kind === 'title' || cur.kind === 'bracket' ||
-        (cur.kind === 'num' && qRaw.length <= 12 && !hasSentPunct(qRaw) && !qRaw.includes('：')));
-      if (!isSectionHeader) {
-        const q = deriveQuestion(qRaw, cur.kind);
-        out.push({ question: q.slice(0, 200), answer: qRaw.slice(0, 2000) });
-      }
-    }
-    cur = null;
-  };
-
-  for (const raw of text.split(/\r?\n/)) {
-    const t = raw.trim();
-    if (t === '') { flush(); continue; }   // 空行始终结束当前块
-    if (reA.test(t)) {
-      if (!cur) cur = { q: '', a: '', kind: 'qa' };
-      const ans = t.replace(reA, '').trim();
-      cur.a = cur.a ? cur.a + '\n' + ans : ans;   // 连续多行「答：」追加而非覆盖
-      continue;
-    }
-    if (reQ.test(t)) { flush(); cur = { q: t.replace(reQ, '').trim(), a: '', kind: 'qa' }; continue; }
-    if (reNum.test(t)) { flush(); cur = { q: t, a: '', kind: 'num' }; continue; }
-    if (reTitle.test(t)) { flush(); cur = { q: t.replace(/^#{1,6}\s+/, '').trim(), a: '', kind: 'title' }; continue; }
-    if (reBracketTitle.test(t)) { flush(); cur = { q: t, a: '', kind: 'bracket' }; continue; }
-    if (reBullet.test(t)) { flush(); cur = { q: t.replace(reBullet, '').trim(), a: '', kind: 'bullet' }; continue; }
-    if (hasQmark(t)) {
-      flush();
-      const idx = t.search(/[？?]/);
-      cur = { q: t.slice(0, idx).trim(), a: t.slice(idx + 1).trim(), kind: 'qmark' };
-    } else {
-      if (!cur) cur = { q: '', a: '', kind: 'para' };
-      cur.a = cur.a ? cur.a + '\n' + t : t;
-    }
-  }
-  flush();
-
-  const enriched = out.map(x => ({ ...x, keywords: extractKeywords(x.question, x.answer) }));
-  return enriched.filter(x =>
-    x.question && x.answer &&
-    x.question.trim() !== x.answer.trim() &&           // 丢弃问答同体的表格碎片/自指废条
-    (x.question.length >= 2 || x.answer.length >= 4)
-  );
-}
+// [FAQ 解析函数已迁移至 ./lib/faq-parser.js（faq-doc-parser 模块，领域自适应 + 细分行业 preset + 自动识别），
+//  本文件仅保留生产封装 parseDocToFAQWithLLM，见下方 §FAQ 解析封装。]
 
 // ============================================================
 // FAQ 文档解析（混合架构，兼顾「不漏条」与「语义质量」）
@@ -741,83 +597,18 @@ function parseDocToFAQ(text, category) {
 //          故以正则为「完整性」基石，LLM 只做可靠的「质量」增强。
 // ============================================================
 
-// 批量润色提示词：给定若干正则抽取的条目，改写 question 为自然语言、生成关键词
-function buildPolishPrompt(group, category) {
-  const catHint = category && category !== '其他' ? `（文档分类：${category}）` : '';
-  const items = group.map((b, i) =>
-    `[${i}] question: ${b.question}\nanswer: ${b.answer}`
-  ).join('\n\n');
-  return `你是企业FAQ问答润色助手${catHint}。下面是一批从制度文档抽取的FAQ条目（[序号] 为条目id）。
-请为每条做两件事：
-1) 把 question 改写为员工会自然语言提出的问题或条目主题（例如"差旅费的定义是什么""报销时限是多久""借款审批流程是什么"），去除编号前缀（如不要"3.1"），保持简洁（≤30字）
-2) 生成 3-5 个核心检索关键词（如 借款/报销/审批/预算）
-answer 保持不变，不要改写。
-返回 JSON：{"items":[{"id":number,"question":string,"keywords":[string]}]}，只输出 JSON，不要解释。
-条目：
-"""
-${items}
-"""`;
-}
+// ============================================================
+// FAQ 解析：复用 faq-doc-parser 模块（领域自适应 + 细分行业 preset + 自动识别）
+// 模块文件：server/lib/faq-parser.js（与 D:/Clow/skills/faq-doc-parser 同步维护）
+// 该模块已覆盖 财务/HR/IT/法务/通用 + 制造业全板块 关键词，并内置 gmp/iatf16949/
+// haccp/iso13485/as9100 细分行业 preset，支持 preset:'auto' 自动识别。
+// ============================================================
+const { parseDocToFAQWithLLM: _parseDocToFAQWithLLM } = require('./lib/faq-parser');
 
-async function parseDocToFAQWithLLM(text, category) {
-  const cleaned = (text || '').trim();
-  if (!cleaned) return [];
-
-  // 0) 预清洗：剔除表格边框/分隔/勾选等噪声行（不影响真实规则完整性）
-  const prefiltered = prefilterText(cleaned);
-
-  // 1) 确定性正则抽取（完整性基石）
-  const base = parseDocToFAQ(prefiltered, category);
-  if (base.length === 0) {
-    return [{ question: prefiltered.slice(0, 200).trim(), answer: prefiltered.slice(0, 2000), keywords: [] }];
-  }
-
-  // 2) LLM 批量润色（质量增强，失败则保留正则结果）
-  const BATCH = 10;
-  const polished = {};   // id -> {question, keywords}
-  for (let i = 0; i < base.length; i += BATCH) {
-    const group = base.slice(i, i + BATCH);
-    const prompt = buildPolishPrompt(group, category);
-    let parsed = null;
-    try {
-      parsed = await callOllamaJSON(prompt, { temperature: 0, max_tokens: 4096, timeout: 120000 });
-    } catch (e) {
-      console.warn(`[LLM-POLISH] 第 ${Math.floor(i / BATCH) + 1} 批润色失败:`, e.message);
-    }
-    const arr = parsed && Array.isArray(parsed.items) ? parsed.items : [];
-    for (const it of arr) {
-      const id = Number(it.id);
-      if (!Number.isInteger(id) || id < 0 || id >= base.length) continue;
-      const q = (it.question || '').toString().trim();
-      const kw = Array.isArray(it.keywords)
-        ? it.keywords.map(k => k.toString().trim()).filter(Boolean).slice(0, 8)
-        : [];
-      if (q.length >= 2) polished[id] = { question: q.slice(0, 200), keywords: kw };
-    }
-  }
-
-  // 3) 合并：优先用润色结果，缺失则保留正则结果（不删除任何条目，保证完整性）
-  const out = base.map((b, idx) => {
-    const p = polished[idx];
-    return {
-      question: (p && p.question) || b.question,
-      answer: b.answer,
-      keywords: (p && p.keywords && p.keywords.length) ? p.keywords : (b.keywords || [])
-    };
-  });
-
-  // 轻量去重（同问题大小写不敏感）
-  const seen = new Set();
-  const dedup = [];
-  for (const x of out) {
-    const key = x.question.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    dedup.push(x);
-  }
-
-  console.log(`[LLM-POLISH] 正则提取 ${base.length} 条 → LLM 润色 ${Object.keys(polished).length} 条 → 去重后 ${dedup.length} 条`);
-  return dedup;
+// 生产封装：注入本地 LLM 客户端（callOllamaJSON）；
+// preset 默认 'auto'（按签名词自动识别细分行业），调用方可传 { preset: 'gmp' } 等指定行业。
+async function parseDocToFAQWithLLM(text, category, opts) {
+  return _parseDocToFAQWithLLM(text, category, callOllamaJSON, Object.assign({ preset: 'auto' }, opts || {}));
 }
 
 // FAQ 文件上传 + 自动提取
@@ -878,8 +669,10 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
                           : null;
     console.log('[UPLOAD] 最终分类 =', uploadCategory);
 
-    // LLM 语义解析（主方案）：任意格式通吃；LLM 不可用时自动回退正则 parseDocToFAQ
-    const extracted = (await parseDocToFAQWithLLM(text.trim(), uploadCategory || '其他')).map(b => ({
+    // LLM 语义解析（主方案）：复用 faq-doc-parser 模块，preset 默认 auto 自动识别细分行业；
+    // 调用方可传 req.body.preset（如 'gmp' / ['iatf16949','haccp']）指定行业以精提关键词。
+    const presetOpt = req.body.preset ? { preset: req.body.preset } : undefined;
+    const extracted = (await parseDocToFAQWithLLM(text.trim(), uploadCategory || '其他', presetOpt)).map(b => ({
       question: b.question, answer: b.answer, category: uploadCategory || '其他', keywords: b.keywords || []
     }));
 
