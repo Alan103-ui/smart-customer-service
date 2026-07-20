@@ -499,6 +499,7 @@ router.post('/faq', async (req, res) => {
     addDocumentChunks(id, question, `问题：${question}\n答案：${answer}`, { category: item.category, source: 'faq' })
       .then(() => console.log('[RAG] 新增FAQ向量化完成:', question.slice(0, 30)))
       .catch(e => console.error('[RAG] 新增FAQ向量化失败:', e.message));
+    auditLog('faq_create', req.user ? req.user.username : 'unknown', { id, question: (question || '').slice(0, 60), category: item.category });
     res.json({ success: true, id });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -521,6 +522,7 @@ router.put('/faq/:id', async (req, res) => {
     addDocumentChunks(f.id, f.question, `问题：${f.question}\n答案：${f.answer}`, { category: f.category, source: 'faq' })
       .then(() => console.log('[RAG] FAQ更新向量化完成:', f.question.slice(0, 30)))
       .catch(e => console.error('[RAG] FAQ更新向量化失败:', e.message));
+    auditLog('faq_update', req.user ? req.user.username : 'unknown', { id: req.params.id, question: (question || '').slice(0, 60), category });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -537,6 +539,7 @@ router.post('/faq/batch-delete', (req, res) => {
     if (newList.length === before) return res.status(404).json({ error: '未找到要删除的条目' });
     saveFAQ(newList);
     ids.forEach(id => deleteDocument(id));
+    auditLog('faq_batch_delete', req.user ? req.user.username : 'unknown', { count: before - newList.length, ids });
     res.json({ success: true, deleted: before - newList.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -550,6 +553,7 @@ router.delete('/faq/:id', (req, res) => {
     if (newList.length === list.length) return res.status(404).json({ error: 'Not found' });
     saveFAQ(newList);
     deleteDocument(req.params.id);
+    auditLog('faq_delete', req.user ? req.user.username : 'unknown', { id: req.params.id });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -693,6 +697,7 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
     }
     saveFAQ(list);
     try { fs.unlinkSync(filePath); } catch (e) {}
+    auditLog('faq_upload', req.user ? req.user.username : 'unknown', { filename: originalName, added, category: uploadCategory || '其他' });
     res.json({ success: true, added, total: list.length });
   } catch (err) {
     console.error('文件上传处理失败：', err);
