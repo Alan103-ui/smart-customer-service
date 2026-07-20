@@ -585,52 +585,75 @@ function readTextWithEncoding(filePath) {
 //  - 含问号的普通行：问号前作「问题」，问号后作「答案」，并开启新块
 //  - 其余普通行：续接到当前块「答案」
 //  - 空行：普通段落模式作为分隔；编号/标题块内保留为答案换行
+// 财务/制度类文档常见领域词，用于自动提取关键词
+const FINANCE_TERMS = ['借款','报销','付款','备用金','审批','预算','合同','发票','差旅费','会议费','业务费','办公费','广告费','薪酬','福利','税费','采购','工程','固定资产','OA','ERP','增值税','专用发票','单据','经办人','部门负责人','分管领导','总经理','财务','出纳','稽核','月结','现金','转账','应付款','预付款','押金','备用金借款'];
+
+// 自动提取关键词：书名号引用 + 领域词表命中
+function extractKeywords(q, a) {
+  const text = (q || '') + ' ' + (a || '');
+  const kw = [];
+  const m = text.match(/《([^》]+)》/g);
+  if (m) m.forEach(x => { const w = x.replace(/[《》]/g, '').trim(); if (w && !kw.includes(w)) kw.push(w); });
+  for (const t of FINANCE_TERMS) {
+    if (text.includes(t) && !kw.includes(t)) kw.push(t);
+  }
+  return kw.slice(0, 8);
+}
+
+// 去前缀编号：兼容 1. / 3.1. / 4.1.2. / 3.3分管领导 / 一、 / 二) 等多级写法
+//  - 阿拉伯编号：分隔符可选（允许「3.3分管领导」无空格）
+//  - 中文编号：分隔符必选（避免误剥「一类城市」「三类地区」中的「一/三」）
+const reNumPrefix = /^(\d+(\.\d+)*[.、)）\s]*|[一二三四五六七八九十百千零]+[.、)）\s]+)/;
+const stripNum = (s) => s.replace(reNumPrefix, '').trim();
+
+// 由规则文本派生「问题」：与完整答案明显区分且人类可读
+//  - 定义式（术语：释义，术语≤15字无句末标点）→ 取术语，如「借款、付款」
+//  - 否则取首句（按句末标点截断），过长加省略号
+function deriveQuestion(raw, kind) {
+  let s = stripNum(raw);
+  if (kind === 'title' || kind === 'bracket') {
+    // 纯标题场景：直接作为问题（短标题是否丢弃由调用方 isSectionHeader 决定）
+    return s.length ? s : raw.trim();
+  }
+  // 定义式：X.X. 术语：释义
+  const ci = s.indexOf('：');
+  if (ci > 0 && ci <= 15 && !/[。！？；;]/.test(s.slice(0, ci))) {
+    return s.slice(0, ci).trim();
+  }
+  const first = s.split(/[。！？\?!；;]/)[0].trim();
+  if (first.length >= 4) return first.length > 50 ? first.slice(0, 50) + '…' : first;
+  return s.slice(0, 30);
+}
+
 function parseDocToFAQ(text, category) {
   const reQ = /^(Q|q|问题|问)[:：\s]/;
   const reA = /^(A|a|答案|答)[:：\s]/;
-  const reNum = /^(\d{1,3}|[一二三四五六七八九十百千零]+)[.、)）\s]+/;
+  const reNum = reNumPrefix;
   const reTitle = /^#{1,6}\s+/;
   const reBracketTitle = /^[【\[][^】\]]+[】\]]$/;
   const reBullet = /^[-•*·]\s+/;
   const hasQmark = (s) => /[？?]/.test(s);
-  const hasPunct = (s) => /[。！？！；;？?]/.test(s);
-
-  const firstSentence = (s) => {
-    const f = s.split(/[。！？\?!；;]/)[0].trim();
-    return f.length > 80 ? f.slice(0, 80) + '…' : f;
-  };
-
-  // 去编号/标题/要点前缀后取首分句，作为独立规则行的「问题」（与完整规则区分，避免问答同体）
-  const leadClause = (s) => {
-    const m = s
-      .replace(/^(\d+(\.\d+)*|[一二三四五六七八九十百千零]+)[、)）\s]+/, '')
-      .replace(/^#{1,6}\s+/, '')
-      .replace(/^[-•*·]\s+/, '')
-      .trim();
-    const f = m.split(/[，,：:；;。．.？?！!、]/)[0].trim();
-    return f.length > 80 ? f.slice(0, 80) + '…' : f;
-  };
+  const hasSentPunct = (s) => /[。！？！；;？?]/.test(s);
 
   const out = [];
   let cur = null;
 
   const flush = () => {
     if (!cur) return;
-    const q = (cur.q || '').trim();
     const a = (cur.a || '').trim();
+    const qRaw = (cur.q || '').trim();
     if (a) {
-      out.push({ question: (q || leadClause(a)).slice(0, 200), answer: a.slice(0, 2000) });
-    } else if (q) {
-      // 无独立答案时，仅「短标题」（≤12 字且无句末标点/问号）丢弃，避免 Q===A 自指废条：
-      //  - 纯标题（#/##/【】）始终丢弃
-      //  - 编号 + 短标题（如「1 管理职责」「4.1 成本费用」）丢弃
-      //  - 编号 + 长句完整规则（含句末标点）保留；要点（-）即使短也保留（通常是独立规则）
-      // 保留时问题取「去编号首分句」，答案为完整规则，二者明显不同，避免问答同体
-      const isShortHeading = (cur.kind === 'title' || cur.kind === 'bracket' ||
-        (cur.kind === 'num' && q.length <= 12 && !hasPunct(q)));
-      if (!isShortHeading) {
-        const qq = leadClause(q);
-        out.push({ question: (qq || q).slice(0, 200), answer: q.slice(0, 2000) });
+      // 有独立答案：问题优先用显式 q，否则由答案派生可读标签
+      const q = (qRaw && qRaw.length > 1 ? qRaw : deriveQuestion(a, cur.kind)).slice(0, 200);
+      out.push({ question: q, answer: a.slice(0, 2000) });
+    } else if (qRaw) {
+      // 仅标题/编号行、无正文：章节短标题（≤12字、无句末标点、无「：」）丢弃；
+      // 含实质内容则保留（问题去编号首句，答案为整行）
+      const isSectionHeader = (cur.kind === 'title' || cur.kind === 'bracket' ||
+        (cur.kind === 'num' && qRaw.length <= 12 && !hasSentPunct(qRaw) && !qRaw.includes('：')));
+      if (!isSectionHeader) {
+        const q = deriveQuestion(qRaw, cur.kind);
+        out.push({ question: q.slice(0, 200), answer: qRaw.slice(0, 2000) });
       }
     }
     cur = null;
@@ -640,28 +663,33 @@ function parseDocToFAQ(text, category) {
     const t = raw.trim();
     if (t === '') { flush(); continue; }   // 空行始终结束当前块
     if (reA.test(t)) {
-      if (!cur) cur = { q: '', a: '', mode: 'item', kind: 'qa' };
+      if (!cur) cur = { q: '', a: '', kind: 'qa' };
       const ans = t.replace(reA, '').trim();
       cur.a = cur.a ? cur.a + '\n' + ans : ans;   // 连续多行「答：」追加而非覆盖
       continue;
     }
-    if (reQ.test(t)) { flush(); cur = { q: t.replace(reQ, '').trim(), a: '', mode: 'item', kind: 'qa' }; continue; }
-    if (reNum.test(t)) { flush(); cur = { q: t, a: '', mode: 'item', kind: 'num' }; continue; }
-    if (reTitle.test(t)) { flush(); cur = { q: t.replace(/^#{1,6}\s+/, '').trim(), a: '', mode: 'item', kind: 'title' }; continue; }
-    if (reBracketTitle.test(t)) { flush(); cur = { q: t, a: '', mode: 'item', kind: 'bracket' }; continue; }
-    if (reBullet.test(t)) { flush(); cur = { q: t.replace(reBullet, '').trim(), a: '', mode: 'item', kind: 'bullet' }; continue; }
+    if (reQ.test(t)) { flush(); cur = { q: t.replace(reQ, '').trim(), a: '', kind: 'qa' }; continue; }
+    if (reNum.test(t)) { flush(); cur = { q: t, a: '', kind: 'num' }; continue; }
+    if (reTitle.test(t)) { flush(); cur = { q: t.replace(/^#{1,6}\s+/, '').trim(), a: '', kind: 'title' }; continue; }
+    if (reBracketTitle.test(t)) { flush(); cur = { q: t, a: '', kind: 'bracket' }; continue; }
+    if (reBullet.test(t)) { flush(); cur = { q: t.replace(reBullet, '').trim(), a: '', kind: 'bullet' }; continue; }
     if (hasQmark(t)) {
       flush();
       const idx = t.search(/[？?]/);
-      cur = { q: t.slice(0, idx).trim(), a: t.slice(idx + 1).trim(), mode: 'item', kind: 'qmark' };
+      cur = { q: t.slice(0, idx).trim(), a: t.slice(idx + 1).trim(), kind: 'qmark' };
     } else {
-      if (!cur) cur = { q: '', a: '', mode: 'para', kind: 'para' };
+      if (!cur) cur = { q: '', a: '', kind: 'para' };
       cur.a = cur.a ? cur.a + '\n' + t : t;
     }
   }
   flush();
 
-  return out.filter(x => x.question && x.answer && (x.question.length >= 2 || x.answer.length >= 4));
+  const enriched = out.map(x => ({ ...x, keywords: extractKeywords(x.question, x.answer) }));
+  return enriched.filter(x =>
+    x.question && x.answer &&
+    x.question.trim() !== x.answer.trim() &&           // 丢弃问答同体的表格碎片/自指废条
+    (x.question.length >= 2 || x.answer.length >= 4)
+  );
 }
 
 // FAQ 文件上传 + 自动提取
@@ -725,7 +753,7 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
     // 是否含显式 Q/A 标记（问：/答：/问题：/答案：/Q:/A:）——优先走原显式解析
     // 统一按文档结构智能拆分为多条 FAQ（显式 Q/A、编号条目、标题层级、含问号段落均支持）
     const extracted = parseDocToFAQ(text.trim(), uploadCategory || '其他').map(b => ({
-      question: b.question, answer: b.answer, category: uploadCategory || '其他', keywords: []
+      question: b.question, answer: b.answer, category: uploadCategory || '其他', keywords: b.keywords || []
     }));
 
     // 极端情况兜底：文本非空但未能切分，仍保留一条
