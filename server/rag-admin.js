@@ -588,6 +588,46 @@ function readTextWithEncoding(filePath) {
 // 财务/制度类文档常见领域词，用于自动提取关键词
 const FINANCE_TERMS = ['借款','报销','付款','备用金','审批','预算','合同','发票','差旅费','会议费','业务费','办公费','广告费','薪酬','福利','税费','采购','工程','固定资产','OA','ERP','增值税','专用发票','单据','经办人','部门负责人','分管领导','总经理','财务','出纳','稽核','月结','现金','转账','应付款','预付款','押金','备用金借款'];
 
+// ============================================================
+// 预清洗：在正则抽取前剔除高置信噪声行（表格边框/分隔/勾选行、表格单元格行），
+// 目的是净化「审批权限表」之类表格碎片，同时严格「不影响真实规则完整性」——
+// 任何含句末标点/中文句子标志词（的/是/须/应/由/经…）的真实规则都不会被删。
+// ============================================================
+const TABLE_CHECK = new Set(['√', '✓', '×', '✗', '☑', '✅', '✔', '✘', '●', '○', '■', '□', '◻', '▲', '△']);
+const APPROVE_KW = ['审批', '审核', '复核', '核准', '分管', '负责', '总经理', '部门', '权限', '区间', '万元', '以下', '以上'];
+// 真实句子标志词：含这些基本可判定为完整句子而非表格单元格
+const SENT_MARK = /[的是须应由经按需指包含按对于为给向在将可不每各该：，、？?。！；;（）()]/;
+function prefilterText(text) {
+  const lines = (text || '').split(/\r?\n/);
+  const out = [];
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t === '') { out.push(raw); continue; }
+    // 1) 纯边框/分隔/勾选符行（只含表格线字符）
+    if (/^[\s\u2500-\u257F|+\-=~*·•]+$/.test(t)) continue;
+    // 2) Markdown 表格分隔行 | --- | --- |
+    if (/^\s*\|?[\s:|\-]+\|?\s*$/.test(t)) continue;
+    // 3) 纯勾选符行
+    if (/^[\s√×✓✗●○■□◻✔✘\-]+$/.test(t)) continue;
+    // 4) 含 | 的表格行（≥2 个单元格、无句末标点）
+    if (t.includes('|')) {
+      const cells = t.split('|').map(c => c.trim()).filter(Boolean);
+      if (cells.length >= 2 && !/[。！？；;？?]/.test(t)) continue;
+    }
+    // 5) 空格/制表符分隔的多列短词行（表格数据/表头）：
+    //    段数 ≥3、无句末标点、无真实句子标志词，且（末段为勾选符 或 含审批权限类关键词且各段≤6字）
+    const tokens = t.split(/\s+/).filter(Boolean);
+    if (tokens.length >= 3 && !/[。！？；;？?]/.test(t) && !SENT_MARK.test(t)) {
+      const lastChk = TABLE_CHECK.has(tokens[tokens.length - 1].replace(/^[-]+/, ''));
+      const allShort = tokens.every(tk => tk.replace(/[√×✓✗●○■□◻✔✘\-]/g, '').length <= 6);
+      const hasApprove = tokens.some(tk => APPROVE_KW.some(k => tk.includes(k)));
+      if (lastChk || (hasApprove && allShort)) continue;
+    }
+    out.push(raw);
+  }
+  return out.join('\n');
+}
+
 // 自动提取关键词：书名号引用 + 领域词表命中
 function extractKeywords(q, a) {
   const text = (q || '') + ' ' + (a || '');
@@ -723,10 +763,13 @@ async function parseDocToFAQWithLLM(text, category) {
   const cleaned = (text || '').trim();
   if (!cleaned) return [];
 
+  // 0) 预清洗：剔除表格边框/分隔/勾选等噪声行（不影响真实规则完整性）
+  const prefiltered = prefilterText(cleaned);
+
   // 1) 确定性正则抽取（完整性基石）
-  const base = parseDocToFAQ(cleaned, category);
+  const base = parseDocToFAQ(prefiltered, category);
   if (base.length === 0) {
-    return [{ question: cleaned.slice(0, 200).trim(), answer: cleaned.slice(0, 2000), keywords: [] }];
+    return [{ question: prefiltered.slice(0, 200).trim(), answer: prefiltered.slice(0, 2000), keywords: [] }];
   }
 
   // 2) LLM 批量润色（质量增强，失败则保留正则结果）
