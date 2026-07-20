@@ -368,6 +368,22 @@ ${items}
 }
 
 /**
+ * 合并关键词：正则词表(基于领域词表命中) ∪ LLM 语义词，去重后取前 8 个。
+ * 这样关键词既保留词表全量命中，又纳入 LLM 补的语义词，检索召回更全。
+ * @param {string[]} regularKw 正则抽取阶段用领域词表提取的关键词
+ * @param {string[]|undefined} llmKw LLM 润色返回的关键词（可能为空/undefined）
+ */
+function mergeKeywords(regularKw, llmKw) {
+  const a = Array.isArray(regularKw) ? regularKw : [];
+  const b = Array.isArray(llmKw) ? llmKw : [];
+  const merged = [];
+  for (const k of a.concat(b)) {
+    if (k && !merged.includes(k)) merged.push(k);
+  }
+  return merged.slice(0, 8);
+}
+
+/**
  * 混合解析主入口：预清洗 → 正则抽取 → LLM 批量润色 → 合并去重。
  * @param {string} text      文档纯文本
  * @param {string} category  文档分类（如 '财务'/'差旅'/'HR'/'IT'/'其他'）
@@ -419,13 +435,14 @@ async function parseDocToFAQWithLLM(text, category, llmFn, opts = {}) {
     }
   }
 
-  // 3) 合并：优先用润色结果，缺失则保留正则结果（不删除任何条目，保证完整性）
+  // 3) 合并：不删除任何条目（保证完整性）；关键词取「正则词表 ∪ LLM 语义词」并集去重，
+  //    既保留领域词表全量命中，又纳入 LLM 补的语义词，最多 8 个。
   const out = base.map((b, idx) => {
     const p = polished[idx];
     return {
       question: (p && p.question) || b.question,
       answer: b.answer,
-      keywords: (p && p.keywords && p.keywords.length) ? p.keywords : (b.keywords || [])
+      keywords: mergeKeywords(b.keywords, p && p.keywords)
     };
   });
 
