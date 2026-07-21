@@ -93,6 +93,28 @@ export default function ModelSettings() {
     setSaving(false);
   };
 
+  // ============ 恢复默认配置 ============
+  const handleReset = async () => {
+    if (!confirm('确定恢复为默认模型配置？\n将清除本页所有自定义修改并回到系统默认值，热生效（无需重启）。')) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/models/config/reset', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotice('已恢复为默认模型配置 ✅', 'success');
+        await loadAll();
+      } else {
+        showNotice('恢复失败: ' + (data.error || '未知错误'), 'error');
+      }
+    } catch (err: any) {
+      showNotice('恢复失败: ' + (err?.message || '未知错误'), 'error');
+    }
+    setSaving(false);
+  };
+
   const healthBadge = (type: string) => {
     const h = status?.health?.[type];
     if (!h) return <span className="ms-badge ms-badge-warn">未知</span>;
@@ -231,6 +253,14 @@ export default function ModelSettings() {
             </button>
             <button onClick={loadAll} className="rag-btn rag-btn-secondary" style={{ marginLeft: 8 }} disabled={saving}>
               ↩️ 撤销修改
+            </button>
+            <button
+              onClick={handleReset}
+              disabled={saving}
+              className="rag-btn rag-btn-danger"
+              style={{ marginLeft: 8 }}
+            >
+              🔄 恢复默认配置
             </button>
           </div>
         </div>

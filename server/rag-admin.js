@@ -1739,6 +1739,24 @@ router.post('/models/config', (req, res) => {
 
 
 
+// 恢复默认配置：用部署基线覆盖当前配置（清除用户修改，回到 model-config.default.json）
+router.post('/models/config/reset', (req, res) => {
+  try {
+    const result = modelSwitcher.resetModelConfig();
+    if (!result.success) {
+      return res.status(500).json({ success: false, error: result.error || '恢复默认配置失败' });
+    }
+    auditLog('model_config_reset', req.user ? req.user.username : 'unknown', {});
+    res.json({
+      success: true,
+      message: '已恢复为默认模型配置并热生效',
+      config: result.config,
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // 性能监控页面（集成到管理后台）
 router.get('/performance', (req, res) => {
   try {

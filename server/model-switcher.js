@@ -13,6 +13,8 @@ const OLLAMA_PORT = 11434;
 const PERF_LOG_PATH = path.join(__dirname, 'data', 'model-performance.json');
 // 模型配置持久化文件（可通过 API / 前端 TAB 动态修改并热生效）
 const MODEL_CONFIG_PATH = path.join(__dirname, 'data', 'model-config.json');
+// 部署基线：默认配置模板（纳入版本库、不被 gitignore），用于「缺失时自动生成」与「一键恢复默认」
+const MODEL_CONFIG_DEFAULT_PATH = path.join(__dirname, 'model-config.default.json');
 
 const MODEL_CONFIG = {
   embedding: {
@@ -538,11 +540,26 @@ function deepMergeConfig(target, source) {
   return target;
 }
 
-// 启动时从 data/model-config.json 加载配置（深度合并到默认值；文件不存在则保持默认）
+// 启动时从 data/model-config.json 加载配置；文件不存在则从部署基线自动生成
 function loadModelConfig() {
   try {
+    const dataDir = path.dirname(MODEL_CONFIG_PATH);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
     if (!fs.existsSync(MODEL_CONFIG_PATH)) {
-      return false;
+      // 部署基线：本地无配置文件时，从版本库默认模板生成初始配置
+      const def = getDefaultModelConfig();
+      Object.keys(MODEL_CONFIG).forEach(k => delete MODEL_CONFIG[k]);
+      deepMergeConfig(MODEL_CONFIG, def);
+      ['embedding', 'llm', 'reranker'].forEach((type) => {
+        if (MODEL_CONFIG[type] && MODEL_CONFIG[type].primary) {
+          currentModels[type] = MODEL_CONFIG[type].primary;
+        }
+      });
+      fs.writeFileSync(MODEL_CONFIG_PATH, JSON.stringify(MODEL_CONFIG, null, 2));
+      console.log('[ModelSwitcher] model-config.json 不存在，已从部署基线(model-config.default.json)生成');
+      return true;
     }
     const data = JSON.parse(fs.readFileSync(MODEL_CONFIG_PATH, 'utf8'));
     deepMergeConfig(MODEL_CONFIG, data);
@@ -557,6 +574,39 @@ function loadModelConfig() {
   } catch (e) {
     console.error('[ModelSwitcher] 加载模型配置失败:', e.message);
     return false;
+  }
+}
+
+// 读取部署基线默认配置（版本库中的 model-config.default.json；缺失时回退代码内置默认值）
+function getDefaultModelConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(MODEL_CONFIG_DEFAULT_PATH, 'utf8'));
+  } catch (e) {
+    return JSON.parse(JSON.stringify(MODEL_CONFIG));
+  }
+}
+
+// 恢复默认配置：用部署基线覆盖当前配置并持久化（「恢复默认配置」按钮 / reset API 调用）
+function resetModelConfig() {
+  try {
+    const def = getDefaultModelConfig();
+    Object.keys(MODEL_CONFIG).forEach(k => delete MODEL_CONFIG[k]);
+    deepMergeConfig(MODEL_CONFIG, def);
+    ['embedding', 'llm', 'reranker'].forEach((type) => {
+      if (MODEL_CONFIG[type] && MODEL_CONFIG[type].primary) {
+        currentModels[type] = MODEL_CONFIG[type].primary;
+      }
+    });
+    const dataDir = path.dirname(MODEL_CONFIG_PATH);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(MODEL_CONFIG_PATH, JSON.stringify(MODEL_CONFIG, null, 2));
+    console.log('[ModelSwitcher] 模型配置已恢复为默认');
+    return { success: true, config: getModelConfig() };
+  } catch (e) {
+    console.error('[ModelSwitcher] 恢复默认配置失败:', e.message);
+    return { success: false, error: e.message };
   }
 }
 
@@ -642,6 +692,8 @@ module.exports = {
   loadModelConfig,
   getModelConfig,
   setModelConfig,
+  getDefaultModelConfig,
+  resetModelConfig,
   getLLMModel,
   getEmbeddingModel,
   getRerankerConfig,

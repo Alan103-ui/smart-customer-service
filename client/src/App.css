@@ -1639,6 +1639,21 @@ body {
   border-color: #1890ff;
 }
 
+.rag-btn-danger {
+  background: #fff;
+  color: #d4380d;
+  border-color: #ffa39e;
+}
+.rag-btn-danger:hover:not(:disabled) {
+  background: #fff1f0;
+  color: #cf1322;
+  border-color: #ff4d4f;
+}
+.rag-btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .rag-btn-success {
   background: #52c41a;
   color: #fff;

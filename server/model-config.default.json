@@ -1,0 +1,18 @@
+{
+  "embedding": {
+    "primary": "bge-m3:latest",
+    "fallback": "qwen2.5:14b",
+    "timeout": 10000
+  },
+  "llm": {
+    "primary": "qwen2.5:14b",
+    "fallback": "qwen2.5:7b",
+    "timeout": 60000
+  },
+  "reranker": {
+    "primary": "bge-reranker-v2-m3:latest",
+    "fallback": null,
+    "timeout": 10000,
+    "serviceUrl": "http://172.17.6.18:8000/rerank"
+  }
+}

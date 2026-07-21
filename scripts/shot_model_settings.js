@@ -56,9 +56,17 @@ async function clickByText(page, keyword) {
   const rendered = await page.evaluate(() => document.body.innerText.includes('已配置模型概览'));
   console.log('已配置模型概览渲染:', rendered ? 'ok' : '未渲染');
 
+  // 滚动到底部，确保「恢复默认配置」按钮入镜
+  await page.evaluate(() => {
+    const btn = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').includes('恢复默认配置'));
+    if (btn) btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+    else window.scrollTo(0, document.body.scrollHeight);
+  });
+  await sleep(500);
+
   // 截图
   const out = 'D:/Clow/projects/smart-customer-service/scripts/_shot_model_settings.png';
-  await page.screenshot({ path: out, fullPage: false });
+  await page.screenshot({ path: out, fullPage: true });
   console.log('截图已保存:', out);
   console.log('RESULT:', rendered ? 'PASS' : 'WARN');
 
