@@ -1654,6 +1654,21 @@ body {
   cursor: not-allowed;
 }
 
+/* 表单校验：错误输入框 + 字段级错误提示 */
+.rag-input-error {
+  border-color: #ff4d4f !important;
+  background: #fff1f0;
+}
+.rag-input-error:focus {
+  box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.2);
+}
+.ms-field-error {
+  color: #ff4d4f;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
 .rag-btn-success {
   background: #52c41a;
   color: #fff;

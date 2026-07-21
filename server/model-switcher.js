@@ -615,6 +615,48 @@ function getModelConfig() {
   return JSON.parse(JSON.stringify(MODEL_CONFIG));
 }
 
+// 写入前校验配置合法性，防止非法值入库（前端校验 + 此处纵深防御）
+function validateModelConfig(partial) {
+  const allowed = ['embedding', 'llm', 'reranker'];
+  const isModelName = (s) =>
+    typeof s === 'string' && s.trim().length > 0 && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$/.test(s.trim());
+  for (const type of Object.keys(partial)) {
+    if (!allowed.includes(type)) continue;
+    const blk = partial[type];
+    if (!blk || typeof blk !== 'object') continue;
+    // 主模型：仅在显式提供时校验（部分更新不修改主模型则跳过）
+    if (blk.primary !== undefined) {
+      if (!isModelName(blk.primary)) {
+        return { success: false, error: `${type} 主模型(primary)不能为空，且只能含字母/数字/._:- 字符` };
+      }
+    }
+    // 备用模型：可空（null/空串表示不启用），有值则须合法
+    if (blk.fallback !== undefined && blk.fallback !== null && blk.fallback !== '') {
+      if (!isModelName(blk.fallback)) {
+        return { success: false, error: `${type} 备用模型(fallback)格式不合法` };
+      }
+    }
+    // 超时：可选，有值须为 ≥1000 的整数(ms)
+    if (blk.timeout !== undefined && blk.timeout !== null) {
+      const to = Number(blk.timeout);
+      if (!Number.isFinite(to) || to < 1000 || !Number.isInteger(to)) {
+        return { success: false, error: `${type} 超时(timeout)须为 ≥1000 的整数(ms)` };
+      }
+    }
+    // reranker 服务地址：可选（缺省保持原值），提供则须为合法 http(s) URL
+    if (type === 'reranker' && blk.serviceUrl !== undefined && blk.serviceUrl !== null) {
+      const url = String(blk.serviceUrl).trim();
+      if (!url) {
+        return { success: false, error: 'reranker 服务地址(serviceUrl)不能为空' };
+      }
+      if (!/^https?:\/\/[^\s/]+(:\d+)?(\/.*)?$/.test(url)) {
+        return { success: false, error: 'reranker 服务地址格式应为 http(s)://host:port/path' };
+      }
+    }
+  }
+  return { success: true };
+}
+
 // 写入并合并配置（partial 为部分配置，如 { llm: { primary: 'xxx' } }）
 // 返回 { success, config, error }
 function setModelConfig(partial) {
@@ -627,6 +669,12 @@ function setModelConfig(partial) {
     const keys = Object.keys(partial).filter((k) => allowed.includes(k));
     if (keys.length === 0) {
       return { success: false, error: `仅支持配置: ${allowed.join(' / ')}` };
+    }
+
+    // 写入前校验，防止非法值入库
+    const validation = validateModelConfig(partial);
+    if (!validation.success) {
+      return validation;
     }
 
     // 合并到内存配置

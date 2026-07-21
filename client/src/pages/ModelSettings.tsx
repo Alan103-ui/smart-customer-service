@@ -22,6 +22,7 @@ export default function ModelSettings() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});   // 字段级校验错误
 
   const showNotice = (text: string, type: NoticeType = 'info') => {
     setNotice({ text, type });
@@ -66,11 +67,56 @@ export default function ModelSettings() {
       next[type][field] = value;
       return next;
     });
+    // 实时清除该字段的错误提示
+    setErrors((prev) => {
+      const n = { ...prev };
+      delete n[`${type}.${field}`];
+      return n;
+    });
+  };
+
+  // ============ 表单校验 ============
+  // 规则：① 主模型必填且只允许字母/数字/._:-  ② 备用模型可空，有值须合法
+  //       ③ 超时须为 ≥1000 整数(ms)  ④ reranker 服务地址须为合法 http(s) URL
+  const validate = (cfg: any): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    const isModelName = (s: any) =>
+      typeof s === 'string' && s.trim().length > 0 && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$/.test(s.trim());
+    TYPES.forEach((t) => {
+      const blk = cfg?.[t.key] || {};
+      if (!isModelName(blk.primary)) {
+        errs[`${t.key}.primary`] = '主模型不能为空，且只能含字母/数字/._:- 字符';
+      }
+      if (blk.fallback !== undefined && blk.fallback !== null && String(blk.fallback).trim() !== '') {
+        if (!isModelName(blk.fallback)) errs[`${t.key}.fallback`] = '备用模型名格式不合法';
+      }
+      if (t.key !== 'reranker' && blk.timeout !== undefined && blk.timeout !== null) {
+        const to = Number(blk.timeout);
+        if (!Number.isFinite(to) || to < 1000 || !Number.isInteger(to)) {
+          errs[`${t.key}.timeout`] = '超时须为 ≥1000 的整数(ms)';
+        }
+      }
+      if (t.key === 'reranker' && blk.serviceUrl !== undefined && blk.serviceUrl !== null) {
+        const url = String(blk.serviceUrl).trim();
+        if (!url) errs[`${t.key}.serviceUrl`] = '服务地址不能为空';
+        else if (!/^https?:\/\/[^\s/]+(:\d+)?(\/.*)?$/.test(url)) {
+          errs[`${t.key}.serviceUrl`] = '格式应为 http(s)://host:port/path';
+        }
+      }
+    });
+    return errs;
   };
 
   // ============ 保存配置 ============
   const handleSave = async () => {
     if (!config) return;
+    // 提交前校验，有错则拦截并提示
+    const errs = validate(config);
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      showNotice('请先修正表单中的错误再保存', 'error');
+      return;
+    }
     if (!confirm('确定保存模型配置？\n保存后将写入配置文件并热生效（无需重启）。')) return;
     setSaving(true);
     try {
@@ -199,20 +245,22 @@ export default function ModelSettings() {
                 <div className="rag-form-group">
                   <label className="rag-label">主模型 (primary)</label>
                   <input
-                    className="rag-input"
+                    className={`rag-input ${errors[`${t.key}.primary`] ? 'rag-input-error' : ''}`}
                     value={config[t.key]?.primary ?? ''}
                     onChange={e => updateField(t.key, 'primary', e.target.value)}
                     placeholder="例如 bge-m3:latest"
                   />
+                  {errors[`${t.key}.primary`] && <div className="ms-field-error">{errors[`${t.key}.primary`]}</div>}
                 </div>
                 <div className="rag-form-group">
                   <label className="rag-label">备用模型 (fallback)</label>
                   <input
-                    className="rag-input"
+                    className={`rag-input ${errors[`${t.key}.fallback`] ? 'rag-input-error' : ''}`}
                     value={config[t.key]?.fallback ?? ''}
                     onChange={e => updateField(t.key, 'fallback', e.target.value || null)}
                     placeholder="例如 qwen2.5:7b（可留空）"
                   />
+                  {errors[`${t.key}.fallback`] && <div className="ms-field-error">{errors[`${t.key}.fallback`]}</div>}
                 </div>
               </div>
               <div className="rag-form-row">
@@ -220,23 +268,25 @@ export default function ModelSettings() {
                   <div className="rag-form-group" style={{ flex: 1 }}>
                     <label className="rag-label">服务地址 (serviceUrl)</label>
                     <input
-                      className="rag-input"
+                      className={`rag-input ${errors[`${t.key}.serviceUrl`] ? 'rag-input-error' : ''}`}
                       value={config[t.key]?.serviceUrl ?? ''}
                       onChange={e => updateField(t.key, 'serviceUrl', e.target.value)}
                       placeholder="http://172.17.6.18:8000/rerank"
                     />
+                    {errors[`${t.key}.serviceUrl`] && <div className="ms-field-error">{errors[`${t.key}.serviceUrl`]}</div>}
                   </div>
                 ) : (
                   <div className="rag-form-group">
                     <label className="rag-label">超时 (timeout，毫秒)</label>
                     <input
-                      className="rag-input rag-input-small"
+                      className={`rag-input rag-input-small ${errors[`${t.key}.timeout`] ? 'rag-input-error' : ''}`}
                       type="number"
                       value={config[t.key]?.timeout ?? ''}
                       onChange={e => updateField(t.key, 'timeout', e.target.value ? Number(e.target.value) : null)}
                       min={1000}
                       step={1000}
                     />
+                    {errors[`${t.key}.timeout`] && <div className="ms-field-error">{errors[`${t.key}.timeout`]}</div>}
                   </div>
                 )}
               </div>
