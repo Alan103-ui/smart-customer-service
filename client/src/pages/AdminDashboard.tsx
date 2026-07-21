@@ -267,8 +267,8 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const logHintTimer = useRef<number | null>(null);
   const logRefreshTimer = useRef<number | null>(null);
 
-  // 日志管理子页：系统日志 / 操作审计
-  const [logView, setLogView] = useState<'sys' | 'audit'>('sys');
+  // 日志管理子页：系统日志 / 操作审计 / 性能
+  const [logView, setLogView] = useState<'sys' | 'audit' | 'perf'>('sys');
   const [auditList, setAuditList] = useState<any[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditOp, setAuditOp] = useState('');
@@ -402,6 +402,39 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     } catch (err) { console.error('获取对话列表失败', err); setConversations([]); setLoading(false); }
   };
 
+  // 导出对话明细为 CSV（含每条消息的用户/AI 内容）
+  const exportConversationsCsv = () => {
+    if (!conversations || conversations.length === 0) { alert('暂无对话数据可导出'); return; }
+    const safe = (s: any) => String(s == null ? '' : s).replace(/"/g, '""');
+    let csv = '会话ID,咨询人,状态,创建时间,消息序号,角色,内容\n';
+    conversations.forEach((conv: any) => {
+      const sid = conv.session_id || '';
+      const name = conv.user_name || conv.username || '匿名用户';
+      const status = conv.resolved ? '已解决' : '进行中';
+      const created = conv.created_at ? new Date(conv.created_at).toLocaleString('zh-CN') : '';
+      let msgs: any[] = [];
+      try {
+        msgs = typeof conv.messages === 'string' ? JSON.parse(conv.messages || '[]') : (Array.isArray(conv.messages) ? conv.messages : []);
+      } catch (e) { msgs = []; }
+      if (!msgs.length) {
+        csv += `"${safe(sid)}","${safe(name)}","${safe(status)}","${safe(created)}",0,"-","(无消息)"\n`;
+      } else {
+        msgs.forEach((m: any, i: number) => {
+          const role = m.role === 'user' ? '用户' : (m.role === 'assistant' ? 'AI' : (m.role || '-'));
+          csv += `"${safe(sid)}","${safe(name)}","${safe(status)}","${safe(created)}",${i + 1},"${safe(role)}","${safe(m.content == null ? '' : m.content)}"\n`;
+        });
+      }
+    });
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `对话明细_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
   // 获取日志文件列表（附带级别统计）
   const fetchLogs = async () => {
     setLogLoading(true);
@@ -418,13 +451,13 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   };
 
   // 读取日志文件内容（结构化条目，支持级别/搜索/条数过滤）
-  const fetchLogEntries = async (filename: string) => {
+  const fetchLogEntries = async (filename: string, forceLevel?: string) => {
     if (!filename) return;
     setLogLoading(true);
     try {
       const params = new URLSearchParams();
       params.set('limit', String(logLimit));
-      if (logLevelFilter !== 'ALL') params.set('level', logLevelFilter);
+      if ((forceLevel || logLevelFilter) !== 'ALL') params.set('level', forceLevel || logLevelFilter);
       if (logSearch.trim()) params.set('search', logSearch.trim());
       const res = await fetch(`${API_BASE}/logs/${encodeURIComponent(filename)}?${params.toString()}`, { headers: getAuthHeaders() });
       if (!res.ok) { console.error('读取日志文件失败:', res.status); setLogEntries([]); }
@@ -561,7 +594,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     if (tab === 'logs') { fetchLogs(); }
   }, [tab]);
 
-  // 进入「日志管理 → 操作审计」子页时自动加载审计列表
+  // 进入「日志管理 → 操作审计 / 性能」子页时自动加载
   useEffect(() => {
     if (tab === 'logs' && logView === 'audit') {
       setAuditOp(''); setAuditOpInput('');
@@ -570,7 +603,19 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       setAuditGroupBy(false);
       loadAudit();
     }
-  }, [tab, logView]);
+    if (tab === 'logs' && logView === 'perf') {
+      setLogLevelFilter('PERF');
+      if (logFiles.length === 0) { fetchLogs(); }
+      else {
+        const newest = logFiles.slice().sort((a, b) => {
+          const da = extractDateFromFilename(a.filename) || (a.modifiedAt ? new Date(a.modifiedAt) : new Date(0));
+          const db = extractDateFromFilename(b.filename) || (b.modifiedAt ? new Date(b.modifiedAt) : new Date(0));
+          return db.getTime() - da.getTime();
+        })[0];
+        if (newest) fetchLogEntries(newest.filename, 'PERF');
+      }
+    }
+  }, [tab, logView, logFiles]);
 
   // ==================== 分类操作 ====================
   const openAddCat = () => {
@@ -1033,9 +1078,14 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
         <div className="ui-card">
           <div className="ui-card__header">
             <div className="ui-card__title">💬 对话管理</div>
-            <button className="ui-btn ui-btn--danger ui-btn--sm" onClick={batchDeleteConversations} disabled={selectedSessionIds.size === 0}>
-              批量删除({selectedSessionIds.size})
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="ui-btn ui-btn--secondary ui-btn--sm" onClick={exportConversationsCsv} disabled={conversations.length === 0}>
+                导出 CSV
+              </button>
+              <button className="ui-btn ui-btn--danger ui-btn--sm" onClick={batchDeleteConversations} disabled={selectedSessionIds.size === 0}>
+                批量删除({selectedSessionIds.size})
+              </button>
+            </div>
           </div>
           <div className="ui-card__body">
             {loading ? (
@@ -1201,6 +1251,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           <div className="ui-tabs" style={{ marginBottom: 12 }}>
             <button className={`ui-tab ${logView === 'sys' ? 'ui-tab--active' : ''}`} onClick={() => setLogView('sys')}>📄 系统日志</button>
             <button className={`ui-tab ${logView === 'audit' ? 'ui-tab--active' : ''}`} onClick={() => setLogView('audit')}>🛡️ 操作审计</button>
+            <button className={`ui-tab ${logView === 'perf' ? 'ui-tab--active' : ''}`} onClick={() => setLogView('perf')}>⚡ 性能</button>
           </div>
 
           {logView === 'audit' ? (
@@ -1520,6 +1571,44 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                       </button>
                     </div>
                   </div>
+                  {logView === 'perf' && (() => {
+                    const perfRows = logEntries.filter((e: any) => e.level === 'PERF');
+                    if (perfRows.length === 0) return (<div style={{ padding: 16, color: '#999', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, marginBottom: 12 }}>当前文件无 PERF 性能记录。可切换其他日期文件，或在「系统日志」页把级别切回「全部」。</div>);
+                    const durs = perfRows.map((e: any) => Number(e.durationMs ?? e.duration ?? 0)).filter((d: number) => !isNaN(d) && d > 0);
+                    const sum = durs.reduce((a: number, b: number) => a + b, 0);
+                    const avg = durs.length ? Math.round(sum / durs.length) : 0;
+                    const max = durs.length ? Math.max(...durs) : 0;
+                    const sortedD = durs.slice().sort((a: number, b: number) => a - b);
+                    const p95 = sortedD.length ? sortedD[Math.min(sortedD.length - 1, Math.floor(sortedD.length * 0.95))] : 0;
+                    const slow = durs.filter((d: number) => d > 500).length;
+                    const byUrl: Record<string, { count: number; sum: number }> = {};
+                    perfRows.forEach((e: any) => { const u = e.url || '(未知路径)'; byUrl[u] = byUrl[u] || { count: 0, sum: 0 }; byUrl[u].count++; byUrl[u].sum += Number(e.durationMs ?? 0); });
+                    const topUrls = Object.entries(byUrl).map(([u, v]) => ({ u, count: v.count, avg: v.count ? Math.round(v.sum / v.count) : 0 })).sort((a, b) => b.avg - a.avg).slice(0, 6);
+                    const Stat = ({ label, value, color }: any) => (<div style={{ background: (color || '#1890ff') + '0d', border: '1px solid ' + (color || '#1890ff') + '33', padding: '8px 12px', borderRadius: 8, minWidth: 110 }}><div style={{ fontSize: 11, color: '#888' }}>{label}</div><div style={{ fontSize: 18, fontWeight: 700, color: color || '#333' }}>{value}</div></div>);
+                    return (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                          <Stat label="请求总数" value={perfRows.length} color="#1890ff" />
+                          <Stat label="平均耗时" value={avg + 'ms'} color="#08979c" />
+                          <Stat label="P95 耗时" value={p95 + 'ms'} color="#722ed1" />
+                          <Stat label="最大耗时" value={max + 'ms'} color={max > 1000 ? '#cf1322' : '#d46b08'} />
+                          <Stat label="慢请求(>500ms)" value={slow} color={slow > 0 ? '#cf1322' : '#389e0d'} />
+                        </div>
+                        <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden' }}>
+                          <div style={{ background: '#fafafa', padding: '6px 12px', fontSize: 12.5, fontWeight: 600, color: '#333' }}>🐢 最慢路径 Top {topUrls.length}</div>
+                          <table className="ui-table" style={{ margin: 0, border: 0 }}>
+                            <thead><tr><th>路径</th><th style={{ width: 80 }}>次数</th><th style={{ width: 100 }}>平均耗时</th></tr></thead>
+                            <tbody>
+                              {topUrls.map((t) => (
+                                <tr key={t.u}><td style={{ fontSize: 12, wordBreak: 'break-all' }}>{t.u}</td><td>{t.count}</td><td style={{ color: t.avg > 1000 ? '#cf1322' : t.avg > 500 ? '#d46b08' : '#333', fontWeight: 600 }}>{t.avg}ms</td></tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#999', margin: '8px 2px' }}>下方为原始 PERF 日志（按耗时排序，可展开查看 method / statusCode / ip 等）</div>
+                      </div>
+                    );
+                  })()}
                   {/* 日志条目 */}
                   <div ref={logBodyRef} style={{ maxHeight: 588, overflow: 'auto' }}>
                     {sortedEntries.length === 0 ? (

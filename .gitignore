@@ -56,3 +56,8 @@ data/
 !data/categories.json
 !data/knowledge_bases.json
 !data/a8_config.json
+
+# ============ 工作区记忆与验证产物 ============
+.workbuddy/
+scripts/*.png
+scripts/dl/
