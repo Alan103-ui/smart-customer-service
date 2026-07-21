@@ -1884,10 +1884,18 @@ router.put('/personnel/:id/department', auth.authMiddleware, auth.adminOnly, (re
 router.get('/audit-logs', auth.authMiddleware, auth.adminOnly, (req, res) => {
   try {
     const LOGS_DIR = path.join(__dirname, '../logs');
-    const { operation, operator, date, limit = 200, offset = 0 } = req.query;
+    const { operation, operator, date, dateFrom, dateTo, limit = 200, offset = 0 } = req.query;
     if (!fs.existsSync(LOGS_DIR)) return res.json({ success: true, data: [], total: 0 });
     let files = fs.readdirSync(LOGS_DIR).filter(f => f.endsWith('.log'));
     if (date) files = files.filter(f => f.startsWith(String(date)));
+    if (dateFrom || dateTo) {
+      const from = dateFrom ? String(dateFrom) : '0000-00-00';
+      const to = dateTo ? String(dateTo) : '9999-99-99';
+      files = files.filter(f => {
+        const fd = f.slice(0, 10);
+        return fd >= from && fd <= to;
+      });
+    }
     files.sort((a, b) => b.localeCompare(a)); // 新日期优先
     const out = [];
     const opQ = operation ? String(operation).toLowerCase() : '';

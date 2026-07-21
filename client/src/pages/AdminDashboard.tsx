@@ -273,7 +273,22 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditOp, setAuditOp] = useState('');
   const [auditOpInput, setAuditOpInput] = useState('');
+  const [auditDateFrom, setAuditDateFrom] = useState('');
+  const [auditDateTo, setAuditDateTo] = useState('');
+  const [auditOperator, setAuditOperator] = useState('');
+  const [auditOperatorInput, setAuditOperatorInput] = useState('');
+  const [auditGroupBy, setAuditGroupBy] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
+
+  // 按 operation 聚合（分组视图用）
+  const auditGroups = useMemo(() => {
+    const m: Record<string, any[]> = {};
+    for (const a of auditList) {
+      const k = a.operation || 'unknown';
+      (m[k] = m[k] || []).push(a);
+    }
+    return Object.entries(m).sort((x, y) => y[1].length - x[1].length);
+  }, [auditList]);
 
   // 短暂提示（复制/下载成功后）
   const flashLogHint = (msg: string) => {
@@ -423,10 +438,16 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   };
 
   // 操作审计列表（结构化审计日志）
-  const loadAudit = (op = auditOp) => {
+  const loadAudit = (op = auditOp, operator = auditOperator, dateFrom = auditDateFrom, dateTo = auditDateTo) => {
     setAuditLoading(true);
-    const q = op ? ('?operation=' + encodeURIComponent(op)) : '';
-    fetch(`${API_BASE}/audit-logs` + q, { headers: getAuthHeaders() })
+    const params = new URLSearchParams();
+    if (op) params.set('operation', op);
+    if (operator) params.set('operator', operator);
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    params.set('limit', '2000'); // 拉取足够条数，便于前端按操作分组
+    const q = params.toString();
+    fetch(`${API_BASE}/audit-logs` + (q ? '?' + q : ''), { headers: getAuthHeaders() })
       .then(r => r.ok ? r.json() : { data: [], total: 0 })
       .then((d: any) => { setAuditList(Array.isArray(d.data) ? d.data : []); setAuditTotal(d.total || 0); })
       .catch(() => { setAuditList([]); setAuditTotal(0); })
@@ -541,7 +562,13 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
 
   // 进入「日志管理 → 操作审计」子页时自动加载审计列表
   useEffect(() => {
-    if (tab === 'logs' && logView === 'audit') { setAuditOp(''); setAuditOpInput(''); loadAudit(); }
+    if (tab === 'logs' && logView === 'audit') {
+      setAuditOp(''); setAuditOpInput('');
+      setAuditDateFrom(''); setAuditDateTo('');
+      setAuditOperator(''); setAuditOperatorInput('');
+      setAuditGroupBy(false);
+      loadAudit();
+    }
   }, [tab, logView]);
 
   // ==================== 分类操作 ====================
@@ -1177,13 +1204,42 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
 
           {logView === 'audit' ? (
             <div style={{ padding: '0 16px 16px' }}>
-              <div className="ui-toolbar">
-                <input className="ui-input" style={{ width: 280 }} value={auditOpInput} onChange={e => setAuditOpInput(e.target.value)} placeholder="操作筛选，如 新增 / 删除 / 更新" />
-                <button className="ui-btn ui-btn--primary" onClick={() => { setAuditOp(auditOpInput.trim()); loadAudit(auditOpInput.trim()); }} disabled={auditLoading}>{auditLoading ? '加载中…' : '查询'}</button>
-                <button className="ui-btn ui-btn--secondary" onClick={() => { setAuditOp(''); setAuditOpInput(''); loadAudit(''); }}>全部</button>
+              <div className="ui-toolbar" style={{ flexWrap: 'wrap', gap: 8 }}>
+                <input className="ui-input" style={{ width: 160 }} type="date" value={auditDateFrom} onChange={e => setAuditDateFrom(e.target.value)} title="起始日期" />
+                <span style={{ color: '#999', fontSize: 13 }}>至</span>
+                <input className="ui-input" style={{ width: 160 }} type="date" value={auditDateTo} onChange={e => setAuditDateTo(e.target.value)} title="结束日期" />
+                <input className="ui-input" style={{ width: 130 }} value={auditOperatorInput} onChange={e => setAuditOperatorInput(e.target.value)} placeholder="操作人" />
+                <input className="ui-input" style={{ width: 220 }} value={auditOpInput} onChange={e => setAuditOpInput(e.target.value)} placeholder="操作筛选，如 新增/删除/更新" />
+                <button className="ui-btn ui-btn--primary" onClick={() => { setAuditOp(auditOpInput.trim()); setAuditOperator(auditOperatorInput.trim()); loadAudit(auditOpInput.trim(), auditOperatorInput.trim(), auditDateFrom, auditDateTo); }} disabled={auditLoading}>{auditLoading ? '加载中…' : '查询'}</button>
+                <button className="ui-btn ui-btn--secondary" onClick={() => { setAuditOp(''); setAuditOpInput(''); setAuditOperator(''); setAuditOperatorInput(''); setAuditDateFrom(''); setAuditDateTo(''); setAuditGroupBy(false); loadAudit('', '', '', ''); }}>重置</button>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={auditGroupBy} onChange={e => setAuditGroupBy(e.target.checked)} /> 按操作分组
+                </label>
                 <span className="ui-toolbar__spacer" />
                 <span className="ui-tag">共 {auditTotal} 条</span>
               </div>
+              {auditGroupBy ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+                  {auditGroups.map(([op, rows]) => (
+                    <div key={op} style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden' }}>
+                      <div style={{ background: '#fafafa', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ background: '#f9f0ff', color: '#531dab', border: '1px solid #efdbff', padding: '2px 10px', borderRadius: 10, fontSize: 12.5, fontWeight: 600 }}>{op}</span>
+                        <strong style={{ color: '#531dab' }}>{rows.length}</strong>
+                        <span style={{ color: '#999', fontSize: 12 }}>条</span>
+                      </div>
+                      <table className="ui-table" style={{ margin: 0, border: 0, borderTop: '1px solid #f0f0f0' }}>
+                        <thead><tr><th style={{ width: 180 }}>时间</th><th style={{ width: 120 }}>操作人</th><th>详情</th></tr></thead>
+                        <tbody>
+                          {rows.map((a: any, i: number) => (
+                            <tr key={i}><td>{a.timestamp ? a.timestamp.slice(0, 19).replace('T', ' ') : '-'}</td><td>{a.operator || '-'}</td><td style={{ maxWidth: 480, wordBreak: 'break-all' }}>{a.details ? JSON.stringify(a.details) : ''}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                  {auditGroups.length === 0 && <div className="ui-empty">暂无记录</div>}
+                </div>
+              ) : (
               <table className="ui-table">
                 <thead><tr><th>时间</th><th>操作</th><th>操作人</th><th>详情</th></tr></thead>
                 <tbody>
@@ -1193,6 +1249,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                   {auditList.length === 0 && <tr><td colSpan={4} className="ui-empty">暂无记录</td></tr>}
                 </tbody>
               </table>
+              )}
             </div>
           ) : (
           <div style={{ padding: 16, background: '#fff', minHeight: 300 }}>
