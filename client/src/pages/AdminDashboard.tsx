@@ -278,6 +278,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const [auditOperator, setAuditOperator] = useState('');
   const [auditOperatorInput, setAuditOperatorInput] = useState('');
   const [auditGroupBy, setAuditGroupBy] = useState(false);
+  const [auditCollapsed, setAuditCollapsed] = useState<Record<string, boolean>>({});
   const [auditLoading, setAuditLoading] = useState(false);
 
   // 按 operation 聚合（分组视图用）
@@ -1220,13 +1221,26 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
               </div>
               {auditGroupBy ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
-                  {auditGroups.map(([op, rows]) => (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button className="ui-btn ui-btn--secondary" onClick={() => {
+                      const allCollapsed = auditGroups.length > 0 && auditGroups.every(([op]) => auditCollapsed[op]);
+                      const next: Record<string, boolean> = {};
+                      auditGroups.forEach(([op]) => { next[op] = !allCollapsed; });
+                      setAuditCollapsed(next);
+                    }}>{auditGroups.length > 0 && auditGroups.every(([op]) => auditCollapsed[op]) ? '全部展开' : '全部折叠'}</button>
+                    <span className="ui-tag">{auditGroups.length} 个操作分组（按次数降序）</span>
+                  </div>
+                  {auditGroups.map(([op, rows]) => {
+                    const collapsed = !!auditCollapsed[op];
+                    return (
                     <div key={op} style={{ border: '1px solid #f0f0f0', borderRadius: 8, overflow: 'hidden' }}>
-                      <div style={{ background: '#fafafa', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div onClick={() => setAuditCollapsed(c => ({ ...c, [op]: !c[op] }))} style={{ cursor: 'pointer', background: '#fafafa', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 12, color: '#999', width: 14 }}>{collapsed ? '▶' : '▼'}</span>
                         <span style={{ background: '#f9f0ff', color: '#531dab', border: '1px solid #efdbff', padding: '2px 10px', borderRadius: 10, fontSize: 12.5, fontWeight: 600 }}>{op}</span>
                         <strong style={{ color: '#531dab' }}>{rows.length}</strong>
                         <span style={{ color: '#999', fontSize: 12 }}>条</span>
                       </div>
+                      {!collapsed && (
                       <table className="ui-table" style={{ margin: 0, border: 0, borderTop: '1px solid #f0f0f0' }}>
                         <thead><tr><th style={{ width: 180 }}>时间</th><th style={{ width: 120 }}>操作人</th><th>详情</th></tr></thead>
                         <tbody>
@@ -1235,8 +1249,10 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
                           ))}
                         </tbody>
                       </table>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                   {auditGroups.length === 0 && <div className="ui-empty">暂无记录</div>}
                 </div>
               ) : (

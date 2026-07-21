@@ -59,6 +59,12 @@ function AuthWrapper() {
   }, []);
 
   const handleLogout = useCallback(() => {
+    const token = localStorage.getItem('cs_token');
+    if (token) {
+      // 先异步上报登出审计（fire-and-forget，失败不影响本地登出）
+      fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+        .catch(() => {});
+    }
     localStorage.removeItem('cs_token');
     localStorage.removeItem('cs_user');
     setUser(null);

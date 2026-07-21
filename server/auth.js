@@ -489,9 +489,11 @@ function setupAuthRoutes(app) {
 
       const user = findUserByUsername(username);
       if (!user || !user.isActive) {
+        auditLog('login_failure', username || 'unknown', { reason: !user ? 'user_not_found' : 'inactive' });
         return res.status(401).json({ error: '用户名或密码错误' });
       }
       if (!verifyPassword(password, user.passwordHash)) {
+        auditLog('login_failure', username || 'unknown', { reason: 'wrong_password' });
         return res.status(401).json({ error: '用户名或密码错误' });
       }
 
@@ -513,6 +515,7 @@ function setupAuthRoutes(app) {
       }
 
       const token = generateToken(user);
+      auditLog('login_success', user.username, { role: user.role });
       res.json({
         success: true,
         token,
@@ -521,6 +524,13 @@ function setupAuthRoutes(app) {
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // ============ 登出（记录审计） ============
+  app.post('/api/auth/logout', authMiddleware, (req, res) => {
+    const operator = req.user ? req.user.username : 'unknown';
+    auditLog('logout', operator, {});
+    res.json({ success: true });
   });
 
   // ============ 获取当前登录用户信息 ============
