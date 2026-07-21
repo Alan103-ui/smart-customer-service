@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getAuthHeaders } from '../services/api';
+import IntentUnderstanding from './IntentUnderstanding';
 
 // ==================== Toast 通知组件 ====================
 interface Toast {
@@ -35,12 +36,6 @@ export default function RAGManagement() {
   const [evalRunning, setEvalRunning] = useState(false);
   const [evalReport, setEvalReport] = useState<any>(null);
   const [evalReportPath, setEvalReportPath] = useState<string>('');
-  
-  // 意图理解
-  const [intentInput, setIntentInput] = useState('');
-  const [intentBatchInput, setIntentBatchInput] = useState('');
-  const [intentResult, setIntentResult] = useState<any>(null);
-  const [intentLoading, setIntentLoading] = useState(false);
   
   // 答案改写
   const [rewriteInput, setRewriteInput] = useState('');
@@ -203,58 +198,6 @@ export default function RAGManagement() {
     };
     
     poll();
-  };
-
-  // ==================== 意图理解 ====================
-  const handleIntentParse = async () => {
-    if (!intentInput.trim()) {
-      showToast('请输入要解析的问题', 'error');
-      return;
-    }
-    setIntentLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/intent-parse`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ query: intentInput })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setIntentResult(data);
-        showToast('意图解析成功', 'success');
-      } else {
-        showToast('解析失败: ' + (data.error || '未知错误'), 'error');
-      }
-    } catch (err: any) {
-      showToast('解析失败: ' + err.message, 'error');
-    }
-    setIntentLoading(false);
-  };
-
-  const handleIntentBatch = async () => {
-    if (!intentBatchInput.trim()) {
-      showToast('请输入要批量解析的问题（每行一个）', 'error');
-      return;
-    }
-    setIntentLoading(true);
-    try {
-      const queries = intentBatchInput.split('\n').filter(q => q.trim());
-      const res = await fetch(`${API_BASE}/intent-batch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ queries })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setIntentResult(data.results);
-        showToast(`批量解析完成，共 ${data.total} 条`, 'success');
-      } else {
-        showToast('批量解析失败: ' + (data.error || '未知错误'), 'error');
-      }
-    } catch (err: any) {
-      showToast('批量解析失败: ' + err.message, 'error');
-    }
-    setIntentLoading(false);
   };
 
   // ==================== 答案改写 ====================
@@ -703,96 +646,8 @@ export default function RAGManagement() {
         </div>
       )}
 
-      {/* 意图理解 Tab */}
-      {activeTab === 'intent' && (
-        <div className="rag-tab-content">
-          <div className="rag-card">
-            <h3 className="rag-card-title">🧠 意图理解</h3>
-            
-            {/* 单个意图解析 */}
-            <div className="rag-form">
-              <div className="rag-form-group">
-                <label className="rag-label">输入问题</label>
-                <input
-                  type="text"
-                  value={intentInput}
-                  onChange={e => setIntentInput(e.target.value)}
-                  placeholder="输入要解析的问题..."
-                  className="rag-input"
-                />
-              </div>
-              <button
-                onClick={handleIntentParse}
-                disabled={intentLoading || !intentInput.trim()}
-                className={`rag-btn rag-btn-primary ${intentLoading || !intentInput.trim() ? 'rag-btn-disabled' : ''}`}
-              >
-                {intentLoading ? '解析中...' : '🧠 解析意图'}
-              </button>
-            </div>
-
-            {/* 解析结果 */}
-            {intentResult && !Array.isArray(intentResult) && (
-              <div style={{ marginTop: 20, padding: 16, background: '#f5f5f5', borderRadius: 8, overflowX: 'auto' }}>
-                <h4 style={{ marginBottom: 12 }}>解析结果</h4>
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{JSON.stringify(intentResult, null, 2)}</pre>
-              </div>
-            )}
-          </div>
-
-          {/* 批量意图解析 */}
-          <div className="rag-card" style={{ marginTop: 20 }}>
-            <h3 className="rag-card-title">📋 批量意图解析</h3>
-            <div className="rag-form">
-              <div className="rag-form-group">
-                <label className="rag-label">输入问题（每行一个）</label>
-                <textarea
-                  value={intentBatchInput}
-                  onChange={e => setIntentBatchInput(e.target.value)}
-                  placeholder="输入要批量解析的问题，每行一个..."
-                  className="rag-textarea"
-                  rows={6}
-                />
-              </div>
-              <button
-                onClick={handleIntentBatch}
-                disabled={intentLoading || !intentBatchInput.trim()}
-                className={`rag-btn rag-btn-primary ${intentLoading || !intentBatchInput.trim() ? 'rag-btn-disabled' : ''}`}
-              >
-                {intentLoading ? '解析中...' : '📋 批量解析'}
-              </button>
-            </div>
-
-            {/* 批量解析结果 */}
-            {intentResult && Array.isArray(intentResult) && (
-              <div style={{ marginTop: 20 }}>
-                <h4 style={{ marginBottom: 12 }}>批量解析结果（共 {intentResult.length} 条）</h4>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: '#fafafa', borderBottom: '2px solid #e8e8e8' }}>
-                        <th style={{ padding: '8px 12px', textAlign: 'left' }}>#</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left' }}>问题</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>意图</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>置信度</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {intentResult.map((r: any, idx: number) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid #e8e8e8' }}>
-                          <td style={{ padding: '8px 12px' }}>{idx + 1}</td>
-                          <td style={{ padding: '8px 12px' }}>{r.query || r.question}</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>{r.intent}</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>{Math.round((r.confidence || 0) * 100)}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* 意图理解 Tab（由原独立页面合并而来，复用带纠错闭环的 IntentUnderstanding 组件） */}
+      {activeTab === 'intent' && <IntentUnderstanding />}
 
       {/* 答案改写 Tab */}
       {activeTab === 'rewrite' && (
