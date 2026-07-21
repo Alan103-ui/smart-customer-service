@@ -10,6 +10,7 @@ const fs = require('fs');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const auth = require('./auth');
+const { auditLog } = require('./logger');
 
 const FAQ_PATH = path.join(__dirname, '../data/faq.json');
 const FAQ_ATTACHMENTS_DIR = path.join(__dirname, 'uploads/faq_attachments');
@@ -91,6 +92,7 @@ router.post('/upload/editor-image', uploadEditorImage.single('file'), (req, res)
   try {
     if (!req.file) return res.status(400).json({ errno: 1, message: '未收到文件' });
     const fileUrl = `/uploads/images/${req.file.filename}`;
+    auditLog('editor_image_upload', req.user ? req.user.username : 'unknown', { originalName: req.file.originalname });
     res.json({ errno: 0, data: { url: fileUrl } });
   } catch (err) {
     res.status(500).json({ errno: 1, message: err.message });
@@ -127,6 +129,7 @@ router.post('/faq/:id/attachments', uploadArrayWithErrorHandler(uploadFaqAttachm
     
     faqList[idx].attachments = attachments;
     saveFAQ(faqList);
+    auditLog('faq_attachment_upload', req.user ? req.user.username : 'unknown', { faqId: req.params.id, count: req.files.length });
     res.json({ success: true, attachments });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -156,7 +159,7 @@ router.delete('/faq/:id/attachments/:fileId', (req, res) => {
     attachments.splice(fileIdx, 1);
     faqList[idx].attachments = attachments;
     saveFAQ(faqList);
-    
+    auditLog('faq_attachment_delete', req.user ? req.user.username : 'unknown', { faqId: id, fileId });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

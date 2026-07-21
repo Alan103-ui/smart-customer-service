@@ -352,6 +352,7 @@ router.post('/knowledge-bases', (req, res) => {
     const id = 'kb_' + Date.now();
     list.push({ id, name: name.trim(), description: description || '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDefault: false, isActive: true });
     saveKnowledgeBases(list);
+    auditLog('kb_create', req.user ? req.user.username : 'unknown', { id, name: name.trim() });
     res.json({ success: true, id });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -368,6 +369,7 @@ router.put('/knowledge-bases/:id', (req, res) => {
     if (description !== undefined) list[idx].description = description;
     list[idx].updatedAt = new Date().toISOString();
     saveKnowledgeBases(list);
+    auditLog('kb_update', req.user ? req.user.username : 'unknown', { id: req.params.id, name: (name || '').trim() });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -389,6 +391,7 @@ router.delete('/knowledge-bases/:id', (req, res) => {
     saveFAQ(faqList);
     list.find(k => k.id === req.params.id).isActive = false;
     saveKnowledgeBases(list);
+    auditLog('kb_delete', req.user ? req.user.username : 'unknown', { id: req.params.id, name: target.name });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -419,6 +422,7 @@ router.post('/categories', (req, res) => {
     const id = 'cat_' + Date.now();
     list.push({ id, name: name.trim(), description: description || '', parentId: parentId || null, knowledgeBaseId: knowledgeBaseId || '', sortOrder: list.length, isDefault: false });
     saveCategories(list);
+    auditLog('category_create', req.user ? req.user.username : 'unknown', { id, name: name.trim(), parentId: parentId || null });
     res.json({ success: true, id });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -437,6 +441,7 @@ router.put('/categories/:id', (req, res) => {
     if (parentId !== undefined) list[idx].parentId = parentId || null;
     if (knowledgeBaseId !== undefined) list[idx].knowledgeBaseId = knowledgeBaseId;
     saveCategories(list);
+    auditLog('category_update', req.user ? req.user.username : 'unknown', { id: req.params.id, name: (name || '').trim() });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -455,6 +460,7 @@ router.delete('/categories/:id', (req, res) => {
     }
     saveFAQ(faqList);
     saveCategories(list.filter(c => c.id !== req.params.id));
+    auditLog('category_delete', req.user ? req.user.username : 'unknown', { id: req.params.id, name: target.name });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -909,6 +915,7 @@ router.get('/eval-report-latest', (req, res) => {
 
 router.post('/vector/rebuild', async (req, res) => {
   try {
+    auditLog('vector_rebuild', req.user ? req.user.username : 'unknown', { category: req.body && req.body.category || 'all' });
     res.json({ success: true, message: '向量库重建中，请稍候...' });
     rebuildVectorStore()
       .then(r => console.log('[RAG] 向量库重建完成，共', r.count, '个文档'))
@@ -944,6 +951,7 @@ router.delete('/uploads/:filename', (req, res) => {
     const filename = req.params.filename;
     const fp = path.join(__dirname, 'uploads', filename);
     if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    auditLog('upload_delete', req.user ? req.user.username : 'unknown', { filename: req.params.filename });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -965,6 +973,7 @@ router.post('/upload-media', uploadSingleWithErrorHandler(uploadMedia, 'file'), 
     const newPath = path.join(__dirname, 'uploads', `${file.filename}${ext}`);
     fs.renameSync(file.path, newPath);
     console.log('[媒体上传] 成功：', url, '原始名：', originalName);
+    auditLog('media_upload', req.user ? req.user.username : 'unknown', { originalName, isImage });
     res.json({
       success: true,
       url,
@@ -1010,6 +1019,7 @@ router.post('/logs/clean', (req, res) => {
   try {
     const { daysToKeep = 7 } = req.body;
     cleanOldLogs(Number(daysToKeep));
+    auditLog('logs_clean', req.user ? req.user.username : 'unknown', { daysToKeep });
     res.json({ success: true, message: `已清理${daysToKeep}天前的日志` });
   } catch (err) {
     errorLog('清理旧日志失败', err);
@@ -1194,6 +1204,7 @@ router.get('/memory/stats', (req, res) => {
 router.delete('/memory/:sessionId', (req, res) => {
   try {
     const result = clearConversationHistory(req.params.sessionId);
+    auditLog('memory_clear', req.user ? req.user.username : 'unknown', { sessionId: req.params.sessionId });
     res.json({ success: true, result });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1252,6 +1263,7 @@ router.put('/org/:id', (req, res) => {
     if (code !== undefined) list[idx].code = code;
     list[idx].updatedAt = new Date().toISOString();
     saveOrg(list);
+    auditLog('org_update', req.user ? req.user.username : 'unknown', { id: req.params.id, name: (name || '').trim(), type: list[idx].type });
     res.json({ success: true, data: list[idx] });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1266,6 +1278,7 @@ router.delete('/org/:id', (req, res) => {
     const newList = list.filter(o => o.id !== req.params.id);
     if (newList.length === list.length) return res.status(404).json({ error: 'Not found' });
     saveOrg(newList);
+    auditLog('org_delete', req.user ? req.user.username : 'unknown', { id: req.params.id });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1315,6 +1328,7 @@ router.post('/personnel', (req, res) => {
     };
     list.push(newPerson);
     savePersonnel(list);
+    auditLog('personnel_create', req.user ? req.user.username : 'unknown', { id: newPerson.id, name: newPerson.name, username: newPerson.username });
     res.json({ success: true, data: newPerson });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1343,6 +1357,7 @@ router.put('/personnel/:id', (req, res) => {
     if (isActive !== undefined) list[idx].isActive = isActive;
     list[idx].updatedAt = new Date().toISOString();
     savePersonnel(list);
+    auditLog('personnel_update', req.user ? req.user.username : 'unknown', { id: req.params.id, name: (name || '').trim(), username: (username || '').trim() });
     res.json({ success: true, data: list[idx] });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1355,6 +1370,7 @@ router.delete('/personnel/:id', (req, res) => {
     const newList = list.filter(p => p.id !== req.params.id);
     if (newList.length === list.length) return res.status(404).json({ error: 'Not found' });
     savePersonnel(newList);
+    auditLog('personnel_delete', req.user ? req.user.username : 'unknown', { id: req.params.id });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1375,7 +1391,7 @@ router.put('/personnel/:id/reset-password', (req, res) => {
     list[idx].passwordHash = hashPassword(newPassword);
     list[idx].updatedAt = new Date().toISOString();
     savePersonnel(list);
-    
+    auditLog('personnel_reset_password', req.user ? req.user.username : 'unknown', { id: req.params.id });
     res.json({ success: true, message: '密码已重置' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1395,6 +1411,7 @@ router.get('/software-info', (req, res) => {
 router.put('/software-info', (req, res) => {
   try {
     const saved = data.saveSoftwareInfo(req.body || {});
+    auditLog('software_info_update', req.user ? req.user.username : 'unknown', { name: saved.name });
     res.json({ success: true, data: saved });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1421,6 +1438,7 @@ router.post('/permissions', (req, res) => {
     };
     list.push(newRole);
     savePermissions(list);
+    auditLog('permission_create', req.user ? req.user.username : 'unknown', { id: newRole.id, roleName: newRole.roleName });
     res.json({ success: true, data: newRole });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1439,6 +1457,7 @@ router.put('/permissions/:id', (req, res) => {
     if (permissions) list[idx].permissions = permissions;
     list[idx].updatedAt = new Date().toISOString();
     savePermissions(list);
+    auditLog('permission_update', req.user ? req.user.username : 'unknown', { id: req.params.id, roleName: (roleName || '').trim() });
     res.json({ success: true, data: list[idx] });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1453,6 +1472,7 @@ router.delete('/permissions/:id', (req, res) => {
     if (target.isSystem) return res.status(400).json({ error: '系统内置角色不可删除' });
     const newList = list.filter(r => r.id !== req.params.id);
     savePermissions(newList);
+    auditLog('permission_delete', req.user ? req.user.username : 'unknown', { id: req.params.id, roleName: target.roleName });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1475,6 +1495,7 @@ router.put('/a8-config', (req, res) => {
     if (auth) config.auth = auth;
     config.updatedAt = new Date().toISOString();
     saveA8Config(config);
+    auditLog('a8_config_update', req.user ? req.user.username : 'unknown', { enabled: config.enabled });
     res.json({ success: true, data: config });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1504,6 +1525,7 @@ router.post('/a8-sync', async (req, res) => {
     // TODO: 实现同步逻辑
     config.lastSyncTime = new Date().toISOString();
     saveA8Config(config);
+    auditLog('a8_sync', req.user ? req.user.username : 'unknown', {});
     res.json({ success: true, message: '同步完成' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1566,7 +1588,7 @@ router.post('/models/performance/reset', (req, res) => {
   try {
     const { type } = req.body;
     modelSwitcher.resetPerformanceStats(type);
-    
+    auditLog('model_perf_reset', req.user ? req.user.username : 'unknown', { type: type || 'all' });
     res.json({
       success: true,
       message: type ? '已重置 ' + type + ' 性能统计' : '已重置所有模型性能统计',
@@ -1586,6 +1608,7 @@ router.post('/models/switch', (req, res) => {
     }
     
     const result = modelSwitcher.switchModel(type, modelName);
+    auditLog('model_switch', req.user ? req.user.username : 'unknown', { type, modelName });
     res.json(result);
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });

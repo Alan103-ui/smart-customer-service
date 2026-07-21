@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const oa = require('./oa-client'); // 致远OA REST 客户端（rest/token + rest/orgMembers）
+const { auditLog } = require('./logger');
 
 // ============ 配置 ============
 const JWT_SECRET = process.env.JWT_SECRET || 'smart-cs-secret-key-2026';
@@ -921,7 +922,7 @@ function setupAuthRoutes(app) {
       };
       users.push(newUser);
       saveUsers(users);
-
+      auditLog('user_create', req.user ? req.user.username : 'unknown', { id: newUser.id, username: newUser.username, name: newUser.name });
       const { passwordHash, ...safeUser } = newUser;
       res.json({ success: true, data: safeUser });
     } catch (err) {
@@ -943,6 +944,7 @@ function setupAuthRoutes(app) {
       users[idx].updatedAt = new Date().toISOString();
 
       saveUsers(users);
+      auditLog('user_update', req.user ? req.user.username : 'unknown', { id: req.params.id, name: (name || '').trim(), role: (role || '').trim() });
       const { passwordHash, ...safeUser } = users[idx];
       res.json({ success: true, data: safeUser });
     } catch (err) {
@@ -964,7 +966,7 @@ function setupAuthRoutes(app) {
       users[idx].passwordHash = hashPassword(newPassword);
       users[idx].updatedAt = new Date().toISOString();
       saveUsers(users);
-
+      auditLog('user_reset_password', req.user ? req.user.username : 'unknown', { id: req.params.id });
       res.json({ success: true, message: '密码已重置' });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -981,6 +983,7 @@ function setupAuthRoutes(app) {
 
       const filtered = users.filter(u => u.id !== req.params.id);
       saveUsers(filtered);
+      auditLog('user_delete', req.user ? req.user.username : 'unknown', { id: req.params.id, username: user.username });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message });

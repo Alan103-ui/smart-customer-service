@@ -10,6 +10,7 @@ const path = require('path');
 const router = express.Router();
 const oa = require('./oa-client');
 const auth = require('./auth');
+const { auditLog } = require('./logger');
 
 // ---- 本地数据存储（自包含，避免依赖 data.js 的导出细节）----
 const DATA_DIR = path.join(__dirname, '../data');
@@ -106,6 +107,7 @@ router.post('/config', (req, res) => {
       orgDeptRule: normalizeDeptRule(orgDeptRule),
     });
     oa.clearTokenCache(); // 配置变更后强制刷新 token
+    auditLog('oa_config_save', req.user ? req.user.username : 'unknown', { enabled, baseUrl });
     res.json({
       success: true,
       data: {
@@ -165,6 +167,7 @@ router.post('/whitelist', (req, res) => {
     }
     sso.whitelist = list;
     oa.saveOAConfig(Object.assign({}, cfg, { sso }));
+    auditLog('oa_whitelist_update', req.user ? req.user.username : 'unknown', { count: list.length, mode: sso.mode });
     res.json({ success: true, count: list.length, whitelist: list });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -180,6 +183,7 @@ router.delete('/whitelist/:employeeId', (req, res) => {
     const list = (Array.isArray(sso.whitelist) ? sso.whitelist : []).filter(x => String(x) !== e);
     sso.whitelist = list;
     oa.saveOAConfig(Object.assign({}, cfg, { sso }));
+    auditLog('oa_whitelist_delete', req.user ? req.user.username : 'unknown', { employeeId: e });
     res.json({ success: true, count: list.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -196,6 +200,7 @@ router.post('/whitelist/sync-all', async (req, res) => {
     const before = Array.isArray(sso.whitelist) ? sso.whitelist.length : 0;
     sso.whitelist = Array.from(new Set((sso.whitelist || []).concat(ids)));
     oa.saveOAConfig(Object.assign({}, cfg, { sso }));
+    auditLog('oa_whitelist_sync_all', req.user ? req.user.username : 'unknown', { added: sso.whitelist.length - before });
     res.json({ success: true, count: sso.whitelist.length, added: sso.whitelist.length - before });
   } catch (e) {
     res.json({ success: false, error: e.message });
@@ -341,6 +346,7 @@ router.post('/sync-org', async (req, res) => {
     }
 
     saveOrg(merged);
+    auditLog('oa_sync_org', req.user ? req.user.username : 'unknown', { accountCount, deptCount, added, updated });
     res.json({
       success: true,
       message: `同步完成：组织 ${accountCount} 个、部门 ${deptCount} 个（新增 ${added}、更新 ${updated}）`,
@@ -400,7 +406,7 @@ router.post('/sync-members', async (req, res) => {
       }
     }
     savePersonnel(local);
-
+    auditLog('oa_sync_members', req.user ? req.user.username : 'unknown', { total: members.length, added, updated });
     res.json({
       success: true,
       message: `OA 人员同步完成：共 ${members.length} 人（新增 ${added}、更新 ${updated}）`,

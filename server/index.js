@@ -727,6 +727,7 @@ app.post('/api/chat/clear', auth.authMiddleware, (req, res) => {
   try {
     const { sessionId } = req.body;
     clearConversationHistory(sessionId || null);
+    auditLog('chat_clear', req.user ? req.user.username : 'unknown', { sessionId: sessionId || null });
     res.json({ success: true, message: sessionId ? '会话已清空' : '所有会话已清空' });
   } catch (err) {
     res.status(500).json({ error: err.message });
