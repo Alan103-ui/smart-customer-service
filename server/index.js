@@ -444,7 +444,7 @@ async function generateAgentReply(sessionId, userMessage, conversationHistory, i
       console.log(`[RAG] HyDE注入 ${hydeResults.length} 条相关文档`);
     } else {
       // 常规搜索（使用改写后的查询）
-      const intentName = intentResult?.intent || null;
+      const intentName = intentResult?.primaryIntent?.level1 || null;
       const searchResults = await searchByFAQCacheAsync(optimizedQuery, intentName, 3, 0.12);
       if (searchResults && searchResults.length > 0) {
         ragContext = '\n\n===== 相关资料（语义搜索结果）=====\n';
@@ -476,7 +476,7 @@ async function generateAgentReply(sessionId, userMessage, conversationHistory, i
 3. 回答控制在 2-3 句话内，简洁明了
 4. 如无法回答，请礼貌告知用户
 5. 语气亲切，用「您」称呼用户
-6. 当前识别意图：${intentResult.intent}
+6. 当前识别意图：${intentResult?.primaryIntent?.level1 || '未知'}
 ${ragContext}
 FAQ 知识库：
 ${faqContext}`;
@@ -1446,13 +1446,13 @@ wss.on('connection', (ws) => {
           });
           const finalReply = reply || streamed || '抱歉，我暂时无法回答您的问题，正在为您转接人工客服...';
 
-          saveMessage(sessionId, 'assistant', finalReply, intentResult.intent, userId);
+          saveMessage(sessionId, 'assistant', finalReply, pi.level1, userId);
 
           // 存储到对话记忆（按userId持久化）
           storeConversationRound(sessionId, {
             userQuery: userMessage,
             aiResponse: finalReply,
-            intent: intentResult.intent,
+            intent: pi.level1,
             entities: [],
             timestamp: Date.now()
           }, userId);
