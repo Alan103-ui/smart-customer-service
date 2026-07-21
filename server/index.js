@@ -734,6 +734,39 @@ app.post('/api/chat/clear', auth.authMiddleware, (req, res) => {
   }
 });
 
+// ============ 意图在线标注（聊天端纠错，公开采集）============
+// 坐席/用户在前端对"识别意图"点纠错时调用；无需 admin，token 可选（用于署名）
+const intentFeedback = require('./intent-feedback');
+app.post('/api/intent-correct', (req, res) => {
+  try {
+    const { userMessage, originalIntent, correctedIntent, note, makeRule, sessionId, messageId } = req.body;
+    // 尝试从 token 取署名（失败则记为匿名）
+    let correctedBy = 'anonymous';
+    const authHeader = req.headers['authorization'] || '';
+    if (authHeader.startsWith('Bearer ')) {
+      try {
+        const decoded = auth.verifyToken(authHeader.slice(7));
+        const u = auth.findUserById ? auth.findUserById(decoded.userId) : null;
+        correctedBy = u ? (u.username || u.name || 'user') : 'user';
+      } catch (e) { correctedBy = 'anonymous'; }
+    }
+    const record = intentFeedback.addCorrection({
+      source: 'chat',
+      sessionId: sessionId || null,
+      messageId: messageId || null,
+      userMessage,
+      originalIntent: originalIntent || null,
+      correctedIntent,
+      correctedBy,
+      note: note || '',
+      makeRule: !!makeRule
+    });
+    res.json({ success: true, correction: record });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ============ RAG 评估接口 ============
 // 用于测试RAG检索质量
 app.post('/api/eval/rag', auth.authMiddleware, async (req, res) => {
@@ -1307,7 +1340,10 @@ wss.on('connection', (ws) => {
               type: 'message',
               content: reply,
               timestamp: new Date().toISOString(),
+              messageId: uuidv4(),
+              query: userMessage,
               intent: best.intent,
+              intentLevel2: null,
               confidence: best.confidence,
               fallback: false,
               matchedQuestion: best.faq.question
@@ -1341,11 +1377,13 @@ wss.on('connection', (ws) => {
         // 没有匹配，走原有逻辑（AI 生成或转人工）
         // 先获取意图 understanding
         const intentResult = await understandIntent(userMessage);
+        const pi = intentResult.primaryIntent || {};
         
         ws.send(JSON.stringify({
           type: 'intent',
-          intent: intentResult.intent,
-          confidence: intentResult.confidence,
+          intent: pi.level1 || null,
+          intentLevel2: pi.level2 || null,
+          confidence: (typeof pi.confidence === 'number') ? pi.confidence : null,
         }));
         
         // 记录 FAQ 日志
@@ -1353,27 +1391,35 @@ wss.on('connection', (ws) => {
         db.faq_logs.push({
           id: uuidv4(), session_id: sessionId, question: userMessage,
           matched_question: intentResult.matchedFAQ?.question || null,
-          intent: intentResult.intent, confidence: intentResult.confidence,
+          intent: pi.level1 || null,
+          intentLevel2: pi.level2 || null,
+          intentConfidence: (typeof pi.confidence === 'number') ? pi.confidence : null,
+          confidence: (typeof pi.confidence === 'number') ? pi.confidence : null,
           transferred: 0, created_at: new Date().toISOString()
         });
         writeDB(db);
         
-        if (intentResult.confidence < 0.4) {
+        if (pi.confidence < 0.4) {
           const reply = '正在为您转接人工客服，请稍候...我们的工作时间是 9:00-21:00，请您耐心等待。';
-          saveMessage(sessionId, 'assistant', reply, intentResult.intent, userId);
+          saveMessage(sessionId, 'assistant', reply, pi.level1, userId);
           
           // 存储到对话记忆（按userId持久化）
           storeConversationRound(sessionId, {
             userQuery: userMessage,
             aiResponse: reply,
-            intent: intentResult.intent,
+            intent: pi.level1,
             entities: [],
             timestamp: Date.now()
           }, userId);
           
           ws.send(JSON.stringify({
             type: 'message', content: reply,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            messageId: uuidv4(),
+            query: userMessage,
+            intent: pi.level1 || null,
+            intentLevel2: pi.level2 || null,
+            confidence: (typeof pi.confidence === 'number') ? pi.confidence : null
           }));
           return;
         }
@@ -1415,24 +1461,27 @@ wss.on('connection', (ws) => {
             type: 'stream_end',
             content: finalReply,
             timestamp: new Date().toISOString(),
-            intent: intentResult.intent,
-            confidence: intentResult.confidence
+            messageId: uuidv4(),
+            query: userMessage,
+            intent: pi.level1 || null,
+            intentLevel2: pi.level2 || null,
+            confidence: (typeof pi.confidence === 'number') ? pi.confidence : null
           }));
         } catch (err) {
           console.error('生成回复失败：', err);
           const fallback = '抱歉，我暂时无法处理您的问题，正在为您转接人工客服...';
-          saveMessage(sessionId, 'assistant', fallback, intentResult.intent, userId);
+          saveMessage(sessionId, 'assistant', fallback, pi.level1, userId);
 
           // 存储到对话记忆（按userId持久化）
           storeConversationRound(sessionId, {
             userQuery: userMessage,
             aiResponse: fallback,
-            intent: intentResult.intent,
+            intent: pi.level1,
             entities: [],
             timestamp: Date.now()
           }, userId);
 
-          ws.send(JSON.stringify({ type: 'message', content: fallback, timestamp: new Date().toISOString(), fallback: true }));
+          ws.send(JSON.stringify({ type: 'message', content: fallback, timestamp: new Date().toISOString(), fallback: true, messageId: uuidv4(), query: userMessage, intent: pi.level1 || null, intentLevel2: pi.level2 || null, confidence: (typeof pi.confidence === 'number') ? pi.confidence : null }));
         } finally {
           ws.send(JSON.stringify({ type: 'typing', status: false }));
         }

@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import IntentCorrector from '../components/IntentCorrector';
 import './IntentUnderstanding.css';
 
 interface IntentResult {
@@ -87,6 +88,90 @@ export default function IntentUnderstanding() {
   const [batchQueries, setBatchQueries] = useState('');
   const [batchResults, setBatchResults] = useState<IntentResult[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
+
+  // ===== 意图纠错闭环 =====
+  const [corrMode, setCorrMode] = useState(false); // 第三个 Tab：意图纠错
+  const [recognitions, setRecognitions] = useState<any[]>([]);
+  const [recLoading, setRecLoading] = useState(false);
+  const [recCorrectingId, setRecCorrectingId] = useState<string | null>(null);
+  const [corrections, setCorrections] = useState<any[]>([]);
+  const [corrListLoading, setCorrListLoading] = useState(false);
+  const [feedbackStats, setFeedbackStats] = useState<any>(null);
+  const [applying, setApplying] = useState(false);
+
+  function authHeaders() {
+    const token = localStorage.getItem('cs_token');
+    return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  }
+
+  async function loadRecognitions() {
+    setRecLoading(true);
+    try {
+      const res = await fetch('/api/admin/intent-recognitions?limit=50', { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setRecognitions(data.items || []);
+    } catch (e) { /* ignore */ } finally { setRecLoading(false); }
+  }
+
+  async function loadCorrections() {
+    setCorrListLoading(true);
+    try {
+      const res = await fetch('/api/admin/intent-corrections?limit=200', { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setCorrections(data.items || []);
+    } catch (e) { /* ignore */ } finally { setCorrListLoading(false); }
+  }
+
+  async function loadFeedbackStats() {
+    try {
+      const res = await fetch('/api/admin/intent-feedback/stats', { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) setFeedbackStats(data.stats);
+    } catch (e) { /* ignore */ }
+  }
+
+  // 进入纠错 Tab 时加载数据
+  React.useEffect(() => {
+    if (corrMode) { loadRecognitions(); loadCorrections(); loadFeedbackStats(); }
+  }, [corrMode]);
+
+  async function submitRecCorrection(rec: any, payload: { correctedIntent: { level1: string; level2: string | null }; note: string; makeRule: boolean }) {
+    const res = await fetch('/api/admin/intent-correct', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({
+        userMessage: rec.question,
+        originalIntent: { level1: rec.intent, level2: rec.intentLevel2 || null, confidence: rec.confidence },
+        correctedIntent: payload.correctedIntent,
+        note: payload.note, makeRule: payload.makeRule
+      })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || '提交失败');
+    setRecCorrectingId(null);
+    await Promise.all([loadRecognitions(), loadCorrections(), loadFeedbackStats()]);
+    showToast('已提交纠错', 'success');
+  }
+
+  async function deleteCorrection(id: string) {
+    const res = await fetch(`/api/admin/intent-corrections/${id}`, { method: 'DELETE', headers: authHeaders() });
+    const data = await res.json();
+    if (data.success) { await Promise.all([loadCorrections(), loadFeedbackStats()]); showToast('已删除', 'success'); }
+    else showToast(data.error || '删除失败', 'error');
+  }
+
+  async function applyFeedback() {
+    setApplying(true);
+    try {
+      const res = await fetch('/api/admin/intent-feedback/apply', { method: 'POST', headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setFeedbackStats(prev => ({ ...prev, feedback: data.stats, lastAppliedAt: new Date().toISOString() }));
+        await loadCorrections();
+        showToast(`已沉淀：${data.stats.fewShotCount} 条样例 / ${data.stats.ruleCount} 条规则`, 'success');
+      } else showToast(data.error || '沉淀失败', 'error');
+    } catch (e: any) { showToast(e.message, 'error'); }
+    finally { setApplying(false); }
+  }
 
   async function handleParse() {
     if (!query.trim()) {
@@ -198,16 +283,22 @@ export default function IntentUnderstanding() {
 
       <div className="intent-tabs">
         <button
-          className={`tab-btn ${!batchMode ? 'active' : ''}`}
-          onClick={() => setBatchMode(false)}
+          className={`tab-btn ${!batchMode && !corrMode ? 'active' : ''}`}
+          onClick={() => { setBatchMode(false); setCorrMode(false); }}
         >
           单条测试
         </button>
         <button
           className={`tab-btn ${batchMode ? 'active' : ''}`}
-          onClick={() => setBatchMode(true)}
+          onClick={() => { setBatchMode(true); setCorrMode(false); }}
         >
           批量测试
+        </button>
+        <button
+          className={`tab-btn ${corrMode ? 'active' : ''}`}
+          onClick={() => { setBatchMode(false); setCorrMode(true); }}
+        >
+          🔁 意图纠错
         </button>
       </div>
 
@@ -418,6 +509,156 @@ export default function IntentUnderstanding() {
       {error && (
         <div className="error-message">
           ❌ {error}
+        </div>
+      )}
+
+      {corrMode && (
+        <div className="intent-correction-panel">
+          {/* 反馈沉淀统计 */}
+          <div className="corr-section">
+            <h3>📈 反馈沉淀</h3>
+            {feedbackStats ? (
+              <div className="feedback-stats">
+                <div className="stat-card">
+                  <div className="stat-num">{feedbackStats.totalCorrections}</div>
+                  <div className="stat-label">累计纠错</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-num">{feedbackStats.appliedCorrections}</div>
+                  <div className="stat-label">已沉淀</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-num">{feedbackStats.feedback?.fewShotCount ?? 0}</div>
+                  <div className="stat-label">few-shot 样例</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-num">{feedbackStats.feedback?.ruleCount ?? 0}</div>
+                  <div className="stat-label">确定性规则</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-num">{feedbackStats.bySource?.chat ?? 0}</div>
+                  <div className="stat-label">聊天端</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-num">{feedbackStats.bySource?.admin ?? 0}</div>
+                  <div className="stat-label">后台</div>
+                </div>
+              </div>
+            ) : <p className="no-data">加载中...</p>}
+            <button className="btn btn-primary" onClick={applyFeedback} disabled={applying}>
+              {applying ? '沉淀中...' : '🔁 一键沉淀为样例/规则（反哺分类器）'}
+            </button>
+            {feedbackStats?.lastAppliedAt && (
+              <span className="last-applied">上次沉淀：{new Date(feedbackStats.lastAppliedAt).toLocaleString('zh-CN')}</span>
+            )}
+          </div>
+
+          {/* 在线识别记录 */}
+          <div className="corr-section">
+            <h3>🧾 在线意图识别记录（可纠错）</h3>
+            {recLoading ? <p className="no-data">加载中...</p> :
+              recognitions.length === 0 ? <p className="no-data">暂无识别记录（去聊天里问几个问题就会有）</p> :
+              <table className="batch-table corr-table">
+                <thead>
+                  <tr>
+                    <th>用户问题</th>
+                    <th>识别意图</th>
+                    <th>置信度</th>
+                    <th>时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recognitions.map((r, i) => (
+                    <React.Fragment key={r.id || i}>
+                      <tr>
+                        <td className="query-cell">{r.question}</td>
+                        <td>
+                          {r.intent ? (
+                            <span className="intent-badge-sm">
+                              {INTENT_LABELS[r.intent] || r.intent}
+                              {r.intentLevel2 && <span className="lv2"> / {INTENT_LABELS[r.intentLevel2] || r.intentLevel2}</span>}
+                            </span>
+                          ) : <span className="no-intent">未识别</span>}
+                        </td>
+                        <td>
+                          {typeof r.confidence === 'number' ? (
+                            <span className={`confidence ${r.confidence > 0.8 ? 'high' : r.confidence > 0.5 ? 'medium' : 'low'}`}>
+                              {Math.round(r.confidence * 100)}%
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="time-cell">{r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN') : '-'}</td>
+                        <td>
+                          <button className="corr-btn" onClick={() => setRecCorrectingId(prev => prev === (r.id || i) ? null : (r.id || i))}>
+                            {recCorrectingId === (r.id || i) ? '收起' : '纠错'}
+                          </button>
+                        </td>
+                      </tr>
+                      {recCorrectingId === (r.id || i) && (
+                        <tr className="corr-edit-row">
+                          <td colSpan={5}>
+                            <IntentCorrector
+                              currentLevel1={r.intent}
+                              currentLevel2={r.intentLevel2 || null}
+                              onSubmit={(p) => submitRecCorrection(r, p)}
+                              onCancel={() => setRecCorrectingId(null)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            }
+          </div>
+
+          {/* 纠错记录 */}
+          <div className="corr-section">
+            <h3>🗂 纠错记录</h3>
+            {corrListLoading ? <p className="no-data">加载中...</p> :
+              corrections.length === 0 ? <p className="no-data">暂无纠错记录</p> :
+              <table className="batch-table corr-table">
+                <thead>
+                  <tr>
+                    <th>用户问题</th>
+                    <th>原意图</th>
+                    <th>纠正为</th>
+                    <th>来源</th>
+                    <th>状态</th>
+                    <th>时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {corrections.map((c, i) => (
+                    <tr key={c.id || i}>
+                      <td className="query-cell">{c.userMessage}</td>
+                      <td>
+                        {c.originalIntent?.level1 ? (
+                          <span className="intent-badge-sm old">
+                            {INTENT_LABELS[c.originalIntent.level1] || c.originalIntent.level1}
+                            {c.originalIntent.level2 && <span className="lv2"> / {INTENT_LABELS[c.originalIntent.level2] || c.originalIntent.level2}</span>}
+                          </span>
+                        ) : <span className="no-intent">-</span>}
+                      </td>
+                      <td>
+                        <span className="intent-badge-sm new">
+                          {INTENT_LABELS[c.correctedIntent?.level1] || c.correctedIntent?.level1}
+                          {c.correctedIntent?.level2 && <span className="lv2"> / {INTENT_LABELS[c.correctedIntent.level2] || c.correctedIntent.level2}</span>}
+                        </span>
+                      </td>
+                      <td>{c.source === 'chat' ? '聊天端' : '后台'}</td>
+                      <td>{c.applied ? <span className="applied-tag">已沉淀</span> : <span className="pending-tag">待沉淀</span>}</td>
+                      <td className="time-cell">{c.createdAt ? new Date(c.createdAt).toLocaleString('zh-CN') : '-'}</td>
+                      <td><button className="corr-del-btn" onClick={() => deleteCorrection(c.id)}>删除</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            }
+          </div>
         </div>
       )}
     </div>

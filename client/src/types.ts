@@ -9,8 +9,11 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  id?: string;
   intent?: string;
+  intentLevel2?: string | null;
   confidence?: number;
+  query?: string;
   fallback?: boolean;
 }
 
@@ -21,7 +24,10 @@ export interface WebSocketMessage {
   messages?: Message[];
   status?: boolean;
   intent?: string;
+  intentLevel2?: string | null;
   confidence?: number;
+  messageId?: string;
+  query?: string;
   timestamp?: string;
   candidates?: Candidate[];
   originalMessage?: string;

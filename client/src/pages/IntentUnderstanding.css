@@ -442,3 +442,41 @@
     max-width: 150px;
   }
 }
+
+/* ===== 意图纠错闭环面板 ===== */
+.intent-correction-panel { display: flex; flex-direction: column; gap: 24px; }
+.corr-section h3 { margin: 0 0 12px; font-size: 15px; color: #2b3245; }
+.feedback-stats { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.stat-card {
+  flex: 1; min-width: 90px; background: #f6f9ff; border: 1px solid #e3e9f5;
+  border-radius: 10px; padding: 12px; text-align: center;
+}
+.stat-num { font-size: 22px; font-weight: 700; color: #2f6bff; }
+.stat-label { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.last-applied { display: inline-block; margin-left: 12px; color: #8a94a6; font-size: 12px; }
+
+.corr-table { width: 100%; border-collapse: collapse; }
+.corr-table th { background: #f3f6fc; text-align: left; font-size: 12px; }
+.corr-table td, .corr-table th { border-bottom: 1px solid #eef1f6; vertical-align: top; }
+.corr-edit-row td { background: #fbfcff; }
+.intent-badge-sm {
+  display: inline-block; padding: 2px 8px; border-radius: 9px; font-size: 12px;
+  background: #eaf1ff; color: #2f6bff; border: 1px solid #cfe0ff;
+}
+.intent-badge-sm .lv2 { color: #6b7da3; }
+.intent-badge-sm.old { background: #fdeaea; color: #d9534f; border-color: #f5c6c6; }
+.intent-badge-sm.new { background: #e7f7ee; color: #2e9b5b; border-color: #bfe9cf; }
+.no-intent { color: #b0b6c0; font-size: 12px; }
+.time-cell { white-space: nowrap; color: #8a94a6; font-size: 12px; }
+.corr-btn, .corr-del-btn {
+  border: 1px solid #d4d9e3; background: #fff; border-radius: 7px;
+  padding: 3px 10px; font-size: 12px; cursor: pointer;
+}
+.corr-btn { color: #2f6bff; border-color: #cfe0ff; }
+.corr-del-btn { color: #d9534f; border-color: #f5c6c6; }
+.corr-btn:hover, .corr-del-btn:hover { filter: brightness(0.97); }
+.applied-tag { color: #2e9b5b; font-size: 12px; }
+.pending-tag { color: #e6a23c; font-size: 12px; }
+.confidence.high { color: #2e9b5b; }
+.confidence.medium { color: #e6a23c; }
+.confidence.low { color: #f56c6c; }

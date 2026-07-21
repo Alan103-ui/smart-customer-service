@@ -268,8 +268,11 @@ function MainApp({ user, onLogout }: MainAppProps) {
             role: 'assistant',
             content: msg.content,
             timestamp: msg.timestamp || new Date().toISOString(),
+            id: msg.messageId,
             intent: msg.intent,
+            intentLevel2: msg.intentLevel2 || null,
             confidence: msg.confidence,
+            query: msg.query,
             fallback: msg.fallback,
           };
           setMessages(prev => [...prev, newMsg]);
@@ -287,8 +290,11 @@ function MainApp({ user, onLogout }: MainAppProps) {
           role: 'assistant',
           content: (msg.content != null ? msg.content : streaming) || '',
           timestamp: msg.timestamp || new Date().toISOString(),
+          id: msg.messageId,
           intent: msg.intent,
+          intentLevel2: msg.intentLevel2 || null,
           confidence: msg.confidence,
+          query: msg.query,
         }]);
         setStreaming(null);
         setCandidates([]);
@@ -309,6 +315,31 @@ function MainApp({ user, onLogout }: MainAppProps) {
     setStreaming(null);
     ws.send(JSON.stringify({ type: 'message', content }));
   }, []);
+
+  // 在线意图纠错（聊天端标注，回流闭环采集点）
+  const handleCorrectIntent = useCallback(async (payload: {
+    messageId?: string; query?: string;
+    originalIntent: { level1: string; level2: string | null; confidence?: number | null };
+    correctedIntent: { level1: string; level2: string | null };
+    note: string; makeRule: boolean;
+  }) => {
+    const token = localStorage.getItem('cs_token');
+    const res = await fetch('/api/intent-correct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        userMessage: payload.query || '',
+        originalIntent: payload.originalIntent,
+        correctedIntent: payload.correctedIntent,
+        note: payload.note,
+        makeRule: payload.makeRule,
+        sessionId: sessionId || null,
+        messageId: payload.messageId || null,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || '纠错提交失败');
+  }, [sessionId]);
 
   const sendCandidateSelect = useCallback((candidateId: string) => {
     const ws = wsRef.current;
@@ -390,6 +421,7 @@ function MainApp({ user, onLogout }: MainAppProps) {
         selectedCategory={selectedCategory}
         onSelectCategory={setSelectedCategory}
         currentUser={{ name: user.name, username: user.username }}
+        onCorrectIntent={handleCorrectIntent}
       />
 
       {/* 我的对话模态框 */}

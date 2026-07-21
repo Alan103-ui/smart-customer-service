@@ -3,7 +3,22 @@ import type { Message, Candidate } from '../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useSoftwareInfo, useAnnouncement, ANNOUNCEMENT_COLORS } from '../services/softwareInfo';
+import IntentCorrector from './IntentCorrector';
 import './ChatWindow.design.css';
+
+const INTENT_LABELS: Record<string, string> = {
+  query: '信息查询', process: '流程咨询', complaint: '问题投诉',
+  suggestion: '建议反馈', greeting: '闲聊问候',
+};
+
+interface CorrectIntentPayload {
+  messageId?: string;
+  query?: string;
+  originalIntent: { level1: string; level2: string | null; confidence?: number | null };
+  correctedIntent: { level1: string; level2: string | null };
+  note: string;
+  makeRule: boolean;
+}
 
 interface ChatWindowProps {
   messages: Message[];
@@ -17,6 +32,7 @@ interface ChatWindowProps {
   selectedCategory?: string;
   onSelectCategory?: (cat: string) => void;
   currentUser?: { name: string; username: string };
+  onCorrectIntent?: (payload: CorrectIntentPayload) => Promise<void> | void;
 }
 
 export default function ChatWindow({
@@ -30,7 +46,8 @@ export default function ChatWindow({
   categories = [],
   selectedCategory = '全部',
   onSelectCategory,
-  currentUser
+  currentUser,
+  onCorrectIntent
 }: ChatWindowProps) {
   const sw = useSoftwareInfo();
   const chatAvatar = sw.chatImage || '/logo.jpg';
@@ -38,6 +55,8 @@ export default function ChatWindow({
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
+  const [correctedIds, setCorrectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -129,10 +148,53 @@ export default function ChatWindow({
                   {new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                 </span>
                 {msg.intent && (
-                  <span className="message-intent-modern">意图：{msg.intent}</span>
+                  <span className="message-intent-modern">
+                    意图：{INTENT_LABELS[msg.intent] || msg.intent}
+                    {msg.intentLevel2 ? ` / ${msg.intentLevel2}` : ''}
+                    {typeof msg.confidence === 'number' && (
+                      <em className="intent-conf">{(msg.confidence * 100).toFixed(0)}%</em>
+                    )}
+                  </span>
                 )}
                 {msg.fallback && <span className="message-fallback-modern">FAQ匹配</span>}
+                {correctedIds.has(msg.id || '') && (
+                  <span className="message-corrected-modern">✓ 已纠错</span>
+                )}
+                {msg.intent && onCorrectIntent && !correctedIds.has(msg.id || '') && (
+                  <button
+                    className="message-correct-btn"
+                    onClick={() => setCorrectingId(prev => prev === (msg.id || '') ? null : (msg.id || ''))}
+                    title="识别意图不对？点击纠错"
+                  >意图纠错</button>
+                )}
               </div>
+              {correctingId === (msg.id || '') && msg.intent && (
+                <div className="message-correct-panel">
+                  <IntentCorrector
+                    compact
+                    currentLevel1={msg.intent}
+                    currentLevel2={msg.intentLevel2 || null}
+                    submitLabel="提交"
+                    onCancel={() => setCorrectingId(null)}
+                    onSubmit={async (p) => {
+                      await onCorrectIntent!({
+                        messageId: msg.id,
+                        query: msg.query,
+                        originalIntent: {
+                          level1: msg.intent!,
+                          level2: msg.intentLevel2 || null,
+                          confidence: msg.confidence ?? null
+                        },
+                        correctedIntent: p.correctedIntent,
+                        note: p.note,
+                        makeRule: p.makeRule
+                      });
+                      setCorrectedIds(prev => new Set(prev).add(msg.id || ''));
+                      setCorrectingId(null);
+                    }}
+                  />
+                </div>
+              )}
             </div>
             {msg.role === 'user' && (
               <div className="avatar-modern user">

@@ -69,6 +69,9 @@ const {
   understandIntent, batchUnderstandIntents, fallbackIntent, INTENT_TAXONOMY
 } = require('./intent-understanding');
 
+// 意图在线标注 / 纠错反馈闭环
+const intentFeedback = require('./intent-feedback');
+
 const {
   storeConversationRound, getConversationHistory, enhanceQueryWithMemory,
   getMemoryStats, clearConversationHistory
@@ -747,6 +750,95 @@ router.post('/intent-batch', async (req, res) => {
 router.get('/intent-taxonomy', (req, res) => {
   try {
     res.json({ success: true, taxonomy: INTENT_TAXONOMY });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 五-二、意图在线标注 / 纠错反馈闭环 API
+// ==========================================
+// 在线意图识别记录（来自对话 faq_logs，供管理员纠错）
+router.get('/intent-recognitions', (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    const search = req.query.search || '';
+    const data = intentFeedback.getRecognitions({ limit, offset, search });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 纠错记录列表
+router.get('/intent-corrections', (req, res) => {
+  try {
+    const source = req.query.source || undefined;
+    const applied = req.query.applied === undefined ? undefined : (req.query.applied === 'true');
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+    const offset = parseInt(req.query.offset) || 0;
+    const search = req.query.search || '';
+    const data = intentFeedback.listCorrections({ source, applied, limit, offset, search });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 新增纠错（后台管理员主动纠错）
+router.post('/intent-correct', (req, res) => {
+  try {
+    const { userMessage, originalIntent, correctedIntent, note, makeRule, sessionId, messageId } = req.body;
+    const record = intentFeedback.addCorrection({
+      source: 'admin',
+      sessionId: sessionId || null,
+      messageId: messageId || null,
+      userMessage,
+      originalIntent: originalIntent || null,
+      correctedIntent,
+      correctedBy: req.user ? req.user.username : 'admin',
+      note: note || '',
+      makeRule: !!makeRule
+    });
+    auditLog('intent_correct', req.user ? req.user.username : 'unknown', {
+      source: 'admin',
+      userMessage: (userMessage || '').slice(0, 60),
+      corrected: correctedIntent
+    });
+    res.json({ success: true, correction: record });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// 删除纠错记录
+router.delete('/intent-corrections/:id', (req, res) => {
+  try {
+    const ok = intentFeedback.deleteCorrection(req.params.id);
+    if (!ok) return res.status(404).json({ error: '记录不存在' });
+    auditLog('intent_correct_delete', req.user ? req.user.username : 'unknown', { id: req.params.id });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 反馈沉淀：把纠错转为 few-shot 样例 + 高频规则，反哺分类器
+router.post('/intent-feedback/apply', (req, res) => {
+  try {
+    const stats = intentFeedback.applyFeedback();
+    auditLog('intent_feedback_apply', req.user ? req.user.username : 'unknown', stats);
+    res.json({ success: true, stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 反馈统计
+router.get('/intent-feedback/stats', (req, res) => {
+  try {
+    res.json({ success: true, stats: intentFeedback.getCorrectionStats() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

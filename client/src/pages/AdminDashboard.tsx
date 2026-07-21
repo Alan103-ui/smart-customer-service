@@ -3,6 +3,7 @@ import type { Message } from '../types';
 import BasicInfoManagement from './BasicInfoManagement';
 import RAGManagement from './RAGManagement';
 import DataStatistics from './DataStatistics';
+import IntentUnderstanding from './IntentUnderstanding';
 import { useSoftwareInfo } from '../services/softwareInfo';
 import { Editor, Toolbar } from '@wangeditor/editor-for-react';
 import { IDomEditor, IEditorConfig } from '@wangeditor/editor';
@@ -835,11 +836,14 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           <button className={`tab-btn ${tab === 'rag' ? 'active' : ''}`} onClick={() => setTab('rag')}>🤖 RAG 管理</button>
           <button className={`tab-btn ${tab === 'conversations' ? 'active' : ''}`} onClick={() => setTab('conversations')}>💬 对话管理</button>
           <button className={`tab-btn ${tab === 'logs' ? 'active' : ''}`} onClick={() => setTab('logs')}>📝 日志管理</button>
+          <button className={`tab-btn ${tab === 'intent' ? 'active' : ''}`} onClick={() => setTab('intent')}>🧠 智能意图理解</button>
         </div>
       </div>
 
       <div className="tab-scroll">
       {tab === 'stats' && <DataStatistics />}
+
+      {tab === 'intent' && <IntentUnderstanding />}
 
       {tab === 'categories' && (
         <div className="faq-management">

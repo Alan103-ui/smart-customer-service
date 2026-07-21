@@ -2,6 +2,9 @@
 
 const { callOllamaJSON, DEFAULT_BASE_URL, DEFAULT_MODEL } = require('./ollama-client');
 
+// 反馈闭环：注入人工纠错沉淀的规则与 few-shot 样例
+const feedback = require('./intent-feedback');
+
 const OLLAMA_BASE_URL = DEFAULT_BASE_URL;
 const OLLAMA_MODEL = DEFAULT_MODEL;
 
@@ -28,14 +31,16 @@ async function understandIntent(userQuery, context, retryCount = 0) {
   }
   
   // 规则引擎：快速匹配（避免LLM调用）
-  const ruleResult = quickRuleCheck(query);
+  const extraRules = feedback.getCorrectionRules();
+  const ruleResult = quickRuleCheck(query, extraRules);
   if (ruleResult) {
-    console.log('[Intent] Rule engine matched:', ruleResult.primaryIntent);
+    console.log('[Intent] Rule engine matched:', ruleResult.primaryIntent, ruleResult.fromCorrection ? '(from correction)' : '');
     return ruleResult;
   }
   
   try {
-    const prompt = buildPrompt(query);
+    const extraFewShot = feedback.getFewShotExamples();
+    const prompt = buildPrompt(query, extraFewShot);
     const parsed = await callOllamaJSON(prompt, {
       baseURL: OLLAMA_BASE_URL,
       model: OLLAMA_MODEL,
@@ -78,8 +83,21 @@ function sleep(ms) {
 }
 
 // 规则引擎：快速匹配常见问题
-function quickRuleCheck(query) {
+// extraRules: 由人工纠错沉淀的确定性规则 [{ keyword, level1, level2, confidence }]
+function quickRuleCheck(query, extraRules = []) {
   const q = query.toLowerCase();
+
+  // 优先匹配人工纠错沉淀规则（命中即高置信，绕过 LLM）
+  for (const r of extraRules) {
+    const kw = (r.keyword || '').toLowerCase();
+    if (kw && q.includes(kw)) {
+      return {
+        primaryIntent: { level1: r.level1, level2: r.level2 || null, confidence: r.confidence || 0.97 },
+        entities: [],
+        fromCorrection: true
+      };
+    }
+  }
   
   // 规则1：问候语（高置信度）
   if (q.includes('你好') || q.includes('您好') || q.includes('hi') || q.includes('hello')) {
@@ -115,7 +133,8 @@ function quickRuleCheck(query) {
 }
 
 // 构建Prompt（优化版 - 使用英文避免编码问题，增加few-shot示例）
-function buildPrompt(query) {
+// extraFewShot: 人工纠错沉淀的样例 [{ query, primaryIntent:{level1,level2,confidence}, entities }]
+function buildPrompt(query, extraFewShot = []) {
   let prompt = 'You are an intent understanding expert for enterprise customer service.\n\n';
   prompt += 'User query: ' + query + '\n\n';
   prompt += 'Task: Analyze the user query and return a JSON object with intent classification.\n\n';
@@ -155,6 +174,17 @@ function buildPrompt(query) {
   prompt += 'Output: {"primaryIntent":{"level1":"query","level2":"contact","confidence":0.95},"entities":[{"type":"contact","value":"客服电话","confidence":0.95}]}\n\n';
   prompt += 'Query: "系统太慢了"\n';
   prompt += 'Output: {"primaryIntent":{"level1":"complaint","level2":"service","confidence":0.9},"entities":[]}\n';
+
+  // 人工纠错沉淀的 few-shot 样例（反哺闭环：让模型直接学到正确标注）
+  if (Array.isArray(extraFewShot) && extraFewShot.length > 0) {
+    prompt += '\nHuman-corrected examples (learn these, they are authoritative):\n';
+    for (const ex of extraFewShot.slice(-12)) {
+      const q = (ex.query || '').replace(/"/g, "'");
+      const pi = ex.primaryIntent || {};
+      prompt += `Query: "${q}"\n`;
+      prompt += `Output: {"primaryIntent":{"level1":"${pi.level1}","level2":${pi.level2 ? '"' + pi.level2 + '"' : 'null'},"confidence":${pi.confidence != null ? pi.confidence : 0.97}},"entities":[]}\n`;
+    }
+  }
   return prompt;
 }
 
