@@ -66,7 +66,15 @@ const { callOllamaChat, callOllamaGenerate, callOllamaChatStream } = require('./
 const OLLAMA_BASE_URL = 'http://172.17.6.18:11434';
 const OLLAMA_CHAT_PATH = '/v1/chat/completions';
 const OLLAMA_URL = OLLAMA_BASE_URL + OLLAMA_CHAT_PATH;  // 完整URL（兼容旧代码）
+// 默认 LLM 模型（回退值）；实际生效模型从 model-switcher 动态获取，可配置
 const MODEL_NAME = 'qwen2.5:14b';
+function getActiveLLMModel() {
+  try {
+    return modelSwitcher.getLLMModel();
+  } catch (e) {
+    return MODEL_NAME;
+  }
+}
 const DB_PATH = path.join(__dirname, '../data/conversations.db');
 const FAQ_PATH = path.join(__dirname, '../data/faq.json');
 const CATEGORIES_PATH = path.join(__dirname, '../data/categories.json');
@@ -490,7 +498,7 @@ ${faqContext}`;
   try {
     const reply = await callOllamaChatStream(messages, {
       baseURL: OLLAMA_BASE_URL,
-      model: MODEL_NAME,
+      model: getActiveLLMModel(),
       temperature: 0.3,
       max_tokens: 500
     }, typeof onToken === 'function' ? onToken : () => {});
@@ -1598,7 +1606,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   console.log(`🤖 ${loadSoftwareInfo().softwareName}后端服务启动成功！`);
   console.log(`   WebSocket: ws://localhost:${PORT}/ws`);
   console.log(`   管理后台 API: http://localhost:${PORT}/api/admin/stats`);
-  console.log(`   AI 模型: ${MODEL_NAME} @ ${OLLAMA_URL}`);
+  console.log(`   AI 模型: ${getActiveLLMModel()} @ ${OLLAMA_URL}`);
   console.log(`   数据文件: ${DB_PATH.replace('.db', '.json')}`);
 
   // 构建 FAQ embedding 缓存（加速搜索）

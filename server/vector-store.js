@@ -8,10 +8,12 @@
 
 const fs = require('fs');
 const path = require('path');
+// 引入模型配置中心，使 embedding / reranker 模型与地址可动态配置
+const modelSwitcher = require('./model-switcher');
 
 const OLLAMA_HOST = '172.17.6.18';
 const OLLAMA_PORT = 11434;
-const EMBEDDING_MODEL = 'bge-m3:latest';           // 中文嵌入模型
+const EMBEDDING_MODEL = 'bge-m3:latest';           // 默认嵌入模型（被配置中心覆盖）
 const RERANK_MODEL = 'bge-reranker-v2-m3';  // 重排序模型（可选）
 const VECTOR_STORE_PATH = path.join(__dirname, '../data/vector-store.json');
 const RERANK_PATH = path.join(__dirname, '../data/rerank-cache.json');
@@ -613,11 +615,11 @@ async function searchByFAQCacheAsync(query, intent = null, topK = 5, threshold =
 function getEmbedding(text) {
   return new Promise((resolve, reject) => {
     const http = require('http');
-    const payload = JSON.stringify({ model: EMBEDDING_MODEL, prompt: text.slice(0, 8000) });
-    const options = {
-      hostname: OLLAMA_HOST,
-      port: OLLAMA_PORT,
-      path: '/api/embeddings',
+  const payload = JSON.stringify({ model: modelSwitcher.getEmbeddingModel(), prompt: text.slice(0, 8000) });
+  const options = {
+    hostname: OLLAMA_HOST,
+    port: OLLAMA_PORT,
+    path: '/api/embeddings',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -653,7 +655,9 @@ function getEmbedding(text) {
 function getEmbeddingFallback(text) {
   return new Promise((resolve, reject) => {
     const http = require('http');
-    const payload = JSON.stringify({ model: 'qwen2.5:14b', prompt: text.slice(0, 8000) });
+    // 嵌入 fallback：使用配置中的 embedding fallback 模型（缺省 qwen2.5:14b）
+  const fallbackModel = (modelSwitcher.getModelConfig().embedding && modelSwitcher.getModelConfig().embedding.fallback) || 'qwen2.5:14b';
+  const payload = JSON.stringify({ model: fallbackModel, prompt: text.slice(0, 8000) });
     const options = {
       hostname: OLLAMA_HOST,
       port: OLLAMA_PORT,
@@ -693,13 +697,21 @@ async function rerankResults(query, candidates, topN = 5) {
     const http = require('http');
     const documents = candidates.map(c => c.content || c.title || '');
     const payload = JSON.stringify({ query, documents });
+    // 服务地址与超时从配置中心读取（可动态配置），缺省回退默认
+    const rerankCfg = modelSwitcher.getRerankerConfig();
+    let rerankUrl;
+    try {
+      rerankUrl = rerankCfg && rerankCfg.serviceUrl ? new URL(rerankCfg.serviceUrl) : new URL('http://172.17.6.18:8000/rerank');
+    } catch (e) {
+      rerankUrl = new URL('http://172.17.6.18:8000/rerank');
+    }
     const options = {
-      hostname: '172.17.6.18',
-      port: 8000,
-      path: '/rerank',
+      hostname: rerankUrl.hostname,
+      port: rerankUrl.port || 80,
+      path: rerankUrl.pathname,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-      timeout: 10000
+      timeout: (rerankCfg && rerankCfg.timeout) || 10000
     };
     
     const result = await new Promise((resolve, reject) => {
@@ -952,7 +964,7 @@ ${candidateText}
   try {
     const http = require('http');
     const payload = JSON.stringify({
-      model: 'qwen2.5:14b',
+      model: modelSwitcher.getLLMModel(),
       prompt: prompt.slice(0, 3000),
       stream: false,
       options: { temperature: 0, num_predict: 512 }
@@ -1272,7 +1284,7 @@ async function rebuildVectorStore() {
       version: 2,
       updatedAt: null,
       rebuiltAt: new Date().toISOString(),
-      embeddingModel: EMBEDDING_MODEL
+      embeddingModel: modelSwitcher.getEmbeddingModel()
     }
   });
 

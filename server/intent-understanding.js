@@ -1,12 +1,21 @@
 // 智能意图理解模块（极简版）
 
-const { callOllamaJSON, DEFAULT_BASE_URL, DEFAULT_MODEL } = require('./ollama-client');
+const { callOllamaJSON, DEFAULT_BASE_URL } = require('./ollama-client');
+// 引入模型配置中心，使意图识别所用 LLM 模型可动态配置
+const modelSwitcher = require('./model-switcher');
 
 // 反馈闭环：注入人工纠错沉淀的规则与 few-shot 样例
 const feedback = require('./intent-feedback');
 
 const OLLAMA_BASE_URL = DEFAULT_BASE_URL;
-const OLLAMA_MODEL = DEFAULT_MODEL;
+// 动态读取当前生效的 LLM 模型（跟随主备切换）；异常时回退默认
+function getActiveLLM() {
+  try {
+    return modelSwitcher.getLLMModel();
+  } catch (e) {
+    return 'qwen2.5:14b';
+  }
+}
 
 const INTENT_TAXONOMY = {
   level1: ['query', 'process', 'complaint', 'suggestion', 'greeting'],
@@ -43,7 +52,7 @@ async function understandIntent(userQuery, context, retryCount = 0) {
     const prompt = buildPrompt(query, extraFewShot);
     const parsed = await callOllamaJSON(prompt, {
       baseURL: OLLAMA_BASE_URL,
-      model: OLLAMA_MODEL,
+      model: getActiveLLM(),
       temperature: 0.1,
       max_tokens: 500,
       timeout: 90000  // 90秒超时（优化：从60秒增加到90秒）

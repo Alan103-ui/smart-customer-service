@@ -5,6 +5,8 @@
 
 const http = require('http');
 const https = require('https');
+// 引入模型配置中心，使默认 LLM 模型可动态配置（显式 options.model 仍可覆盖）
+const modelSwitcher = require('./model-switcher');
 
 // 默认配置
 const DEFAULT_BASE_URL = 'http://172.17.6.18:11434';
@@ -28,7 +30,7 @@ const DEFAULT_KEEP_ALIVE = '10m';
  */
 async function callOllamaChat(messages, options = {}) {
   const baseURL = options.baseURL || DEFAULT_BASE_URL;
-  const model = options.model || DEFAULT_MODEL;
+  const model = options.model || (modelSwitcher.getLLMModel ? modelSwitcher.getLLMModel() : DEFAULT_MODEL);
   const temperature = options.temperature ?? 0.3;
   const maxTokens = options.max_tokens || DEFAULT_MAX_TOKENS;
   const timeout = options.timeout || DEFAULT_TIMEOUT;
@@ -109,7 +111,7 @@ async function callOllamaChat(messages, options = {}) {
  */
 async function callOllamaGenerate(prompt, options = {}) {
   const baseURL = options.baseURL || DEFAULT_BASE_URL;
-  const model = options.model || DEFAULT_MODEL;
+  const model = options.model || (modelSwitcher.getLLMModel ? modelSwitcher.getLLMModel() : DEFAULT_MODEL);
   const temperature = options.temperature ?? 0.1;
   const maxTokens = options.max_tokens || DEFAULT_MAX_TOKENS;
   const timeout = options.timeout || DEFAULT_TIMEOUT;
@@ -299,7 +301,7 @@ function repairJSON(jsonStr) {
  */
 async function callOllamaChatStream(messages, options = {}, onToken) {
   const baseURL = options.baseURL || DEFAULT_BASE_URL;
-  const model = options.model || DEFAULT_MODEL;
+  const model = options.model || (modelSwitcher.getLLMModel ? modelSwitcher.getLLMModel() : DEFAULT_MODEL);
   const temperature = options.temperature ?? 0.3;
   const maxTokens = options.max_tokens || DEFAULT_MAX_TOKENS;
   const timeout = options.timeout || DEFAULT_TIMEOUT;

@@ -1639,16 +1639,7 @@ router.get('/models/status', (req, res) => {
       currentModels: status.currentModels,
       health: status.modelHealth,
       performance,  // 新增：性能数据
-      config: {
-        embedding: {
-          primary: modelSwitcher.MODEL_CONFIG.embedding.primary,
-          fallback: modelSwitcher.MODEL_CONFIG.embedding.fallback,
-        },
-        llm: {
-          primary: modelSwitcher.MODEL_CONFIG.llm.primary,
-          fallback: modelSwitcher.MODEL_CONFIG.llm.fallback,
-        },
-      },
+      config: modelSwitcher.getModelConfig(),  // 完整配置（含 reranker.serviceUrl、timeout 等）
     });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -1702,6 +1693,44 @@ router.post('/models/switch', (req, res) => {
     const result = modelSwitcher.switchModel(type, modelName);
     auditLog('model_switch', req.user ? req.user.username : 'unknown', { type, modelName });
     res.json(result);
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============ 模型配置读写（新增：可动态配置所有模型并热生效） ============
+
+// 读取完整模型配置（供「模型设置」TAB 编辑表单初始化）
+router.get('/models/config', (req, res) => {
+  try {
+    res.json({
+      success: true,
+      config: modelSwitcher.getModelConfig(),
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 写入（合并）模型配置：body 形如 { embedding?: {...}, llm?: {...}, reranker?: {...} }
+router.post('/models/config', (req, res) => {
+  try {
+    const partial = req.body && req.body.config ? req.body.config : req.body;
+    if (!partial || typeof partial !== 'object') {
+      return res.status(400).json({ success: false, error: '请求体缺少 config 对象' });
+    }
+    const result = modelSwitcher.setModelConfig(partial);
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    auditLog('model_config_update', req.user ? req.user.username : 'unknown', {
+      updated: Object.keys(partial),
+    });
+    res.json({
+      success: true,
+      message: '模型配置已保存并热生效',
+      config: result.config,
+    });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }

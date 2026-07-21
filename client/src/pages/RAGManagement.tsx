@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getAuthHeaders } from '../services/api';
 import IntentUnderstanding from './IntentUnderstanding';
+import ModelSettings from './ModelSettings';
 
 // ==================== Toast 通知组件 ====================
 interface Toast {
@@ -13,7 +14,7 @@ let toastIdCounter = 0;
 
 // ==================== RAG 管理组件 ====================
 export default function RAGManagement() {
-  const [activeTab, setActiveTab] = useState<'stats' | 'test' | 'eval' | 'intent' | 'rewrite' | 'performance' | 'memory'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'test' | 'eval' | 'intent' | 'rewrite' | 'performance' | 'memory' | 'models'>('stats');
   const [loading, setLoading] = useState(false);
   
   // Toast 通知
@@ -348,7 +349,8 @@ export default function RAGManagement() {
           { key: 'intent', label: '🧠 意图理解' },
           { key: 'rewrite', label: '✏️ 答案改写' },
           { key: 'performance', label: '⚡ 性能监控' },
-          { key: 'memory', label: '🧠 记忆管理' }
+          { key: 'memory', label: '🧠 记忆管理' },
+          { key: 'models', label: '⚙️ 模型设置' }
         ].map(tab => (
           <button
             key={tab.key}
@@ -1047,6 +1049,9 @@ export default function RAGManagement() {
               )}
             </div>
           )}
+
+      {/* 模型设置 Tab（可配置所有模型 + 展示已配置模型） */}
+      {activeTab === 'models' && <ModelSettings />}
 
     </div>
   );

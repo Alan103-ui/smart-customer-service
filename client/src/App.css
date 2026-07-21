@@ -2398,3 +2398,49 @@ body {
   }
 }
 
+/* ==================== 模型设置（ModelSettings） ==================== */
+.ms-overview-card {
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  padding: 16px;
+  background: #fafcff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.ms-overview-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #ebebeb;
+}
+.ms-overview-icon { font-size: 18px; }
+.ms-overview-title { font-weight: 600; font-size: 15px; flex: 1; }
+.ms-badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.ms-badge-ok { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8e; }
+.ms-badge-warn { background: #fffbe6; color: #faad14; border: 1px solid #ffe58f; }
+.ms-badge-err { background: #fff2f0; color: #f5222d; border: 1px solid #ffccc7; }
+.ms-overview-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  font-size: 13px;
+}
+.ms-overview-key { color: #888; }
+.ms-overview-val { font-weight: 600; color: #333; word-break: break-all; text-align: right; max-width: 60%; }
+
+.ms-form-block {
+  border: 1px solid #f0f0f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: #fff;
+}
+.ms-form-title { margin: 0 0 12px; font-size: 15px; color: #1890ff; }
+

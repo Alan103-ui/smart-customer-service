@@ -3,12 +3,21 @@
  * 功能：口语化改写、语气调节、个性化表达、情感化添加
  */
 
-const { callOllamaChat, DEFAULT_BASE_URL, DEFAULT_MODEL } = require('./ollama-client');
+const { callOllamaChat, DEFAULT_BASE_URL } = require('./ollama-client');
 const { loadSoftwareInfo } = require('./data');
+// 引入模型配置中心，使改写所用 LLM 模型可动态配置
+const modelSwitcher = require('./model-switcher');
 
 // ============ 配置常量 ============
 const OLLAMA_BASE_URL = DEFAULT_BASE_URL;
-const OLLAMA_MODEL = DEFAULT_MODEL;
+// 动态读取当前生效的 LLM 模型（跟随主备切换）
+function getActiveLLM() {
+  try {
+    return modelSwitcher.getLLMModel();
+  } catch (e) {
+    return 'qwen2.5:14b';
+  }
+}
 
 // ============ 改写结果缓存 ============
 // 按 FAQ id + 模型版本 + 语气 缓存，二次命中直接返回，省掉 LLM 调用延迟
@@ -18,16 +27,9 @@ const REWRITE_CACHE_MAX_SIZE = 500;
 /**
  * 获取当前实际用于改写的 LLM 模型（用于缓存版本标识）。
  * 模型切换后，缓存 key 变化，旧结果自动失效。
- * 懒加载 model-switcher，避免模块加载期循环依赖。
  */
 function getActiveRewriteModel() {
-  try {
-    const ms = require('./model-switcher');
-    const m = ms.getCurrentModel ? ms.getCurrentModel('llm') : null;
-    return m || OLLAMA_MODEL;
-  } catch (e) {
-    return OLLAMA_MODEL;
-  }
+  return getActiveLLM();
 }
 
 /** 轻量哈希（仅用于内容失效判断，非加密用途） */
@@ -224,7 +226,7 @@ async function rewriteToColloquial(originalAnswer, options = {}) {
 
     const rewritten = await callOllamaChat(messages, {
       baseURL: OLLAMA_BASE_URL,
-      model: OLLAMA_MODEL,
+      model: getActiveLLM(),
       temperature: 0.3,
       max_tokens: 800
     });
@@ -340,7 +342,7 @@ async function evaluateQuality(original, rewritten) {
 
     const result = await callOllamaChat(messages, {
       baseURL: OLLAMA_BASE_URL,
-      model: OLLAMA_MODEL,
+      model: getActiveLLM(),
       temperature: 0.1,
       max_tokens: 500
     });

@@ -11,6 +11,8 @@ const path = require('path');
 const OLLAMA_HOST = '172.17.6.18';
 const OLLAMA_PORT = 11434;
 const PERF_LOG_PATH = path.join(__dirname, 'data', 'model-performance.json');
+// 模型配置持久化文件（可通过 API / 前端 TAB 动态修改并热生效）
+const MODEL_CONFIG_PATH = path.join(__dirname, 'data', 'model-config.json');
 
 const MODEL_CONFIG = {
   embedding: {
@@ -349,13 +351,21 @@ function checkOllamaHealth(modelName) {
 function checkRerankHealth() {
   return new Promise((resolve) => {
     const startTime = Date.now();
+    // 服务地址从配置读取（可动态配置），缺省回退默认
+    const rerankCfg = (typeof getRerankerConfig === 'function') ? getRerankerConfig() : null;
+    let rerankUrl;
+    try {
+      rerankUrl = rerankCfg && rerankCfg.serviceUrl ? new URL(rerankCfg.serviceUrl) : new URL('http://172.17.6.18:8000/rerank');
+    } catch (e) {
+      rerankUrl = new URL('http://172.17.6.18:8000/rerank');
+    }
     const options = {
-      hostname: '172.17.6.18',
-      port: 8000,
-      path: '/rerank',
+      hostname: rerankUrl.hostname,
+      port: rerankUrl.port || 80,
+      path: rerankUrl.pathname,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      timeout: 5000,
+      timeout: rerankCfg && rerankCfg.timeout ? rerankCfg.timeout : 5000,
     };
     
     const payload = JSON.stringify({
@@ -509,6 +519,110 @@ function switchModel(type, modelName) {
   return { success: true, message: `已切换到 ${modelName}` };
 }
 
+// ============ 配置读写（新增：可动态配置所有模型并热生效） ============
+
+// 深度合并工具：将 source 覆盖合并到 target（仅递归普通对象，数组直接替换）
+function deepMergeConfig(target, source) {
+  if (!source || typeof source !== 'object') return target;
+  Object.keys(source).forEach((key) => {
+    const sv = source[key];
+    if (sv && typeof sv === 'object' && !Array.isArray(sv)) {
+      if (!target[key] || typeof target[key] !== 'object') {
+        target[key] = {};
+      }
+      deepMergeConfig(target[key], sv);
+    } else {
+      target[key] = sv;
+    }
+  });
+  return target;
+}
+
+// 启动时从 data/model-config.json 加载配置（深度合并到默认值；文件不存在则保持默认）
+function loadModelConfig() {
+  try {
+    if (!fs.existsSync(MODEL_CONFIG_PATH)) {
+      return false;
+    }
+    const data = JSON.parse(fs.readFileSync(MODEL_CONFIG_PATH, 'utf8'));
+    deepMergeConfig(MODEL_CONFIG, data);
+    // 同步运行时当前模型为配置后的主模型，使配置在启动时即生效
+    ['embedding', 'llm', 'reranker'].forEach((type) => {
+      if (MODEL_CONFIG[type] && MODEL_CONFIG[type].primary) {
+        currentModels[type] = MODEL_CONFIG[type].primary;
+      }
+    });
+    console.log('[ModelSwitcher] 模型配置已从 model-config.json 加载');
+    return true;
+  } catch (e) {
+    console.error('[ModelSwitcher] 加载模型配置失败:', e.message);
+    return false;
+  }
+}
+
+// 返回当前完整配置（只读副本，避免外部误改内部引用）
+function getModelConfig() {
+  return JSON.parse(JSON.stringify(MODEL_CONFIG));
+}
+
+// 写入并合并配置（partial 为部分配置，如 { llm: { primary: 'xxx' } }）
+// 返回 { success, config, error }
+function setModelConfig(partial) {
+  try {
+    if (!partial || typeof partial !== 'object') {
+      return { success: false, error: '配置内容无效' };
+    }
+    // 仅允许 embedding / llm / reranker 三类配置
+    const allowed = ['embedding', 'llm', 'reranker'];
+    const keys = Object.keys(partial).filter((k) => allowed.includes(k));
+    if (keys.length === 0) {
+      return { success: false, error: `仅支持配置: ${allowed.join(' / ')}` };
+    }
+
+    // 合并到内存配置
+    deepMergeConfig(MODEL_CONFIG, partial);
+
+    // 同步运行时当前模型为该类型的主模型（使修改立即生效）
+    keys.forEach((type) => {
+      if (MODEL_CONFIG[type] && MODEL_CONFIG[type].primary) {
+        currentModels[type] = MODEL_CONFIG[type].primary;
+      }
+    });
+
+    // 持久化（写入完整合并后的配置，保证文件自包含）
+    const dataDir = path.dirname(MODEL_CONFIG_PATH);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(MODEL_CONFIG_PATH, JSON.stringify(MODEL_CONFIG, null, 2));
+    console.log('[ModelSwitcher] 模型配置已保存:', JSON.stringify(keys));
+
+    return { success: true, config: getModelConfig() };
+  } catch (e) {
+    console.error('[ModelSwitcher] 保存模型配置失败:', e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ============ 动态访问器（供各调用方统一读取，自动跟随主备切换） ============
+function getLLMModel() {
+  return currentModels.llm;
+}
+
+function getEmbeddingModel() {
+  return currentModels.embedding;
+}
+
+function getRerankerConfig() {
+  return {
+    model: currentModels.reranker,
+    primary: MODEL_CONFIG.reranker.primary,
+    fallback: MODEL_CONFIG.reranker.fallback,
+    timeout: MODEL_CONFIG.reranker.timeout,
+    serviceUrl: MODEL_CONFIG.reranker.serviceUrl,
+  };
+}
+
 // ============ 导出（增强版） ============
 module.exports = {
   startAutoSwitch,
@@ -524,7 +638,17 @@ module.exports = {
   currentModels,
   modelHealth,
   modelPerformance,  // 导出性能数据供API使用
+  // —— 配置读写与动态访问器（新增） ——
+  loadModelConfig,
+  getModelConfig,
+  setModelConfig,
+  getLLMModel,
+  getEmbeddingModel,
+  getRerankerConfig,
 };
+
+// 模块加载时即尝试从 data/model-config.json 加载自定义配置（文件不存在则保持默认）
+loadModelConfig();
 
 // 如果直接运行此文件，执行测试
 if (require.main === module) {
