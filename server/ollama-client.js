@@ -288,10 +288,114 @@ function repairJSON(jsonStr) {
   return repaired;
 }
 
+/**
+ * 流式调用 Ollama LLM（chat 接口，SSE）
+ * 与 callOllamaChat 行为一致，但逐块把生成的 token 通过 onToken 回调吐出，
+ * 适合 WebSocket 聊天场景做逐字流式输出。结束时 resolve 完整文本。
+ * @param {Array} messages - 消息数组 [{role, content}]
+ * @param {Object} options - 同 callOllamaChat
+ * @param {Function} onToken - (chunk: string) => void，每收到一段增量文本回调
+ * @returns {Promise<string>} - 完整回复文本
+ */
+async function callOllamaChatStream(messages, options = {}, onToken) {
+  const baseURL = options.baseURL || DEFAULT_BASE_URL;
+  const model = options.model || DEFAULT_MODEL;
+  const temperature = options.temperature ?? 0.3;
+  const maxTokens = options.max_tokens || DEFAULT_MAX_TOKENS;
+  const timeout = options.timeout || DEFAULT_TIMEOUT;
+
+  const url = new URL(`${baseURL}/v1/chat/completions`);
+  const payload = JSON.stringify({
+    model,
+    messages,
+    stream: true,
+    keep_alive: options.keep_alive || DEFAULT_KEEP_ALIVE,
+    options: {
+      temperature,
+      num_predict: maxTokens,
+      ...options.llm_options
+    }
+  });
+
+  return new Promise((resolve, reject) => {
+    const reqOptions = {
+      hostname: url.hostname,
+      port: url.port || 80,
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      },
+      timeout
+    };
+
+    const req = http.request(reqOptions, (res) => {
+      if (res.statusCode !== 200) {
+        let errorData = '';
+        res.on('data', chunk => errorData += chunk);
+        res.on('end', () => {
+          reject(new Error(`Ollama HTTP ${res.statusCode}: ${errorData.slice(0, 200)}`));
+        });
+        return;
+      }
+
+      let full = '';
+      let buffer = '';
+      res.setEncoding('utf8');
+
+      const flushLine = (line) => {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) return;
+        const data = trimmed.slice(5).trim();
+        if (data === '[DONE]') return;
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed.choices?.[0]?.delta?.content || '';
+          if (delta) {
+            full += delta;
+            if (typeof onToken === 'function') onToken(delta);
+          }
+        } catch (e) {
+          // 忽略半行/不完整 JSON（SSE 边界），由后续数据补齐
+        }
+      };
+
+      res.on('data', (chunk) => {
+        buffer += chunk;
+        let idx;
+        while ((idx = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
+          flushLine(line);
+        }
+      });
+
+      res.on('end', () => {
+        if (buffer.trim()) flushLine(buffer);
+        resolve(full);
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(new Error(`Ollama 请求失败: ${err.message}`));
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`Ollama 请求超时 (${timeout}ms)`));
+    });
+
+    req.write(payload);
+    req.end();
+  });
+}
+
 module.exports = {
   callOllamaChat,
   callOllamaGenerate,
   callOllamaJSON,
+  callOllamaChatStream,
   DEFAULT_BASE_URL,
   DEFAULT_MODEL,
   DEFAULT_TIMEOUT

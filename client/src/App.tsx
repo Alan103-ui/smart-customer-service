@@ -107,6 +107,7 @@ function MainApp({ user, onLogout }: MainAppProps) {
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [streaming, setStreaming] = useState<string | null>(null);
   const [currentIntent, setCurrentIntent] = useState<string | null>(null);
   const [showAdmin, setShowAdmin] = useState<boolean>(() => {
     return window.location.pathname === '/admin';
@@ -276,6 +277,23 @@ function MainApp({ user, onLogout }: MainAppProps) {
         }
         setIsTyping(false);
         break;
+      case 'stream':
+        // 增量 token：累加到正在生成的助手气泡
+        setStreaming(prev => (prev || '') + (msg.content || ''));
+        break;
+      case 'stream_end':
+        // 流式结束：把完整内容提交为一条正式助手消息
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: (msg.content != null ? msg.content : streaming) || '',
+          timestamp: msg.timestamp || new Date().toISOString(),
+          intent: msg.intent,
+          confidence: msg.confidence,
+        }]);
+        setStreaming(null);
+        setCandidates([]);
+        setIsTyping(false);
+        break;
     }
   }, []);
 
@@ -288,6 +306,7 @@ function MainApp({ user, onLogout }: MainAppProps) {
     const userMsg: Message = { role: 'user', content, timestamp: new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
     setCandidates([]);
+    setStreaming(null);
     ws.send(JSON.stringify({ type: 'message', content }));
   }, []);
 
@@ -362,6 +381,7 @@ function MainApp({ user, onLogout }: MainAppProps) {
       <ChatWindow
         messages={messages}
         isTyping={isTyping}
+        streaming={streaming}
         onSendMessage={sendMessage}
         currentIntent={currentIntent}
         candidates={candidates}

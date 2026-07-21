@@ -8,6 +8,7 @@ import './ChatWindow.design.css';
 interface ChatWindowProps {
   messages: Message[];
   isTyping: boolean;
+  streaming?: string | null;
   onSendMessage: (content: string) => void;
   currentIntent: string | null;
   candidates: Candidate[];
@@ -21,6 +22,7 @@ interface ChatWindowProps {
 export default function ChatWindow({
   messages,
   isTyping,
+  streaming,
   onSendMessage,
   currentIntent,
   candidates,
@@ -39,7 +41,7 @@ export default function ChatWindow({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping, candidates]);
+  }, [messages, isTyping, candidates, streaming]);
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -139,6 +141,21 @@ export default function ChatWindow({
             )}
           </div>
         ))}
+
+        {/* 流式生成中的助手消息（逐字增长） */}
+        {streaming != null && streaming.length > 0 && (
+          <div className="message-row-modern assistant">
+            <div className="avatar-modern assistant">
+              <img src={chatAvatar} alt="AI" />
+            </div>
+            <div className="message-bubble-modern assistant">
+              <div className="message-content-modern">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{streaming}</ReactMarkdown>
+                <span className="stream-cursor-modern" />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 候选问题展示 */}
         {candidates.length > 0 && (

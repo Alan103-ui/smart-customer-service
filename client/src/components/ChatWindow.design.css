@@ -484,6 +484,23 @@
   display: block;
 }
 
+/* 流式输出光标 */
+.stream-cursor-modern {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: #6366f1;
+  border-radius: 1px;
+  animation: streamBlink 1s steps(2, start) infinite;
+}
+
+@keyframes streamBlink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
 /* 输入区域 */
 .input-area-modern {
   padding: 20px;

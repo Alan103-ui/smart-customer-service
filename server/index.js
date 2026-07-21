@@ -60,7 +60,7 @@ const {
 } = require('./vector-store');
 
 // 共享 LLM 调用模块（消除各模块中的重复 HTTP 调用代码）
-const { callOllamaChat, callOllamaGenerate } = require('./ollama-client');
+const { callOllamaChat, callOllamaGenerate, callOllamaChatStream } = require('./ollama-client');
 
 // ============ 配置 ============
 const OLLAMA_BASE_URL = 'http://172.17.6.18:11434';
@@ -391,7 +391,7 @@ async function searchFAQCandidates(userMessage, threshold = 0.12, category = nul
 }
 
 // ============ 调用 Ollama 生成回复（RAG 增强 + 查询改写 + HyDE） ============
-async function generateAgentReply(sessionId, userMessage, conversationHistory, intentResult) {
+async function generateAgentReply(sessionId, userMessage, conversationHistory, intentResult, onToken) {
   // 步骤0：查询改写（短查询扩展 + 代词消解）
   let optimizedQuery = userMessage;
   let queryInfo = { original: userMessage, rewritten: userMessage, isRewritten: false };
@@ -488,12 +488,12 @@ ${faqContext}`;
   ];
   
   try {
-    const reply = await callOllamaChat(messages, {
+    const reply = await callOllamaChatStream(messages, {
       baseURL: OLLAMA_BASE_URL,
       model: MODEL_NAME,
       temperature: 0.3,
       max_tokens: 500
-    });
+    }, typeof onToken === 'function' ? onToken : () => {});
     return reply || '抱歉，我暂时无法回答您的问题，正在为您转接人工客服...';
   } catch (err) {
     console.error('生成回复失败：', err);
@@ -1386,30 +1386,43 @@ wss.on('connection', (ws) => {
         const history = conv ? conv.messages : [];
         
         ws.send(JSON.stringify({ type: 'typing', status: true }));
-        
+
         try {
-          const reply = await generateAgentReply(sessionId, userMessage, history, intentResult);
-          saveMessage(sessionId, 'assistant', reply, intentResult.intent, userId);
-          
+          let streamed = '';
+          const reply = await generateAgentReply(sessionId, userMessage, history, intentResult, (chunk) => {
+            if (!chunk) return;
+            streamed += chunk;
+            // 首个 token 到达即关闭“思考中”动画，开始流式渲染
+            if (streamed.length === chunk.length) {
+              ws.send(JSON.stringify({ type: 'typing', status: false }));
+            }
+            ws.send(JSON.stringify({ type: 'stream', content: chunk }));
+          });
+          const finalReply = reply || streamed || '抱歉，我暂时无法回答您的问题，正在为您转接人工客服...';
+
+          saveMessage(sessionId, 'assistant', finalReply, intentResult.intent, userId);
+
           // 存储到对话记忆（按userId持久化）
           storeConversationRound(sessionId, {
             userQuery: userMessage,
-            aiResponse: reply,
+            aiResponse: finalReply,
             intent: intentResult.intent,
             entities: [],
             timestamp: Date.now()
           }, userId);
-          
+
           ws.send(JSON.stringify({
-            type: 'message', content: reply,
+            type: 'stream_end',
+            content: finalReply,
             timestamp: new Date().toISOString(),
-            intent: intentResult.intent, confidence: intentResult.confidence
+            intent: intentResult.intent,
+            confidence: intentResult.confidence
           }));
         } catch (err) {
           console.error('生成回复失败：', err);
           const fallback = '抱歉，我暂时无法处理您的问题，正在为您转接人工客服...';
           saveMessage(sessionId, 'assistant', fallback, intentResult.intent, userId);
-          
+
           // 存储到对话记忆（按userId持久化）
           storeConversationRound(sessionId, {
             userQuery: userMessage,
@@ -1418,7 +1431,7 @@ wss.on('connection', (ws) => {
             entities: [],
             timestamp: Date.now()
           }, userId);
-          
+
           ws.send(JSON.stringify({ type: 'message', content: fallback, timestamp: new Date().toISOString(), fallback: true }));
         } finally {
           ws.send(JSON.stringify({ type: 'typing', status: false }));
