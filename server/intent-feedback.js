@@ -125,6 +125,12 @@ function addCorrection({
   list.push(record);
   saveCorrections(list);
   console.log('[IntentFeedback] 新增纠错:', record.id, userMessage, '->', JSON.stringify(record.correctedIntent));
+  // 闭环：每条纠错立即重新沉淀为规则 / few-shot，使分类器实时生效（无需再手工点 apply）
+  try {
+    applyFeedback();
+  } catch (e) {
+    console.error('[IntentFeedback] 自动沉淀反馈失败:', e.message);
+  }
   return record;
 }
 

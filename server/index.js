@@ -1634,4 +1634,12 @@ server.listen(PORT, '0.0.0.0', async () => {
   } catch (e) {
     console.warn(`   模型自动切换启动失败: ${e.message}`);
   }
+
+  // 意图反馈闭环：启动时把已落库的纠错重新沉淀为规则 / few-shot，确保分类器能读到
+  try {
+    const fbStats = intentFeedback.applyFeedback();
+    console.log(`   意图反馈沉淀: fewShot=${fbStats.fewShotCount}, rules=${fbStats.ruleCount}, applied=${fbStats.appliedCorrections}`);
+  } catch (e) {
+    console.warn(`   意图反馈沉淀失败: ${e.message}`);
+  }
 });
