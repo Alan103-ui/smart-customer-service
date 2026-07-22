@@ -1757,6 +1757,31 @@ router.post('/models/config/reset', (req, res) => {
   }
 });
 
+// 测试单个模型连接是否可达（供「测试连接」按钮；支持按表单当前值实时探测）
+router.post('/models/test', async (req, res) => {
+  try {
+    const { type, primary, serviceUrl, baseUrl, timeout } = req.body || {};
+    if (!type || !['embedding', 'llm', 'reranker'].includes(type)) {
+      return res.status(400).json({ success: false, error: '缺少或非法的 type 参数（应为 embedding/llm/reranker）' });
+    }
+    const opts = {};
+    if (primary !== undefined) opts.primary = primary;
+    if (serviceUrl !== undefined) opts.serviceUrl = serviceUrl;
+    if (baseUrl !== undefined) opts.baseUrl = baseUrl;
+    if (timeout !== undefined) opts.timeout = timeout;
+    const result = await modelSwitcher.testConnection(type, opts);
+    res.json({
+      success: true,
+      type,
+      available: result.available,
+      error: result.error || null,
+      responseTime: result.responseTime || 0,
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // 性能监控页面（集成到管理后台）
 router.get('/performance', (req, res) => {
   try {

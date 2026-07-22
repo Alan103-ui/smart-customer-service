@@ -23,6 +23,8 @@ export default function ModelSettings() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});   // 字段级校验错误
+  const [testing, setTesting] = useState<string | null>(null);         // 正在测试连接的模型类型
+  const [testResults, setTestResults] = useState<Record<string, { available: boolean; error: string | null; responseTime: number }>>({});  // 各模型测试连接结果
 
   const showNotice = (text: string, type: NoticeType = 'info') => {
     setNotice({ text, type });
@@ -170,6 +172,38 @@ export default function ModelSettings() {
     setSaving(false);
   };
 
+  // ============ 测试连接（按当前表单值实时探测该模型是否可达） ============
+  const handleTest = async (type: 'embedding' | 'llm' | 'reranker') => {
+    if (!config) return;
+    const blk = config[type] || {};
+    const body: any = { type };
+    body.primary = blk.primary;
+    if (type === 'reranker') {
+      body.serviceUrl = blk.serviceUrl;
+      body.timeout = blk.timeout;
+    } else {
+      body.baseUrl = config.ollama?.baseUrl;
+    }
+    setTesting(type);
+    try {
+      const res = await fetch('/api/admin/models/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResults(prev => ({ ...prev, [type]: { available: data.available, error: data.error, responseTime: data.responseTime } }));
+      } else {
+        setTestResults(prev => ({ ...prev, [type]: { available: false, error: data.error || '测试失败', responseTime: 0 } }));
+      }
+    } catch (err: any) {
+      setTestResults(prev => ({ ...prev, [type]: { available: false, error: err?.message || '网络错误', responseTime: 0 } }));
+    } finally {
+      setTesting(null);
+    }
+  };
+
   const healthBadge = (type: string) => {
     const h = status?.health?.[type];
     if (!h) return <span className="ms-badge ms-badge-warn">未知</span>;
@@ -260,7 +294,24 @@ export default function ModelSettings() {
 
           {TYPES.map(t => (
             <div key={t.key} className="ms-form-block">
-              <h4 className="ms-form-title">{t.icon} {t.label}</h4>
+              <div className="ms-form-title-row">
+                <h4 className="ms-form-title">{t.icon} {t.label}</h4>
+                <button
+                  type="button"
+                  className="rag-btn rag-btn-sm rag-btn-secondary"
+                  onClick={() => handleTest(t.key)}
+                  disabled={testing === t.key || saving}
+                >
+                  {testing === t.key ? '测试中...' : '🔌 测试连接'}
+                </button>
+              </div>
+              {testResults[t.key] && (
+                <div className={`ms-test-result ${testResults[t.key].available ? 'ms-test-ok' : 'ms-test-err'}`}>
+                  {testResults[t.key].available
+                    ? `✅ 连接成功（响应 ${testResults[t.key].responseTime}ms）`
+                    : `❌ 连接失败：${testResults[t.key].error}`}
+                </div>
+              )}
               <div className="rag-form-row">
                 <div className="rag-form-group">
                   <label className="rag-label">主模型 (primary)</label>

@@ -295,7 +295,7 @@ function resetPerformanceStats(type = null) {
 }
 
 // ============ 检查Ollama模型健康状态（增强版） ============
-function checkOllamaHealth(modelName) {
+function checkOllamaHealth(modelName, opts = {}) {
   return new Promise((resolve) => {
     const startTime = Date.now();
     const type = modelName.includes('bge-m3') || modelName.includes('nomic') || modelName.includes('mxbai') ? 'embedding' : 'llm';
@@ -307,11 +307,11 @@ function checkOllamaHealth(modelName) {
       ? { model: modelName, messages: [{ role: 'user', content: 'ping' }], stream: false, keep_alive: '10m', options: { num_predict: 2 } }
       : { name: modelName };
     const payload = JSON.stringify(payloadObj);
-    // Ollama 服务地址从配置读取（可动态配置），缺省回退默认
+    // Ollama 服务地址：opts.baseUrl（表单实时测试）优先，否则取当前配置（可动态配置）
     let olUrl;
     try {
-      const bu = (typeof getOllamaBaseUrl === 'function') ? getOllamaBaseUrl() : null;
-      olUrl = bu ? new URL(bu) : new URL(`http://${OLLAMA_HOST}:${OLLAMA_PORT}`);
+      const baseUrl = (opts && opts.baseUrl) ? opts.baseUrl : getOllamaBaseUrl();
+      olUrl = new URL(baseUrl);
     } catch (e) {
       olUrl = new URL(`http://${OLLAMA_HOST}:${OLLAMA_PORT}`);
     }
@@ -362,14 +362,16 @@ function checkOllamaHealth(modelName) {
 }
 
 // ============ 检查Rerank服务健康状态（增强版） ============
-function checkRerankHealth() {
+function checkRerankHealth(opts = {}) {
   return new Promise((resolve) => {
     const startTime = Date.now();
     // 服务地址从配置读取（可动态配置），缺省回退默认
     const rerankCfg = (typeof getRerankerConfig === 'function') ? getRerankerConfig() : null;
+    const serviceUrl = (opts && opts.serviceUrl) ? opts.serviceUrl
+      : (rerankCfg && rerankCfg.serviceUrl ? rerankCfg.serviceUrl : 'http://172.17.6.18:8000/rerank');
     let rerankUrl;
     try {
-      rerankUrl = rerankCfg && rerankCfg.serviceUrl ? new URL(rerankCfg.serviceUrl) : new URL('http://172.17.6.18:8000/rerank');
+      rerankUrl = new URL(serviceUrl);
     } catch (e) {
       rerankUrl = new URL('http://172.17.6.18:8000/rerank');
     }
@@ -379,7 +381,7 @@ function checkRerankHealth() {
       path: rerankUrl.pathname,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      timeout: rerankCfg && rerankCfg.timeout ? rerankCfg.timeout : 5000,
+      timeout: (opts && opts.timeout !== undefined && opts.timeout !== null) ? Number(opts.timeout) : (rerankCfg && rerankCfg.timeout ? rerankCfg.timeout : 5000),
     };
     
     const payload = JSON.stringify({
@@ -425,6 +427,21 @@ function checkRerankHealth() {
     req.write(payload);
     req.end();
   });
+}
+
+// ============ 按指定参数测试连接（供前端「测试连接」按钮实时探测） ============
+function testConnection(type, opts = {}) {
+  if (type === 'reranker') {
+    return checkRerankHealth({
+      serviceUrl: opts && opts.serviceUrl,
+      timeout: opts && opts.timeout,
+    });
+  }
+  if (type === 'embedding' || type === 'llm') {
+    const modelName = (opts && opts.primary) ? opts.primary : currentModels[type];
+    return checkOllamaHealth(modelName, { baseUrl: opts ? opts.baseUrl : undefined });
+  }
+  return Promise.resolve({ available: false, error: `未知模型类型: ${type}`, responseTime: 0 });
 }
 
 // ============ 执行健康检查（增强版） ============
@@ -788,6 +805,7 @@ module.exports = {
   getRerankerConfig,
   getOllamaBaseUrl,
   parseOllamaBaseUrl,
+  testConnection,
 };
 
 // 模块加载时即尝试从 data/model-config.json 加载自定义配置（文件不存在则保持默认）
