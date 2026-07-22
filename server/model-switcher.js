@@ -33,6 +33,10 @@ const MODEL_CONFIG = {
     timeout: 10000,
     serviceUrl: 'http://172.17.6.18:8000/rerank',
   },
+  // 全局 Ollama 服务地址（embedding / llm 共用；可在前端模型设置页配置，热生效）
+  ollama: {
+    baseUrl: 'http://172.17.6.18:11434',
+  },
 };
 
 // ============ 当前使用的模型 ============
@@ -303,9 +307,17 @@ function checkOllamaHealth(modelName) {
       ? { model: modelName, messages: [{ role: 'user', content: 'ping' }], stream: false, keep_alive: '10m', options: { num_predict: 2 } }
       : { name: modelName };
     const payload = JSON.stringify(payloadObj);
+    // Ollama 服务地址从配置读取（可动态配置），缺省回退默认
+    let olUrl;
+    try {
+      const bu = (typeof getOllamaBaseUrl === 'function') ? getOllamaBaseUrl() : null;
+      olUrl = bu ? new URL(bu) : new URL(`http://${OLLAMA_HOST}:${OLLAMA_PORT}`);
+    } catch (e) {
+      olUrl = new URL(`http://${OLLAMA_HOST}:${OLLAMA_PORT}`);
+    }
     const options = {
-      hostname: OLLAMA_HOST,
-      port: OLLAMA_PORT,
+      hostname: olUrl.hostname,
+      port: olUrl.port ? Number(olUrl.port) : 11434,
       path,
       method: 'POST',
       headers: {
@@ -615,15 +627,44 @@ function getModelConfig() {
   return JSON.parse(JSON.stringify(MODEL_CONFIG));
 }
 
+// 返回全局 Ollama 服务地址（embedding / llm 共用）；缺省回退代码内置默认值
+function getOllamaBaseUrl() {
+  const url = MODEL_CONFIG.ollama && MODEL_CONFIG.ollama.baseUrl;
+  return (typeof url === 'string' && url.trim()) ? url.trim() : `http://${OLLAMA_HOST}:${OLLAMA_PORT}`;
+}
+
+// 解析 Ollama baseUrl 为 { hostname, port }，供各调用方构造 http 请求
+function parseOllamaBaseUrl() {
+  try {
+    const u = new URL(getOllamaBaseUrl());
+    return { hostname: u.hostname, port: u.port ? Number(u.port) : 11434 };
+  } catch (e) {
+    return { hostname: OLLAMA_HOST, port: OLLAMA_PORT };
+  }
+}
+
 // 写入前校验配置合法性，防止非法值入库（前端校验 + 此处纵深防御）
 function validateModelConfig(partial) {
-  const allowed = ['embedding', 'llm', 'reranker'];
+  const allowed = ['embedding', 'llm', 'reranker', 'ollama'];
   const isModelName = (s) =>
     typeof s === 'string' && s.trim().length > 0 && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$/.test(s.trim());
   for (const type of Object.keys(partial)) {
     if (!allowed.includes(type)) continue;
     const blk = partial[type];
     if (!blk || typeof blk !== 'object') continue;
+    if (type === 'ollama') {
+      // Ollama 服务地址：可选（缺省保持原值），提供则须为合法 http(s) URL
+      if (blk.baseUrl !== undefined && blk.baseUrl !== null) {
+        const url = String(blk.baseUrl).trim();
+        if (!url) {
+          return { success: false, error: 'Ollama 服务地址(baseUrl)不能为空' };
+        }
+        if (!/^https?:\/\/[^\s/]+(:\d+)?(\/.*)?$/.test(url)) {
+          return { success: false, error: 'Ollama 服务地址格式应为 http(s)://host:port' };
+        }
+      }
+      continue;
+    }
     // 主模型：仅在显式提供时校验（部分更新不修改主模型则跳过）
     if (blk.primary !== undefined) {
       if (!isModelName(blk.primary)) {
@@ -664,8 +705,8 @@ function setModelConfig(partial) {
     if (!partial || typeof partial !== 'object') {
       return { success: false, error: '配置内容无效' };
     }
-    // 仅允许 embedding / llm / reranker 三类配置
-    const allowed = ['embedding', 'llm', 'reranker'];
+    // 允许 embedding / llm / reranker / ollama 四类配置
+    const allowed = ['embedding', 'llm', 'reranker', 'ollama'];
     const keys = Object.keys(partial).filter((k) => allowed.includes(k));
     if (keys.length === 0) {
       return { success: false, error: `仅支持配置: ${allowed.join(' / ')}` };
@@ -745,6 +786,8 @@ module.exports = {
   getLLMModel,
   getEmbeddingModel,
   getRerankerConfig,
+  getOllamaBaseUrl,
+  parseOllamaBaseUrl,
 };
 
 // 模块加载时即尝试从 data/model-config.json 加载自定义配置（文件不存在则保持默认）

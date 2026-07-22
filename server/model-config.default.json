@@ -14,5 +14,8 @@
     "fallback": null,
     "timeout": 10000,
     "serviceUrl": "http://172.17.6.18:8000/rerank"
+  },
+  "ollama": {
+    "baseUrl": "http://172.17.6.18:11434"
   }
 }

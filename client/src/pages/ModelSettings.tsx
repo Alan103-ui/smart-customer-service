@@ -78,10 +78,19 @@ export default function ModelSettings() {
   // ============ 表单校验 ============
   // 规则：① 主模型必填且只允许字母/数字/._:-  ② 备用模型可空，有值须合法
   //       ③ 超时须为 ≥1000 整数(ms)  ④ reranker 服务地址须为合法 http(s) URL
+  //       ⑤ Ollama 服务地址须为合法 http(s) URL
   const validate = (cfg: any): Record<string, string> => {
     const errs: Record<string, string> = {};
     const isModelName = (s: any) =>
       typeof s === 'string' && s.trim().length > 0 && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$/.test(s.trim());
+    const isHttpUrl = (s: any) => typeof s === 'string' && /^https?:\/\/[^\s/]+(:\d+)?(\/.*)?$/.test(s.trim());
+    // Ollama 服务地址（embedding / llm 共用）
+    const ob = cfg?.ollama?.baseUrl;
+    if (ob === undefined || ob === null || String(ob).trim() === '') {
+      errs['ollama.baseUrl'] = 'Ollama 服务地址不能为空';
+    } else if (!isHttpUrl(ob)) {
+      errs['ollama.baseUrl'] = '格式应为 http(s)://host:port';
+    }
     TYPES.forEach((t) => {
       const blk = cfg?.[t.key] || {};
       if (!isModelName(blk.primary)) {
@@ -212,17 +221,28 @@ export default function ModelSettings() {
                 <span className="ms-overview-key">备用模型</span>
                 <span className="ms-overview-val">{config?.[t.key]?.fallback || '（无）'}</span>
               </div>
-              {t.key === 'reranker' && (
-                <div className="ms-overview-row">
-                  <span className="ms-overview-key">服务地址</span>
-                  <span className="ms-overview-val" style={{ fontSize: 13 }}>{config?.[t.key]?.serviceUrl || '-'}</span>
-                </div>
-              )}
-              {t.key !== 'reranker' && (
-                <div className="ms-overview-row">
-                  <span className="ms-overview-key">超时</span>
-                  <span className="ms-overview-val">{config?.[t.key]?.timeout ? `${config[t.key].timeout}ms` : '-'}</span>
-                </div>
+              {t.key === 'reranker' ? (
+                <>
+                  <div className="ms-overview-row">
+                    <span className="ms-overview-key">服务地址</span>
+                    <span className="ms-overview-val" style={{ fontSize: 13 }}>{config?.[t.key]?.serviceUrl || '-'}</span>
+                  </div>
+                  <div className="ms-overview-row">
+                    <span className="ms-overview-key">超时</span>
+                    <span className="ms-overview-val">{config?.[t.key]?.timeout ? `${config[t.key].timeout}ms` : '-'}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="ms-overview-row">
+                    <span className="ms-overview-key">服务地址</span>
+                    <span className="ms-overview-val" style={{ fontSize: 13 }}>{config?.ollama?.baseUrl || '-'}</span>
+                  </div>
+                  <div className="ms-overview-row">
+                    <span className="ms-overview-key">超时</span>
+                    <span className="ms-overview-val">{config?.[t.key]?.timeout ? `${config[t.key].timeout}ms` : '-'}</span>
+                  </div>
+                </>
               )}
             </div>
           ))}
@@ -234,8 +254,8 @@ export default function ModelSettings() {
         <div className="rag-card" style={{ marginTop: 20 }}>
           <h3 className="rag-card-title">✏️ 配置模型（热生效）</h3>
           <p className="rag-card-desc">
-            修改主/备模型、超时时间或 Rerank 服务地址后点击「保存配置」即可生效，无需重启服务。
-            留空备用模型表示不启用主备自动切换。
+            修改主/备模型、超时时间、Rerank 服务地址或 Ollama 服务地址后点击「保存配置」即可生效，无需重启服务。
+            留空备用模型表示不启用主备自动切换。Ollama 服务地址为嵌入模型与 LLM 共用。
           </p>
 
           {TYPES.map(t => (
@@ -290,6 +310,36 @@ export default function ModelSettings() {
                   </div>
                 )}
               </div>
+              {t.key !== 'reranker' && (
+                <div className="rag-form-row">
+                  <div className="rag-form-group" style={{ flex: 1 }}>
+                    <label className="rag-label">🔗 Ollama 服务地址 (embedding / LLM 共用)</label>
+                    <input
+                      className={`rag-input ${errors['ollama.baseUrl'] ? 'rag-input-error' : ''}`}
+                      value={config.ollama?.baseUrl ?? ''}
+                      onChange={e => updateField('ollama', 'baseUrl', e.target.value)}
+                      placeholder="http://172.17.6.18:11434"
+                    />
+                    {errors['ollama.baseUrl'] && <div className="ms-field-error">{errors['ollama.baseUrl']}</div>}
+                  </div>
+                </div>
+              )}
+              {t.key === 'reranker' && (
+                <div className="rag-form-row">
+                  <div className="rag-form-group">
+                    <label className="rag-label">超时 (timeout，毫秒)</label>
+                    <input
+                      className={`rag-input rag-input-small ${errors[`${t.key}.timeout`] ? 'rag-input-error' : ''}`}
+                      type="number"
+                      value={config[t.key]?.timeout ?? ''}
+                      onChange={e => updateField(t.key, 'timeout', e.target.value ? Number(e.target.value) : null)}
+                      min={1000}
+                      step={1000}
+                    />
+                    {errors[`${t.key}.timeout`] && <div className="ms-field-error">{errors[`${t.key}.timeout`]}</div>}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 

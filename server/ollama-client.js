@@ -17,6 +17,17 @@ const DEFAULT_MAX_TOKENS = 500;
 // 导致每次冷启动重新加载 qwen2.5:14b（约 26 秒）造成首问卡顿/超时。
 const DEFAULT_KEEP_ALIVE = '10m';
 
+// 动态读取 Ollama 服务地址（可在前端模型设置页配置，热生效）；配置缺失时回退默认常量
+function getOllamaBaseUrl() {
+  try {
+    if (modelSwitcher && typeof modelSwitcher.getOllamaBaseUrl === 'function') {
+      const u = modelSwitcher.getOllamaBaseUrl();
+      if (u) return u;
+    }
+  } catch (e) { /* 忽略，回退默认 */ }
+  return DEFAULT_BASE_URL;
+}
+
 /**
  * 调用 Ollama LLM（chat 接口，推荐）
  * @param {Array} messages - 消息数组 [{role, content}]
@@ -29,7 +40,7 @@ const DEFAULT_KEEP_ALIVE = '10m';
  * @returns {Promise<string>} - LLM 返回的文本内容
  */
 async function callOllamaChat(messages, options = {}) {
-  const baseURL = options.baseURL || DEFAULT_BASE_URL;
+  const baseURL = options.baseURL || getOllamaBaseUrl();
   const model = options.model || (modelSwitcher.getLLMModel ? modelSwitcher.getLLMModel() : DEFAULT_MODEL);
   const temperature = options.temperature ?? 0.3;
   const maxTokens = options.max_tokens || DEFAULT_MAX_TOKENS;
@@ -110,7 +121,7 @@ async function callOllamaChat(messages, options = {}) {
  * @returns {Promise<string>} - LLM 返回的文本内容
  */
 async function callOllamaGenerate(prompt, options = {}) {
-  const baseURL = options.baseURL || DEFAULT_BASE_URL;
+  const baseURL = options.baseURL || getOllamaBaseUrl();
   const model = options.model || (modelSwitcher.getLLMModel ? modelSwitcher.getLLMModel() : DEFAULT_MODEL);
   const temperature = options.temperature ?? 0.1;
   const maxTokens = options.max_tokens || DEFAULT_MAX_TOKENS;
@@ -300,7 +311,7 @@ function repairJSON(jsonStr) {
  * @returns {Promise<string>} - 完整回复文本
  */
 async function callOllamaChatStream(messages, options = {}, onToken) {
-  const baseURL = options.baseURL || DEFAULT_BASE_URL;
+  const baseURL = options.baseURL || getOllamaBaseUrl();
   const model = options.model || (modelSwitcher.getLLMModel ? modelSwitcher.getLLMModel() : DEFAULT_MODEL);
   const temperature = options.temperature ?? 0.3;
   const maxTokens = options.max_tokens || DEFAULT_MAX_TOKENS;

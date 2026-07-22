@@ -7,6 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const jieba = require('nodejieba'); // 中文分词库
 const http = require('http');
+// 引入模型配置中心，使 embedding 模型与地址可动态配置
+const modelSwitcher = require('./model-switcher');
 
 // 初始化nodejieba（使用默认词典）
 jieba.load();
@@ -20,10 +22,28 @@ const MAX_KEY_ENTITIES = 10;     // 返回的关键实体上限
 const MAX_COREFERENCE_ENTITIES = 5; // 指代消解保留的实体数
 const ENTITY_FREQ_THRESHOLD = 1;  // 关键实体最低出现次数
 
-// bge-m3向量嵌入模型配置
+// bge-m3向量嵌入模型配置（地址/模型名从模型配置中心动态读取，可在前端模型设置页配置）
 const BGE_HOST = '172.17.6.18';
 const BGE_PORT = 11434;
 const BGE_MODEL = 'bge-m3:latest';
+// 动态读取 embedding 模型与 Ollama 地址（配置缺失回退默认常量）
+function getBgeModel() {
+  try {
+    if (modelSwitcher && typeof modelSwitcher.getEmbeddingModel === 'function') {
+      const m = modelSwitcher.getEmbeddingModel();
+      if (m) return m;
+    }
+  } catch (e) { /* 忽略 */ }
+  return BGE_MODEL;
+}
+function getBgeConn() {
+  try {
+    if (modelSwitcher && typeof modelSwitcher.parseOllamaBaseUrl === 'function') {
+      return modelSwitcher.parseOllamaBaseUrl();
+    }
+  } catch (e) { /* 忽略 */ }
+  return { hostname: BGE_HOST, port: BGE_PORT };
+}
 const SIMILARITY_THRESHOLD = 0.5; // 语义相似度阈值
 
 // 中文停用词（简单版）
@@ -129,13 +149,12 @@ async function getEmbedding(text) {
   // 调用API
   return new Promise((resolve, reject) => {
     const data = JSON.stringify({
-      model: BGE_MODEL,
+      model: getBgeModel(),
       prompt: text
     });
-    
+
     const options = {
-      hostname: BGE_HOST,
-      port: BGE_PORT,
+      ...getBgeConn(),
       path: '/api/embeddings',
       method: 'POST',
       headers: {

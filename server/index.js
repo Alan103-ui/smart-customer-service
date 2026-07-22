@@ -75,6 +75,16 @@ function getActiveLLMModel() {
     return MODEL_NAME;
   }
 }
+// 动态读取 Ollama 服务地址（可在前端模型设置页配置，热生效）；配置缺失回退默认常量
+function getActiveOllamaBaseUrl() {
+  try {
+    if (modelSwitcher && typeof modelSwitcher.getOllamaBaseUrl === 'function') {
+      const u = modelSwitcher.getOllamaBaseUrl();
+      if (u) return u;
+    }
+  } catch (e) { /* 忽略 */ }
+  return OLLAMA_BASE_URL;
+}
 const DB_PATH = path.join(__dirname, '../data/conversations.db');
 const FAQ_PATH = path.join(__dirname, '../data/faq.json');
 const CATEGORIES_PATH = path.join(__dirname, '../data/categories.json');
@@ -497,7 +507,7 @@ ${faqContext}`;
   
   try {
     const reply = await callOllamaChatStream(messages, {
-      baseURL: OLLAMA_BASE_URL,
+      baseURL: getActiveOllamaBaseUrl(),
       model: getActiveLLMModel(),
       temperature: 0.3,
       max_tokens: 500
@@ -1606,7 +1616,7 @@ server.listen(PORT, '0.0.0.0', async () => {
   console.log(`🤖 ${loadSoftwareInfo().softwareName}后端服务启动成功！`);
   console.log(`   WebSocket: ws://localhost:${PORT}/ws`);
   console.log(`   管理后台 API: http://localhost:${PORT}/api/admin/stats`);
-  console.log(`   AI 模型: ${getActiveLLMModel()} @ ${OLLAMA_URL}`);
+  console.log(`   AI 模型: ${getActiveLLMModel()} @ ${getActiveOllamaBaseUrl() + OLLAMA_CHAT_PATH}`);
   console.log(`   数据文件: ${DB_PATH.replace('.db', '.json')}`);
 
   // 构建 FAQ embedding 缓存（加速搜索）

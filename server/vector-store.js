@@ -13,6 +13,16 @@ const modelSwitcher = require('./model-switcher');
 
 const OLLAMA_HOST = '172.17.6.18';
 const OLLAMA_PORT = 11434;
+
+// 动态读取 Ollama 服务地址（可在前端模型设置页配置，热生效）；配置缺失回退默认常量
+function ollamaConn() {
+  try {
+    if (modelSwitcher && typeof modelSwitcher.parseOllamaBaseUrl === 'function') {
+      return modelSwitcher.parseOllamaBaseUrl();
+    }
+  } catch (e) { /* 忽略 */ }
+  return { hostname: OLLAMA_HOST, port: OLLAMA_PORT };
+}
 const EMBEDDING_MODEL = 'bge-m3:latest';           // 默认嵌入模型（被配置中心覆盖）
 const RERANK_MODEL = 'bge-reranker-v2-m3';  // 重排序模型（可选）
 const VECTOR_STORE_PATH = path.join(__dirname, '../data/vector-store.json');
@@ -617,8 +627,7 @@ function getEmbedding(text) {
     const http = require('http');
   const payload = JSON.stringify({ model: modelSwitcher.getEmbeddingModel(), prompt: text.slice(0, 8000) });
   const options = {
-    hostname: OLLAMA_HOST,
-    port: OLLAMA_PORT,
+    ...ollamaConn(),
     path: '/api/embeddings',
       method: 'POST',
       headers: {
@@ -659,8 +668,7 @@ function getEmbeddingFallback(text) {
   const fallbackModel = (modelSwitcher.getModelConfig().embedding && modelSwitcher.getModelConfig().embedding.fallback) || 'qwen2.5:14b';
   const payload = JSON.stringify({ model: fallbackModel, prompt: text.slice(0, 8000) });
     const options = {
-      hostname: OLLAMA_HOST,
-      port: OLLAMA_PORT,
+      ...ollamaConn(),
       path: '/api/embeddings',
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
@@ -970,8 +978,7 @@ ${candidateText}
       options: { temperature: 0, num_predict: 512 }
     });
     const options = {
-      hostname: OLLAMA_HOST,
-      port: OLLAMA_PORT,
+      ...ollamaConn(),
       path: '/api/generate',
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
@@ -1386,8 +1393,7 @@ async function fetchOllamaModels() {
   return new Promise((resolve) => {
     const http = require('http');
     const options = {
-      hostname: OLLAMA_HOST,
-      port: OLLAMA_PORT,
+      ...ollamaConn(),
       path: '/api/tags',
       method: 'GET',
       timeout: 5000

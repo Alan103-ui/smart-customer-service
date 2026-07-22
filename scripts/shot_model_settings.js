@@ -64,11 +64,25 @@ async function clickByText(page, keyword) {
   });
   await sleep(500);
 
-  // 截图
+  // 截图（整页）
   const out = 'D:/Clow/projects/smart-customer-service/scripts/_shot_model_settings.png';
   await page.screenshot({ path: out, fullPage: true });
   console.log('截图已保存:', out);
-  console.log('RESULT:', rendered ? 'PASS' : 'WARN');
+
+  // 聚焦编辑表单（含 Ollama 服务地址字段），视口截图
+  await page.evaluate(() => {
+    const el = Array.from(document.querySelectorAll('label')).find(l => (l.textContent || '').includes('Ollama 服务地址'));
+    if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
+    else window.scrollTo(0, 400);
+  });
+  await sleep(500);
+  const outForm = 'D:/Clow/projects/smart-customer-service/scripts/_shot_model_form.png';
+  await page.screenshot({ path: outForm });
+  console.log('表单截图已保存:', outForm);
+  const hasAddr = await page.evaluate(() => document.body.innerText.includes('Ollama 服务地址'));
+  console.log('Ollama 服务地址字段渲染:', hasAddr ? 'ok' : '未渲染');
+
+  console.log('RESULT:', (rendered && hasAddr) ? 'PASS' : 'WARN');
 
   await browser.close();
 })().catch(e => { console.error('ERROR', e); process.exit(1); });
