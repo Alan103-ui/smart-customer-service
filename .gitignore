@@ -30,6 +30,9 @@ yarn-error.log*
 Thumbs.db
 desktop.ini
 
+# ============ 守护进程锁文件 ============
+.daemon.pid
+
 # ============ IDE ============
 .vscode/
 .idea/
