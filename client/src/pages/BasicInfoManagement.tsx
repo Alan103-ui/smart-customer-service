@@ -16,7 +16,7 @@ async function safeFetch<T>(url: string): Promise<T> {
   return [] as unknown as T;
 }
 
-type SubTab = 'org' | 'personnel' | 'permissions' | 'oa' | 'software' | 'config' | 'sso' | 'dict' | 'announcement';
+type SubTab = 'org' | 'personnel' | 'permissions' | 'oa' | 'software' | 'config' | 'sso' | 'dict' | 'announcement' | 'backup';
 
 // 权限目录（本地兜底，后端 /api/admin/permissions/catalog 返回权威版本）
 const PERM_GROUPS_LOCAL: { group: string; items: { code: string; label: string }[] }[] = [
@@ -265,6 +265,45 @@ export default function BasicInfoManagement() {
     if (d.success) { setAnnMsg('公告已保存'); loadAnnouncement(); } else setAnnMsg('保存失败：' + (d.error || ''));
   };
 
+  // ==================== 数据备份 ====================
+  const [backupFiles, setBackupFiles] = useState<any[]>([]);
+  const [backups, setBackups] = useState<any[]>([]);
+  const [backupConfig, setBackupConfig] = useState<any>({ enabled: false, retention: 30, lastRun: null, nextRun: null });
+  const [backupMsg, setBackupMsg] = useState('');
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+
+  const loadBackupFiles = () => fetch(API + '/backup/files', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { files: [] }).then((d: any) => setBackupFiles(Array.isArray(d.files) ? d.files : [])).catch(() => setBackupFiles([]));
+  const loadBackups = () => fetch(API + '/backup/list', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : { backups: [], config: {} }).then((d: any) => { setBackups(Array.isArray(d.backups) ? d.backups : []); if (d.config) setBackupConfig(d.config); }).catch(() => {});
+
+  const doBackup = async () => {
+    if (!confirm('确定立即备份当前全部业务数据？')) return;
+    setBackupBusy(true); setBackupMsg('');
+    try {
+      const r = await fetch(API + '/backup/create', { method: 'POST', headers: getAuthHeaders() }).then(x => x.json());
+      if (r.success) { setBackupMsg('备份成功：' + (r.manifest?.id || '') + '（' + (r.manifest?.files?.length || 0) + ' 文件）'); loadBackups(); loadBackupFiles(); }
+      else setBackupMsg('失败：' + (r.error || ''));
+    } catch (e: any) { setBackupMsg('失败：' + e.message); }
+    finally { setBackupBusy(false); }
+  };
+
+  const doRestore = async (id: string) => {
+    if (!confirm('恢复到该备份点将覆盖当前数据，确定继续？')) return;
+    setRestoreBusy(true); setBackupMsg('');
+    try {
+      const r = await fetch(API + '/backup/restore', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ id }) }).then(x => x.json());
+      if (r.success) setBackupMsg('已恢复 ' + r.count + ' 个文件（来自 ' + id + '）。建议刷新页面查看最新数据。');
+      else setBackupMsg('恢复失败：' + (r.error || ''));
+    } catch (e: any) { setBackupMsg('恢复失败：' + e.message); }
+    finally { setRestoreBusy(false); }
+  };
+
+  const saveBackupCfg = async () => {
+    const r = await fetch(API + '/backup/config', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ enabled: backupConfig.enabled, retention: backupConfig.retention }) }).then(x => x.json());
+    if (r.success) { setBackupConfig(r.config); setBackupMsg('自动备份配置已保存（' + (r.config.enabled ? '已启用' : '已停用') + '，保留 ' + r.config.retention + ' 份）'); }
+    else setBackupMsg('配置保存失败：' + (r.error || ''));
+  };
+
   // 操作审计已迁移至「日志管理」标签页（见 AdminDashboard 日志管理子页）
 
   useEffect(() => {
@@ -277,6 +316,7 @@ export default function BasicInfoManagement() {
     if (subTab === 'sso') loadSsoWhitelist();
     if (subTab === 'dict') loadDict();
     if (subTab === 'announcement') loadAnnouncement();
+    if (subTab === 'backup') { loadBackupFiles(); loadBackups(); }
   }, [subTab]);
 
   // ==================== 组织架构保存 ====================
@@ -427,8 +467,8 @@ export default function BasicInfoManagement() {
     <div>
       <h2>基础信息管理</h2>
       <div className="ui-tabs" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-        {(['org', 'personnel', 'permissions', 'oa', 'software', 'config', 'sso', 'dict', 'announcement'] as SubTab[]).map(k => (
-          <button key={k} className={`ui-tab ${subTab === k ? 'ui-tab--active' : ''}`} onClick={() => setSubTab(k)}>{k === 'org' ? '组织与部门' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : '系统公告'}</button>
+        {(['org', 'personnel', 'permissions', 'oa', 'software', 'config', 'sso', 'dict', 'announcement', 'backup'] as SubTab[]).map(k => (
+          <button key={k} className={`ui-tab ${subTab === k ? 'ui-tab--active' : ''}`} onClick={() => setSubTab(k)}>{k === 'org' ? '组织与部门' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : k === 'announcement' ? '系统公告' : '数据备份'}</button>
         ))}
       </div>
 
@@ -985,6 +1025,81 @@ export default function BasicInfoManagement() {
             </div>
             {annMsg && <div className="ui-alert ui-alert--success" style={{ marginTop: 12 }}>{annMsg}</div>}
           </div>
+        </div>
+      )}
+
+      {/* 数据备份 */}
+      {subTab === 'backup' && (
+        <div>
+          {/* 自动备份配置 */}
+          <div className="ui-card" style={{ marginBottom: 16 }}>
+            <div className="ui-card__header"><span className="ui-card__title">备份策略</span></div>
+            <div className="ui-card__body">
+              <div className="ui-form-row ui-form-row--inline">
+                <label>每日自动备份</label>
+                <input type="checkbox" checked={!!backupConfig.enabled} onChange={e => setBackupConfig({ ...backupConfig, enabled: e.target.checked })} />
+                <span className="ui-tag">每天凌晨 02:00 自动快照</span>
+              </div>
+              <div className="ui-form-row ui-form-row--inline">
+                <label>保留份数</label>
+                <input className="ui-input" type="number" min={1} max={365} style={{ width: 90 }} value={backupConfig.retention} onChange={e => setBackupConfig({ ...backupConfig, retention: parseInt(e.target.value) || 30 })} />
+                <span className="ui-tag">超过将自动清理最旧的备份</span>
+                <button className="ui-btn ui-btn--primary ui-btn--sm" disabled={backupBusy} onClick={saveBackupCfg}>保存策略</button>
+              </div>
+              {(backupConfig.lastRun || backupConfig.nextRun) && (
+                <div className="ui-muted" style={{ marginTop: 8 }}>
+                  上次备份：{backupConfig.lastRun ? new Date(backupConfig.lastRun).toLocaleString('zh-CN') : '无'} ｜ 下次：{backupConfig.nextRun ? new Date(backupConfig.nextRun).toLocaleString('zh-CN') : '-'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 当前数据文件 + 立即备份 */}
+          <div className="ui-card" style={{ marginBottom: 16 }}>
+            <div className="ui-card__header">
+              <span className="ui-card__title">当前业务数据（待备份 {backupFiles.length} 个文件）</span>
+              <button className="ui-btn ui-btn--primary ui-btn--sm" disabled={backupBusy} onClick={doBackup}>💾 立即备份</button>
+            </div>
+            <div className="ui-card__body">
+              {backupFiles.length === 0 ? <div className="ui-muted">暂无可备份的数据文件</div> : (
+                <table className="ui-table ui-table--compact">
+                  <thead><tr><th style={{ textAlign: 'left' }}>文件名</th><th>大小</th><th>最近修改</th></tr></thead>
+                  <tbody>
+                    {backupFiles.map((f: any) => (
+                      <tr key={f.name}><td style={{ textAlign: 'left' }}>{f.name}</td><td>{f.sizeText}</td><td className="ui-muted">{new Date(f.mtime).toLocaleString('zh-CN')}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* 备份历史 */}
+          <div className="ui-card">
+            <div className="ui-card__header"><span className="ui-card__title">备份历史（{backups.length}）</span></div>
+            <div className="ui-card__body">
+              {backups.length === 0 ? <div className="ui-muted">暂无备份，点击「立即备份」创建第一个快照</div> : (
+                <table className="ui-table ui-table--compact">
+                  <thead><tr><th style={{ textAlign: 'left' }}>备份时间</th><th>文件数</th><th>大小</th><th>操作</th></tr></thead>
+                  <tbody>
+                    {backups.map((b: any) => (
+                      <tr key={b.id}>
+                        <td style={{ textAlign: 'left' }}>{new Date(b.createdAt).toLocaleString('zh-CN')}</td>
+                        <td>{b.files}</td>
+                        <td>{b.sizeText}</td>
+                        <td>
+                          <button className="ui-btn ui-btn--secondary ui-btn--sm" disabled={restoreBusy} onClick={() => doRestore(b.id)}>恢复</button>
+                          <button className="ui-btn ui-btn--ghost ui-btn--sm" disabled={restoreBusy} style={{ marginLeft: 6 }} onClick={async () => { if (!confirm('删除该备份？此操作不可恢复')) return; const r = await fetch(API + '/backup/' + encodeURIComponent(b.id), { method: 'DELETE', headers: getAuthHeaders() }).then(x => x.json()); if (r.success) { setBackupMsg('已删除备份 ' + b.id); loadBackups(); } else setBackupMsg('删除失败：' + (r.error || '')); }}>删除</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {backupMsg && <div className="ui-alert ui-alert--success" style={{ marginTop: 12 }}>{backupMsg}</div>}
         </div>
       )}
 

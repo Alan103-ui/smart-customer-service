@@ -755,6 +755,7 @@ app.post('/api/chat/clear', auth.authMiddleware, (req, res) => {
 // ============ 意图在线标注（聊天端纠错，公开采集）============
 // 坐席/用户在前端对"识别意图"点纠错时调用；无需 admin，token 可选（用于署名）
 const intentFeedback = require('./intent-feedback');
+const dataBackup = require('./data-backup');
 app.post('/api/intent-correct', (req, res) => {
   try {
     const { userMessage, originalIntent, correctedIntent, note, makeRule, sessionId, messageId } = req.body;
@@ -1641,5 +1642,12 @@ server.listen(PORT, '0.0.0.0', async () => {
     console.log(`   意图反馈沉淀: fewShot=${fbStats.fewShotCount}, rules=${fbStats.ruleCount}, applied=${fbStats.appliedCorrections}`);
   } catch (e) {
     console.warn(`   意图反馈沉淀失败: ${e.message}`);
+  }
+
+  // 数据自动备份：若启用则按配置每日凌晨 2:00 排程
+  try {
+    dataBackup.startAutoBackup();
+  } catch (e) {
+    console.warn(`   数据自动备份启动失败: ${e.message}`);
   }
 });

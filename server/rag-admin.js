@@ -2158,4 +2158,71 @@ router.post('/config/import', auth.authMiddleware, auth.adminOnly, (req, res) =>
   }
 });
 
+// ============ 七、数据备份管理 ============
+const dataBackup = require('./data-backup');
+
+// 当前待备份的数据文件清单
+router.get('/backup/files', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try { res.json({ success: true, files: dataBackup.listSourceFiles() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 备份历史 + 当前配置
+router.get('/backup/list', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try { res.json({ success: true, backups: dataBackup.listBackups(), config: dataBackup.loadConfig() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 立即创建备份
+router.post('/backup/create', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const { manifest, removed } = dataBackup.createBackup();
+    auditLog('数据备份_创建', req.user ? req.user.username : 'unknown', { id: manifest.id, files: manifest.files.length, removed });
+    res.json({ success: true, manifest, removed });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 从指定备份恢复（覆盖回 data/）
+router.post('/backup/restore', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const { id } = req.body || {};
+    if (!id) return res.status(400).json({ error: 'id 必填' });
+    const r = dataBackup.restoreBackup(id);
+    auditLog('数据备份_恢复', req.user ? req.user.username : 'unknown', { id });
+    res.json({ success: true, ...r });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// 读取自动备份配置
+router.get('/backup/config', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try { res.json({ success: true, config: dataBackup.loadConfig() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 保存自动备份配置（enabled / retention）
+router.put('/backup/config', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const { enabled, retention } = req.body || {};
+    const cfg = dataBackup.loadConfig();
+    if (enabled !== undefined) cfg.enabled = !!enabled;
+    if (retention !== undefined) cfg.retention = Math.max(1, parseInt(retention) || 30);
+    dataBackup.saveConfig(cfg);
+    dataBackup.stopAutoBackup();
+    dataBackup.startAutoBackup();
+    auditLog('数据备份_配置', req.user ? req.user.username : 'unknown', { enabled: cfg.enabled, retention: cfg.retention });
+    res.json({ success: true, config: cfg });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 删除指定备份
+router.delete('/backup/:id', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const { id } = req.params;
+    const ok = dataBackup.deleteBackup(id);
+    if (!ok) return res.status(404).json({ error: '备份不存在' });
+    auditLog('数据备份_删除', req.user ? req.user.username : 'unknown', { id });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
