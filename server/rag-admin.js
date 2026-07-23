@@ -714,6 +714,41 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
   }
 });
 
+// FAQ 导出（全量）：支持 ?format=json（默认）| csv，便于备份与迁移
+router.get('/faq/export', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const format = (req.query.format || 'json').toString().toLowerCase();
+    const list = getFAQ();
+    if (format === 'csv') {
+      const esc = (v) => '"' + String(v == null ? '' : v)
+        .replace(/"/g, '""')
+        .replace(/\r/g, '')
+        .replace(/\n/g, ' ') + '"';
+      const cols = ['id', 'question', 'keywords', 'answer', 'intent', 'category'];
+      const rows = list.map((f) => [
+        f.id,
+        f.question,
+        Array.isArray(f.keywords) ? f.keywords.join(';') : (f.keywords || ''),
+        f.answer,
+        f.intent || '',
+        f.category || '',
+      ].map(esc).join(','));
+      const csv = '﻿' + [cols.map(esc).join(','), ...rows].join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="faq-export-${Date.now()}.csv"`);
+      res.send(csv);
+    } else {
+      const payload = { success: true, total: list.length, exportedAt: new Date().toISOString(), data: list };
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="faq-export-${Date.now()}.json"`);
+      res.json(payload);
+    }
+    auditLog('faq_export', req.user ? req.user.username : 'unknown', { format, total: list.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ==========================================
 // 五、智能意图理解 API（RAG流程核心环节）

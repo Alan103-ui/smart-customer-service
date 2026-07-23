@@ -752,6 +752,23 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // FAQ 导出（全量 JSON / CSV），与「批量导入」对称
+  const exportFaq = async (format: 'json' | 'csv') => {
+    try {
+      const res = await fetch(`${API_BASE}/faq/export?format=${format}`, { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `faq-export-${Date.now()}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) { alert('导出失败：' + (err?.message || '请重试')); }
+  };
+
   const selectedConv = Array.isArray(conversations) ? conversations.find(c => c.session_id === selectedSession) : undefined;
 
   // ==================== 搜索关键词高亮 ====================
@@ -942,6 +959,8 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
               {categories.filter(c => c.parentId === uploadLevel1Cat).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
             </select>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              <button className="btn-secondary" onClick={() => exportFaq('json')}>⬇ 导出 JSON</button>
+              <button className="btn-secondary" onClick={() => exportFaq('csv')}>⬇ 导出 CSV</button>
               <select value={faqFilterCategory} onChange={e => { setFaqFilterCategory(e.target.value); fetchFAQ({ page: 1, category: e.target.value }); }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #d9d9d9' }}>
                 <option value="">全部分类</option>
                 {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
