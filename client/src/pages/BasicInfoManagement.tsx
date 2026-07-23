@@ -506,7 +506,7 @@ export default function BasicInfoManagement() {
       <h2>基础信息管理</h2>
       <div className="ui-tabs" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         {(['org', 'personnel', 'permissions', 'oa', 'software', 'config', 'sso', 'dict', 'announcement', 'backup'] as SubTab[]).map(k => (
-          <button key={k} className={`ui-tab ${subTab === k ? 'ui-tab--active' : ''}`} onClick={() => setSubTab(k)}>{k === 'org' ? '组织与部门' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '致远OA对接' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : k === 'announcement' ? '系统公告' : '数据备份'}</button>
+          <button key={k} className={`ui-tab ${subTab === k ? 'ui-tab--active' : ''}`} onClick={() => setSubTab(k)}>{k === 'org' ? '组织与部门' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '接口设置' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : k === 'announcement' ? '系统公告' : '数据备份'}</button>
         ))}
       </div>
 
@@ -993,7 +993,7 @@ export default function BasicInfoManagement() {
             <span className="ui-card__title">SSO 登录白名单</span>
           </div>
           <div className="ui-card__body">
-            <p className="ui-text" style={{ fontSize: 12, color: '#888', marginTop: 0, marginBottom: 12 }}>本页为「系统 SSO 登录白名单」（账号存于 data/sso-whitelist.json，控制谁可用 SSO 登录系统）。与「致远OA对接」页里的 SSO 白名单（控制 OA 跳转登录工号）相互独立，注意区分。</p>
+            <p className="ui-text" style={{ fontSize: 12, color: '#888', marginTop: 0, marginBottom: 12 }}>本页为「系统 SSO 登录白名单」（账号存于 data/sso-whitelist.json，控制谁可用 SSO 登录系统）。与「接口设置」页里的 SSO 白名单（控制 OA 跳转登录工号）相互独立，注意区分。</p>
             <div className="ui-toolbar">
               <input className="ui-input" value={ssoAccount} onChange={e => setSsoAccount(e.target.value)} placeholder="账号(工号) 如 GK88888" />
               <input className="ui-input" value={ssoName} onChange={e => setSsoName(e.target.value)} placeholder="姓名" />
