@@ -341,8 +341,17 @@ class SeeyonAdapter extends BaseAdapter {
   }
 
   async getToken(force = false) {
-    if (this.cfg.fixedToken && !force) return this.cfg.fixedToken;
-    if (tokenCache.token && !force && Date.now() - tokenCache.ts < TOKEN_TTL) return tokenCache.token;
+    if (force) return await this._fetchToken();
+    if (tokenCache.token && Date.now() - tokenCache.ts < TOKEN_TTL) return tokenCache.token;
+    // 账号/密钥存在时优先动态取 token（致远 token 会过期，比固定 token 更可靠）
+    if (this.cfg.baseUrl && this.cfg.username && this.cfg.secret) {
+      return await this._fetchToken();
+    }
+    if (this.cfg.fixedToken) return this.cfg.fixedToken;
+    throw new Error('OA 未配置（缺少 baseUrl / username / secret 或 fixedToken）');
+  }
+
+  async _fetchToken() {
     if (!this.cfg.baseUrl || !this.cfg.username || !this.cfg.secret) {
       throw new Error('OA 未配置（缺少 baseUrl / username / secret）');
     }

@@ -264,7 +264,7 @@ router.post('/test', async (req, res) => {
   let cfg = null;
   try {
     cfg = oa.loadOAConfig();
-    const token = await oa.getToken(true);
+    const token = await oa.getToken();
     const accounts = await oa.getOrgAccounts();
     res.json({
       success: true,
