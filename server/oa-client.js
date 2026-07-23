@@ -563,6 +563,67 @@ function getAdapter() {
   return cfg.apiType === 'generic' ? new GenericAdapter(cfg) : new SeeyonAdapter(cfg);
 }
 
+// 用传入的配置（通常是前端尚未保存的表单值）构建适配器，做"实时测试"用，不落盘。
+function buildAdapterFromConfig(input) {
+  const base = loadOAConfig();
+  const cfg = Object.assign({}, base, input || {});
+  cfg.generic = Object.assign({}, defaultGenericConfig(), (input && input.generic) || base.generic || {});
+  cfg.apiType = (input && input.apiType) || base.apiType || 'seeyon';
+  return cfg.apiType === 'generic' ? new GenericAdapter(cfg) : new SeeyonAdapter(cfg);
+}
+
+// 对适配器做分步连通性诊断，返回结构化结果（含每步耗时与详情），便于前端精确定位失败环节。
+async function diagnoseConnection(adapter) {
+  const steps = [];
+  const t0 = Date.now();
+  let token = null;
+  try {
+    const s = Date.now();
+    token = await adapter.getToken(true); // 强制刷新，测量真实取 token 耗时
+    steps.push({ name: '获取访问凭证', ok: true, latencyMs: Date.now() - s, detail: '已获取 ' + maskCredential(token) });
+  } catch (e) {
+    const s = Date.now();
+    steps.push({ name: '获取访问凭证', ok: false, latencyMs: Date.now() - s, detail: e.message });
+    return { success: false, steps, totalMs: Date.now() - t0 };
+  }
+  let accounts = [];
+  try {
+    const s = Date.now();
+    accounts = await adapter.getOrgAccounts();
+    steps.push({
+      name: '获取组织单位', ok: true, latencyMs: Date.now() - s,
+      detail: `共 ${accounts.length} 个` + (accounts[0] ? '，示例：' + accounts.slice(0, 3).map((a) => a.name).join('、') : ''),
+    });
+  } catch (e) {
+    const s = Date.now();
+    steps.push({ name: '获取组织单位', ok: false, latencyMs: Date.now() - s, detail: e.message });
+    return { success: false, steps, tokenMasked: maskCredential(token), totalMs: Date.now() - s };
+  }
+  if (accounts[0] && accounts[0].oaId) {
+    try {
+      const s = Date.now();
+      const depts = await adapter.getOrgDepartments(accounts[0].oaId);
+      steps.push({
+        name: '获取部门（首个组织）', ok: true, latencyMs: Date.now() - s,
+        detail: `共 ${depts.length} 个` + (depts[0] ? '，示例：' + depts.slice(0, 3).map((d) => d.name).join('、') : ''),
+      });
+    } catch (e) {
+      const s = Date.now();
+      steps.push({ name: '获取部门（首个组织）', ok: false, latencyMs: Date.now() - s, detail: e.message });
+    }
+  } else {
+    steps.push({ name: '获取部门', ok: true, latencyMs: 0, detail: '无组织单位，跳过' });
+  }
+  return {
+    success: true,
+    steps,
+    tokenMasked: maskCredential(token),
+    orgCount: accounts.length,
+    sampleAccounts: accounts.slice(0, 5).map((a) => ({ name: a.name, code: a.code })),
+    totalMs: Date.now() - t0,
+  };
+}
+
 // ============ 导出函数（签名不变，内部 dispatch 到适配器） ============
 async function getToken(force = false) {
   const adapter = getAdapter();
@@ -656,4 +717,6 @@ module.exports = {
   // 通用化新增导出（供管理端/测试使用）
   defaultGenericConfig,
   getAdapter,
+  buildAdapterFromConfig,
+  diagnoseConnection,
 };

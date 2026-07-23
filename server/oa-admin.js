@@ -266,29 +266,39 @@ router.post('/whitelist/sync-all', async (req, res) => {
   }
 });
 
-// ============ 测试连接 ============
+// ============ 测试连接（支持实时配置诊断） ============
+// 请求体可带 { liveConfig: {...} } 用前端当前表单值做实时探测（不落盘）；
+// 不带则对已在保存的配置做诊断（向后兼容）。
 router.post('/test', async (req, res) => {
-  let cfg = null;
   try {
-    cfg = oa.loadOAConfig();
-    const token = await oa.getToken();
-    const accounts = await oa.getOrgAccounts();
-    res.json({
-      success: true,
-      message: '连接成功',
-      apiType: cfg.apiType || 'seeyon',
-      authType: cfg.apiType === 'generic' ? (cfg.generic.authType || 'token_url') : 'seeyon_token',
-      tokenMasked: oa.maskCredential(token),
-      orgCount: accounts.length,
-      sampleAccount: accounts[0] ? { name: accounts[0].name, code: accounts[0].code } : null,
-    });
+    const body = req.body || {};
+    let adapter;
+    let apiType;
+    if (body.liveConfig && typeof body.liveConfig === 'object') {
+      adapter = oa.buildAdapterFromConfig(body.liveConfig);
+      apiType = body.liveConfig.apiType || 'seeyon';
+    } else {
+      adapter = oa.getAdapter();
+      const cfg = oa.loadOAConfig();
+      apiType = cfg.apiType || 'seeyon';
+    }
+    const diag = await oa.diagnoseConnection(adapter);
+    const authType = apiType === 'generic' ? (adapter.cfg.generic.authType || 'token_url') : 'seeyon_token';
+    // 实时诊断可能用过临时凭据，清掉模块级 token 缓存，避免污染已保存配置的缓存
+    oa.clearTokenCache();
+    const firstFail = diag.steps.find((s) => !s.ok);
+    res.json(Object.assign(
+      {
+        success: diag.success,
+        message: diag.success ? '连接成功' : ('连接失败：' + (firstFail ? firstFail.detail : '未知错误')),
+        apiType,
+        authType,
+      },
+      diag
+    ));
   } catch (e) {
-    res.json({
-      success: false,
-      message: '连接失败：' + e.message,
-      apiType: (cfg && cfg.apiType) || 'seeyon',
-      authType: cfg && cfg.apiType === 'generic' ? ((cfg.generic || {}).authType || 'token_url') : 'seeyon_token',
-    });
+    oa.clearTokenCache();
+    res.json({ success: false, message: '连接失败：' + e.message, apiType: 'seeyon', authType: 'seeyon_token' });
   }
 });
 

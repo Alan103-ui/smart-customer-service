@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // 统一获取认证头
 function getAuthHeaders(): Record<string, string> {
@@ -23,6 +23,190 @@ function fmtBytes(n: number): string {
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
   if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
   return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+// ============ 通用适配配置结构化表单辅助组件 ============
+
+// 前端默认通用模板（与后端 defaultGenericConfig 对应，切换类型且未配置时使用）
+const DEFAULT_GENERIC: any = {
+  authType: 'token_url',
+  tokenEndpoint: { method: 'GET', path: '/api/auth/token', query: {}, body: {}, headers: {}, usernameField: 'username', passwordField: 'password', responsePath: 'token' },
+  staticToken: '',
+  apiKey: { headerName: 'X-API-Key', valuePrefix: '', in: 'header' },
+  basicAuth: { username: '', password: '' },
+  orgAccountsEndpoint: { method: 'GET', path: '/api/org/accounts', query: {}, body: {}, headers: {}, responsePath: 'data', paging: { enabled: false, pageParam: 'page', sizeParam: 'size', defaultSize: 100 } },
+  orgDepartmentsEndpoint: { method: 'GET', path: '/api/org/departments', query: {}, body: {}, headers: {}, responsePath: 'data', accountIdParam: 'accountId', paging: { enabled: false, pageParam: 'page', sizeParam: 'size', defaultSize: 100 } },
+  orgMembersEndpoint: { method: 'GET', path: '/api/org/members', query: {}, body: {}, headers: {}, responsePath: 'data', accountIdParam: 'accountId', paging: { enabled: false, pageParam: 'page', sizeParam: 'size', defaultSize: 100 } },
+  fieldMapping: {
+    orgAccount: { id: 'id', name: 'name', code: 'code', shortName: 'shortName', isGroup: 'isGroup', parentId: 'parentId', enabled: 'enabled', path: 'path' },
+    orgDepartment: { id: 'id', name: 'name', code: 'code', superior: 'superior', superiorName: 'superiorName', orgAccountId: 'orgAccountId', orgAccountName: 'orgAccountName', enabled: 'enabled', isDeleted: 'isDeleted' },
+    member: { id: 'id', orgAccountId: 'orgAccountId', name: 'name', code: 'code', loginName: 'loginName', orgDepartmentId: 'orgDepartmentId', orgPostId: 'orgPostId', email: 'email', gender: 'gender', phone: 'phone', telNumber: 'telNumber', officeNum: 'officeNum', isLoginable: 'isLoginable', enabled: 'enabled', properties: 'properties' },
+  },
+};
+
+// 编辑一个 JSON 对象（query/body/headers），非法时不向上传递，避免输入框抖动
+function ObjJsonField({ label, value, onValid }: { label: string; value: any; onValid: (v: any) => void }) {
+  const [text, setText] = useState(() => JSON.stringify(value || {}, null, 2));
+  const [err, setErr] = useState('');
+  const lastJson = useRef(JSON.stringify(value || {}));
+  useEffect(() => {
+    const cur = JSON.stringify(value || {});
+    if (cur !== lastJson.current) { lastJson.current = cur; setText(cur); setErr(''); }
+  }, [value]);
+  return (
+    <div style={{ marginTop: 8 }}>
+      <label style={{ fontSize: 12 }}>{label}</label>
+      <textarea
+        className="ui-input"
+        style={{ width: '100%', minHeight: 70, fontFamily: 'monospace', fontSize: 12 }}
+        value={text}
+        spellCheck={false}
+        onChange={e => {
+          const t = e.target.value;
+          setText(t);
+          try { onValid(JSON.parse(t)); setErr(''); } catch (err) { setErr('JSON 格式错误'); }
+        }}
+      />
+      {err && <div className="ui-alert ui-alert--error" style={{ marginTop: 4 }}>{err}</div>}
+    </div>
+  );
+}
+
+// 单个端点编辑器（组织单位 / 部门 / 人员）
+function EndpointEditor({ title, ep, onChange }: { title: string; ep: any; onChange: (v: any) => void }) {
+  const update = (patch: any) => onChange(Object.assign({}, ep || {}, patch));
+  const paging = (ep && ep.paging) || {};
+  const updatePaging = (patch: any) => update({ paging: Object.assign({}, paging, patch) });
+  return (
+    <div className="ui-card" style={{ background: 'var(--color-bg-tertiary)', marginTop: 12 }}>
+      <div className="ui-card__header"><span className="ui-card__title">{title}</span></div>
+      <div className="ui-card__body">
+        <div className="ui-form-row ui-form-row--inline">
+          <label>请求方法</label>
+          <select className="ui-select" value={(ep && ep.method) || 'GET'} onChange={e => update({ method: e.target.value })}>
+            <option>GET</option><option>POST</option><option>PUT</option>
+          </select>
+          <label>路径</label>
+          <input className="ui-input" style={{ minWidth: 280 }} value={(ep && ep.path) || ''} onChange={e => update({ path: e.target.value })} placeholder="/api/org/accounts" />
+        </div>
+        <div className="ui-form-row"><label>响应数组路径</label><input className="ui-input" value={(ep && ep.responsePath) || ''} onChange={e => update({ responsePath: e.target.value })} placeholder="data / data.list，留空取根" /></div>
+        <div className="ui-form-row ui-form-row--inline">
+          <label>accountId 参数名</label>
+          <input className="ui-input" value={(ep && ep.accountIdParam) || ''} onChange={e => update({ accountIdParam: e.target.value })} placeholder="仅部门/人员端点" />
+          <label style={{ minWidth: 'auto' }}><input type="checkbox" checked={!!paging.enabled} onChange={e => updatePaging({ enabled: e.target.checked })} /> 启用分页</label>
+        </div>
+        {paging.enabled && (
+          <div className="ui-form-row ui-form-row--inline">
+            <label>页号参数</label><input className="ui-input" value={paging.pageParam || 'page'} onChange={e => updatePaging({ pageParam: e.target.value })} />
+            <label>页大小参数</label><input className="ui-input" value={paging.sizeParam || 'size'} onChange={e => updatePaging({ sizeParam: e.target.value })} />
+            <label>默认大小</label><input className="ui-input" value={paging.defaultSize || 100} onChange={e => updatePaging({ defaultSize: Number(e.target.value) })} />
+          </div>
+        )}
+        <details>
+          <summary style={{ cursor: 'pointer', fontSize: 12, color: '#888' }}>高级：query / body / headers</summary>
+          <ObjJsonField label="query" value={ep && ep.query} onValid={v => update({ query: v })} />
+          <ObjJsonField label="body" value={ep && ep.body} onValid={v => update({ body: v })} />
+          <ObjJsonField label="headers" value={ep && ep.headers} onValid={v => update({ headers: v })} />
+        </details>
+      </div>
+    </div>
+  );
+}
+
+// 字段映射编辑器（系统字段 → 远端字段名）
+const MAPPING_KEYS: Record<string, string[]> = {
+  orgAccount: ['id', 'name', 'code', 'shortName', 'isGroup', 'parentId', 'enabled', 'path'],
+  orgDepartment: ['id', 'name', 'code', 'superior', 'superiorName', 'orgAccountId', 'orgAccountName', 'enabled', 'isDeleted'],
+  member: ['id', 'orgAccountId', 'name', 'code', 'loginName', 'orgDepartmentId', 'orgPostId', 'email', 'gender', 'phone', 'telNumber', 'officeNum', 'isLoginable', 'enabled', 'properties'],
+};
+function MappingEditor({ title, groupKey, mapping, onChange }: { title: string; groupKey: string; mapping: any; onChange: (v: any) => void }) {
+  const setField = (k: string, v: string) => onChange(Object.assign({}, mapping || {}, { [k]: v }));
+  const keys = MAPPING_KEYS[groupKey] || Object.keys(mapping || {});
+  return (
+    <div className="ui-card" style={{ background: 'var(--color-bg-tertiary)', marginTop: 12 }}>
+      <div className="ui-card__header"><span className="ui-card__title">{title}</span></div>
+      <div className="ui-card__body">
+        {keys.map((k: string) => (
+          <div key={k} className="ui-form-row ui-form-row--inline">
+            <label style={{ minWidth: 150 }}>{k}</label>
+            <input className="ui-input" value={(mapping && mapping[k]) || ''} onChange={e => setField(k, e.target.value)} placeholder={k} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 通用适配配置主表单（结构化，替代裸 JSON）
+function GenericConfigForm({ value, onChange }: { value: any; onChange: (v: any) => void }) {
+  const g = value || DEFAULT_GENERIC;
+  const setG = (mut: (d: any) => void) => onChange((() => { const next = JSON.parse(JSON.stringify(g)); mut(next); return next; })());
+  const authType = g.authType || 'token_url';
+  return (
+    <div className="ui-card" style={{ marginTop: 12, background: 'var(--color-bg-tertiary)' }}>
+      <div className="ui-card__header"><span className="ui-card__title">⚙️ 通用适配配置</span></div>
+      <div className="ui-card__body">
+        <div className="ui-form-row ui-form-row--inline">
+          <label>认证方式</label>
+          <select className="ui-select" value={authType} onChange={e => setG(d => { d.authType = e.target.value; })} style={{ minWidth: 200 }}>
+            <option value="token_url">动态令牌（token_url）</option>
+            <option value="fixed_token">固定 Token</option>
+            <option value="bearer">Bearer Token</option>
+            <option value="basic">Basic 认证</option>
+            <option value="api_key">API Key</option>
+          </select>
+          <span className="ui-tag">填完可直接「测试连接」（无需先保存）</span>
+        </div>
+
+        {authType === 'token_url' && (
+          <EndpointEditor title="获取令牌端点" ep={g.tokenEndpoint} onChange={v => setG(d => { d.tokenEndpoint = v; })} />
+        )}
+        {authType === 'basic' && (
+          <div className="ui-card" style={{ background: 'var(--color-bg-tertiary)', marginTop: 12 }}>
+            <div className="ui-card__header"><span className="ui-card__title">Basic 认证凭据</span></div>
+            <div className="ui-card__body">
+              <div className="ui-form-row"><label>账号</label><input className="ui-input" value={(g.basicAuth && g.basicAuth.username) || ''} onChange={e => setG(d => { d.basicAuth = Object.assign({}, d.basicAuth, { username: e.target.value }); })} /></div>
+              <div className="ui-form-row"><label>密码</label><input className="ui-input" type="text" value={(g.basicAuth && g.basicAuth.password) || ''} onChange={e => setG(d => { d.basicAuth = Object.assign({}, d.basicAuth, { password: e.target.value }); })} /></div>
+            </div>
+          </div>
+        )}
+        {authType === 'api_key' && (
+          <div className="ui-card" style={{ background: 'var(--color-bg-tertiary)', marginTop: 12 }}>
+            <div className="ui-card__header"><span className="ui-card__title">API Key 设置</span></div>
+            <div className="ui-card__body">
+              <div className="ui-form-row ui-form-row--inline">
+                <label>Header 名</label><input className="ui-input" value={(g.apiKey && g.apiKey.headerName) || 'X-API-Key'} onChange={e => setG(d => { d.apiKey = Object.assign({}, d.apiKey, { headerName: e.target.value }); })} />
+                <label>前缀</label><input className="ui-input" value={(g.apiKey && g.apiKey.valuePrefix) || ''} onChange={e => setG(d => { d.apiKey = Object.assign({}, d.apiKey, { valuePrefix: e.target.value }); })} placeholder="如 Bearer " />
+                <label>位置</label>
+                <select className="ui-select" value={(g.apiKey && g.apiKey.in) || 'header'} onChange={e => setG(d => { d.apiKey = Object.assign({}, d.apiKey, { in: e.target.value }); })}>
+                  <option value="header">Header</option><option value="query">Query</option>
+                </select>
+              </div>
+              <p className="ui-text" style={{ fontSize: 12, color: '#888', margin: '4px 0 0' }}>密钥取值：上方「API 密钥」字段。</p>
+            </div>
+          </div>
+        )}
+        {(authType === 'fixed_token' || authType === 'bearer') && (
+          <p className="ui-text" style={{ fontSize: 12, color: '#888', margin: '4px 0 0' }}>
+            {authType === 'fixed_token' ? 'Token 取值：上方「固定 Token」字段。' : 'Bearer Token 取值：上方「API 密钥」字段。'}
+          </p>
+        )}
+
+        <EndpointEditor title="组织单位端点" ep={g.orgAccountsEndpoint} onChange={v => setG(d => { d.orgAccountsEndpoint = v; })} />
+        <EndpointEditor title="部门端点" ep={g.orgDepartmentsEndpoint} onChange={v => setG(d => { d.orgDepartmentsEndpoint = v; })} />
+        <EndpointEditor title="人员端点" ep={g.orgMembersEndpoint} onChange={v => setG(d => { d.orgMembersEndpoint = v; })} />
+
+        <MappingEditor title="组织单位字段映射" groupKey="orgAccount" mapping={g.fieldMapping && g.fieldMapping.orgAccount} onChange={v => setG(d => { d.fieldMapping = Object.assign({}, d.fieldMapping, { orgAccount: v }); })} />
+        <MappingEditor title="部门字段映射" groupKey="orgDepartment" mapping={g.fieldMapping && g.fieldMapping.orgDepartment} onChange={v => setG(d => { d.fieldMapping = Object.assign({}, d.fieldMapping, { orgDepartment: v }); })} />
+        <MappingEditor title="人员字段映射" groupKey="member" mapping={g.fieldMapping && g.fieldMapping.member} onChange={v => setG(d => { d.fieldMapping = Object.assign({}, d.fieldMapping, { member: v }); })} />
+
+        <details>
+          <summary style={{ cursor: 'pointer', fontSize: 12, color: '#888', marginTop: 12 }}>高级：查看 / 编辑原始 JSON</summary>
+          <ObjJsonField label="generic 原始配置" value={g} onValid={onChange} />
+        </details>
+      </div>
+    </div>
+  );
 }
 
 // 按修改日期分组（每组一行）：日期 / 文件数 / 总大小 / 文件名清单
@@ -450,9 +634,18 @@ export default function BasicInfoManagement() {
   };
   const testOA = async () => {
     setOaTest(null); setOaMsg('');
-    const r = await fetch(API + '/oa/test', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json());
+    // 实时诊断：用当前表单值探测，无需先保存
+    const liveConfig: any = {
+      apiType: oaApiType,
+      baseUrl: oa.baseUrl,
+      username: oa.username,
+      secret: oa.secret,
+      fixedToken: oa.fixedToken,
+    };
+    if (oaApiType === 'generic' && oaGeneric) liveConfig.generic = oaGeneric;
+    const r = await fetch(API + '/oa/test', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ liveConfig }) }).then(r => r.json());
     setOaTest(r);
-    setOaMsg(r.success ? ('连接成功，组织数：' + (r.orgCount || 0)) : ('连接失败：' + (r.message || '')));
+    setOaMsg(r.success ? (`连接成功，组织数：${r.orgCount || 0}，耗时 ${r.totalMs || 0}ms`) : ('连接失败：' + (r.message || '')));
   };
   const sourceLabel = oaApiType === 'generic' ? 'API' : '致远OA';
   const syncOAOrg = async () => {
@@ -746,27 +939,12 @@ export default function BasicInfoManagement() {
             <div className="ui-form-row"><label>服务地址</label><input className="ui-input" value={oa.baseUrl} onChange={e => setOa({ ...oa, baseUrl: e.target.value })} placeholder="http://IP:端口" /></div>
             <div className="ui-form-row"><label>API 账号</label><input className="ui-input" value={oa.username} onChange={e => setOa({ ...oa, username: e.target.value })} placeholder={oaApiType === 'generic' ? '账号 / Client ID' : 'OA 接口账号'} /></div>
             <div className="ui-form-row"><label>API 密钥</label><input className="ui-input" type="text" value={oa.secret} onChange={e => setOa({ ...oa, secret: e.target.value })} placeholder="OA 接口密钥" autoComplete="off" /></div>
-            <div className="ui-form-row"><label>固定 Token</label><input className="ui-input" type="text" value={oa.fixedToken} onChange={e => setOa({ ...oa, fixedToken: e.target.value })} placeholder="可选，留空表示不使用" autoComplete="off" /></div>
+            {oaApiType === 'generic' && (
+              <div className="ui-form-row"><label>固定 Token</label><input className="ui-input" type="text" value={oa.fixedToken} onChange={e => setOa({ ...oa, fixedToken: e.target.value })} placeholder="fixed_token 认证方式使用，留空表示不使用" autoComplete="off" /></div>
+            )}
 
             {oaApiType === 'generic' && (
-              <div className="ui-card" style={{ marginTop: 12, background: 'var(--color-bg-tertiary)' }}>
-                <div className="ui-card__header"><span className="ui-card__title">⚙️ 通用适配配置（JSON）</span></div>
-                <div className="ui-card__body">
-                  <p className="ui-text" style={{ fontSize: 12, color: '#888', marginTop: 0, marginBottom: 8 }}>
-                    支持配置认证方式（token_url / fixed_token / bearer / basic / api_key）、端点模板、字段映射。修改后请先「保存配置」再「测试连接」。
-                  </p>
-                  <textarea
-                    className="ui-input"
-                    style={{ width: '100%', minHeight: 360, fontFamily: 'monospace', fontSize: 12 }}
-                    value={oaGeneric ? JSON.stringify(oaGeneric, null, 2) : ''}
-                    onChange={e => { try { setOaGeneric(JSON.parse(e.target.value)); } catch (err) { setOaGeneric(e.target.value as any); } }}
-                    spellCheck={false}
-                  />
-                  {typeof oaGeneric === 'string' && (
-                    <div className="ui-alert ui-alert--error" style={{ marginTop: 8 }}>JSON 格式错误，请检查</div>
-                  )}
-                </div>
-              </div>
+              <GenericConfigForm value={oaGeneric || DEFAULT_GENERIC} onChange={setOaGeneric} />
             )}
 
             <div className="ui-toolbar">
@@ -775,6 +953,30 @@ export default function BasicInfoManagement() {
               <button className="ui-btn ui-btn--secondary" onClick={syncOAOrg}>同步组织架构</button>
               <button className="ui-btn ui-btn--primary" onClick={syncOAMembers}>🔄 同步全部人员</button>
             </div>
+
+            {oaTest && (
+              <div className="ui-card" style={{ marginTop: 16, borderColor: oaTest.success ? '#52c41a' : '#ff4d4f' }}>
+                <div className="ui-card__header">
+                  <span className="ui-card__title">🔍 连接诊断{oaTest.success ? '（通过）' : '（失败）'}</span>
+                  <span className="ui-tag">{oaTest.apiType === 'generic' ? '通用 REST' : '致远 OA'} · {oaTest.authType}{oaTest.totalMs != null ? ` · 总耗时 ${oaTest.totalMs}ms` : ''}</span>
+                </div>
+                <div className="ui-card__body">
+                  {(oaTest.steps || []).map((s: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px dashed #eee' }}>
+                      <span style={{ fontSize: 16 }}>{s.ok ? '✅' : '❌'}</span>
+                      <span style={{ minWidth: 160, fontWeight: 600 }}>{s.name}</span>
+                      <span style={{ color: '#888', fontSize: 12 }}>{s.latencyMs != null ? `${s.latencyMs}ms` : ''}</span>
+                      <span style={{ flex: 1, fontSize: 13, color: s.ok ? '#333' : '#c0392b' }}>{s.detail}</span>
+                    </div>
+                  ))}
+                  {oaTest.success && oaTest.sampleAccounts && oaTest.sampleAccounts.length > 0 && (
+                    <div style={{ marginTop: 8, fontSize: 13 }}>
+                      <b>组织示例：</b>{oaTest.sampleAccounts.map((a: any) => `${a.name}${a.code ? `（${a.code}）` : ''}`).join('、')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="ui-card" style={{ marginTop: 16 }}>
               <div className="ui-card__header"><span className="ui-card__title">部门识别规则</span></div>
