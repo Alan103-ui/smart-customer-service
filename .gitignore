@@ -64,3 +64,7 @@ data/
 .workbuddy/
 scripts/*.png
 scripts/dl/
+
+# ============ Windows 保留设备名误建文件 ============
+# Git Bash 下 `2>nul` 会误建名为 nul 的文件（Windows 保留设备名），加忽略避免 git add 失败
+/nul
