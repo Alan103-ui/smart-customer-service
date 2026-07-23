@@ -180,7 +180,7 @@ export default function BasicInfoManagement() {
       .catch(() => {});
   };
   const loadOA = () => fetch(API + '/oa/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => {
-    setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: '', fixedToken: '' });
+    setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: d.secret || '', fixedToken: d.fixedToken || '' });
     setOaApiType(d.apiType === 'generic' ? 'generic' : 'seeyon');
     setOaGeneric(d.generic || null);
     const r = d.orgDeptRule || {};
@@ -745,8 +745,8 @@ export default function BasicInfoManagement() {
 
             <div className="ui-form-row"><label>服务地址</label><input className="ui-input" value={oa.baseUrl} onChange={e => setOa({ ...oa, baseUrl: e.target.value })} placeholder="http://IP:端口" /></div>
             <div className="ui-form-row"><label>API 账号</label><input className="ui-input" value={oa.username} onChange={e => setOa({ ...oa, username: e.target.value })} placeholder={oaApiType === 'generic' ? '账号 / Client ID' : 'OA 接口账号'} /></div>
-            <div className="ui-form-row"><label>API 密钥</label><input className="ui-input" type="password" value={oa.secret} onChange={e => setOa({ ...oa, secret: e.target.value })} placeholder="已配置则留空" /></div>
-            <div className="ui-form-row"><label>固定 Token</label><input className="ui-input" type="password" value={oa.fixedToken} onChange={e => setOa({ ...oa, fixedToken: e.target.value })} placeholder="可选，已配置则留空" /></div>
+            <div className="ui-form-row"><label>API 密钥</label><input className="ui-input" type="text" value={oa.secret} onChange={e => setOa({ ...oa, secret: e.target.value })} placeholder="OA 接口密钥" autoComplete="off" /></div>
+            <div className="ui-form-row"><label>固定 Token</label><input className="ui-input" type="text" value={oa.fixedToken} onChange={e => setOa({ ...oa, fixedToken: e.target.value })} placeholder="可选，留空表示不使用" autoComplete="off" /></div>
 
             {oaApiType === 'generic' && (
               <div className="ui-card" style={{ marginTop: 12, background: 'var(--color-bg-tertiary)' }}>

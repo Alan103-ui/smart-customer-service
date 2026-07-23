@@ -113,6 +113,8 @@ router.get('/config', (req, res) => {
       enabled: cfg.enabled,
       baseUrl: cfg.baseUrl,
       username: cfg.username,
+      secret: cfg.secret || '',
+      fixedToken: cfg.fixedToken || '',
       hasSecret: !!cfg.secret,
       hasFixedToken: !!cfg.fixedToken,
       secretMasked: oa.maskCredential(cfg.secret),
@@ -140,13 +142,13 @@ router.post('/config', (req, res) => {
   try {
     const { enabled, baseUrl, username, secret, fixedToken, apiType, generic, orgDeptRule } = req.body || {};
     const existing = oa.loadOAConfig();
-    // secret / fixedToken 留空表示不修改（保留原值），避免脱敏值回写覆盖
+      // secret / fixedToken：前端会回填实际值；留空即表示清空该项
     const newCfg = {
       enabled: enabled !== undefined ? !!enabled : existing.enabled,
       baseUrl: (baseUrl && String(baseUrl).trim()) ? String(baseUrl).trim() : existing.baseUrl,
       username: (username && String(username).trim()) ? String(username).trim() : existing.username,
-      secret: secret && String(secret).trim() ? String(secret).trim() : existing.secret,
-      fixedToken: fixedToken && String(fixedToken).trim() ? String(fixedToken).trim() : existing.fixedToken,
+      secret: (secret != null && String(secret).trim()) ? String(secret).trim() : '',
+      fixedToken: (fixedToken != null && String(fixedToken).trim()) ? String(fixedToken).trim() : '',
       apiType: apiType === 'generic' ? 'generic' : 'seeyon',
       // generic 配置合并：必须是对象；留空字段保留旧值，避免把脱敏后的 *** 回写
       generic: (generic && typeof generic === 'object' && !Array.isArray(generic))
