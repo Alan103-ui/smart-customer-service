@@ -228,7 +228,7 @@ function groupByDate(files: any[]): { date: string; count: number; total: number
 }
 
 
-type SubTab = 'org' | 'personnel' | 'permissions' | 'oa' | 'software' | 'config' | 'sso' | 'dict' | 'announcement' | 'backup';
+type SubTab = 'org' | 'personnel' | 'permissions' | 'oa' | 'software' | 'config' | 'dict' | 'announcement' | 'backup';
 
 // 权限目录（本地兜底，后端 /api/admin/permissions/catalog 返回权威版本）
 const PERM_GROUPS_LOCAL: { group: string; items: { code: string; label: string }[] }[] = [
@@ -528,10 +528,9 @@ export default function BasicInfoManagement() {
     if (subTab === 'org') { loadOrg(); }
     if (subTab === 'personnel') loadP();
     if (subTab === 'permissions') loadPerm();
-    if (subTab === 'oa') { loadOA(); loadSSO(); }
+    if (subTab === 'oa') { loadOA(); loadSSO(); loadSsoWhitelist(); }
     if (subTab === 'software') loadSoftware();
     if (subTab === 'config') { loadConfig(); loadOrg(); }
-    if (subTab === 'sso') loadSsoWhitelist();
     if (subTab === 'dict') loadDict();
     if (subTab === 'announcement') loadAnnouncement();
     if (subTab === 'backup') { loadBackupFiles(); loadBackups(); }
@@ -700,8 +699,8 @@ export default function BasicInfoManagement() {
     <div>
       <h2>基础信息管理</h2>
       <div className="ui-tabs" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-        {(['org', 'personnel', 'permissions', 'oa', 'software', 'config', 'sso', 'dict', 'announcement', 'backup'] as SubTab[]).map(k => (
-          <button key={k} className={`ui-tab ${subTab === k ? 'ui-tab--active' : ''}`} onClick={() => setSubTab(k)}>{k === 'org' ? '组织与部门' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '接口设置' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'sso' ? 'SSO白名单' : k === 'dict' ? '同义词/停用词' : k === 'announcement' ? '系统公告' : '数据备份'}</button>
+        {(['org', 'personnel', 'permissions', 'oa', 'software', 'config', 'dict', 'announcement', 'backup'] as SubTab[]).map(k => (
+          <button key={k} className={`ui-tab ${subTab === k ? 'ui-tab--active' : ''}`} onClick={() => setSubTab(k)}>{k === 'org' ? '组织与部门' : k === 'personnel' ? '人员信息' : k === 'permissions' ? '权限管理' : k === 'oa' ? '接口设置' : k === 'software' ? '软件信息' : k === 'config' ? '系统配置' : k === 'dict' ? '同义词/停用词' : k === 'announcement' ? '系统公告' : '数据备份'}</button>
         ))}
       </div>
 
@@ -1059,6 +1058,46 @@ export default function BasicInfoManagement() {
               </div>
             </div>
 
+            {/* 系统 SSO 登录白名单（合并自原独立 Tab） */}
+            <div className="ui-card" style={{ marginTop: 16 }}>
+              <div className="ui-card__header">
+                <span className="ui-card__title">🔑 系统 SSO 登录白名单</span>
+              </div>
+              <div className="ui-card__body">
+                <p className="ui-text" style={{ fontSize: 12, color: '#888', marginTop: 0, marginBottom: 12 }}>本区为「系统 SSO 登录白名单」（账号存于 data/sso-whitelist.json，控制谁可用 SSO 登录系统）。上方「OA 单点登录（SSO）白名单」控制的是 OA 工号跳转登录，二者相互独立，注意区分。</p>
+                <div className="ui-toolbar">
+                  <input className="ui-input" value={ssoAccount} onChange={e => setSsoAccount(e.target.value)} placeholder="账号(工号) 如 GK88888" />
+                  <input className="ui-input" value={ssoName} onChange={e => setSsoName(e.target.value)} placeholder="姓名" />
+                  <input className="ui-input" value={ssoNote} onChange={e => setSsoNote(e.target.value)} placeholder="备注" />
+                  <button className="ui-btn ui-btn--primary" onClick={addSSO}>添加</button>
+                </div>
+                <div className="ui-toolbar">
+                  <input className="ui-input" value={ssoSearch} onChange={e => setSsoSearch(e.target.value)} placeholder="搜索账号/姓名/部门/添加人" style={{ minWidth: 260 }} onKeyDown={e => { if (e.key === 'Enter') loadSsoWhitelist(ssoSearch); }} />
+                  <button className="ui-btn ui-btn--primary" onClick={() => loadSsoWhitelist(ssoSearch)}>查询</button>
+                  <button className="ui-btn ui-btn--secondary" onClick={() => { setSsoSearch(''); loadSsoWhitelist(''); }}>重置</button>
+                  <button className="ui-btn ui-btn--danger" style={{ marginLeft: 'auto' }} onClick={batchDelSSO} disabled={!ssoSelected.length}>
+                    批量移除{ssoSelected.length ? '（' + ssoSelected.length + '）' : ''}
+                  </button>
+                </div>
+                {ssoMsg && <div className="ui-alert ui-alert--success" style={{ marginTop: 12 }}>{ssoMsg}</div>}
+                <div className="ui-table__scroll" style={{ maxHeight: 380, marginTop: 12 }}>
+                  <table className="ui-table">
+                    <thead style={{ position: 'sticky', top: 0, background: 'var(--color-bg-tertiary)' }}><tr><th><input type="checkbox" checked={allSsoSelected} onChange={toggleSelectAllSso} /></th><th>账号</th><th>姓名</th><th>部门</th><th>备注</th><th>添加人</th><th>添加时间</th><th>操作</th></tr></thead>
+                    <tbody>
+                      {ssoList.map((x: any) => (
+                        <tr key={x.account}>
+                          <td><input type="checkbox" checked={ssoSelected.includes(x.account)} onChange={() => toggleSsoSelect(x.account)} /></td>
+                          <td>{x.account}</td><td>{x.name || '-'}</td><td>{x.department || '-'}</td><td>{x.note || '-'}</td><td>{x.addedBy || '-'}</td><td>{x.addedAt ? x.addedAt.slice(0, 19).replace('T', ' ') : '-'}</td><td><button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => delSSO(x.account)}>移除</button></td>
+                        </tr>
+                      ))}
+                      {ssoList.length === 0 && <tr><td colSpan={8}>暂无白名单</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="ui-text" style={{ color: '#999', fontSize: 12, marginTop: 8, marginBottom: 0 }}>白名单变更已自动同步至 OA 配置并写入审计日志。勾选后可批量移除，支持按账号 / 姓名 / 部门查询。</p>
+              </div>
+            </div>
+
             {oaMsg && <div className="ui-alert ui-alert--info" style={{ marginTop: 12 }}>{oaMsg}</div>}
             {oaTest && (
               <div className={`ui-alert ${oaTest.success ? 'ui-alert--success' : 'ui-alert--error'}`} style={{ marginTop: 12 }}>
@@ -1190,47 +1229,7 @@ export default function BasicInfoManagement() {
         </div>
       )}
 
-      {/* SSO 白名单 */}
-      {subTab === 'sso' && (
-        <div className="ui-card">
-          <div className="ui-card__header">
-            <span className="ui-card__title">SSO 登录白名单</span>
-          </div>
-          <div className="ui-card__body">
-            <p className="ui-text" style={{ fontSize: 12, color: '#888', marginTop: 0, marginBottom: 12 }}>本页为「系统 SSO 登录白名单」（账号存于 data/sso-whitelist.json，控制谁可用 SSO 登录系统）。与「接口设置」页里的 SSO 白名单（控制 OA 跳转登录工号）相互独立，注意区分。</p>
-            <div className="ui-toolbar">
-              <input className="ui-input" value={ssoAccount} onChange={e => setSsoAccount(e.target.value)} placeholder="账号(工号) 如 GK88888" />
-              <input className="ui-input" value={ssoName} onChange={e => setSsoName(e.target.value)} placeholder="姓名" />
-              <input className="ui-input" value={ssoNote} onChange={e => setSsoNote(e.target.value)} placeholder="备注" />
-              <button className="ui-btn ui-btn--primary" onClick={addSSO}>添加</button>
-            </div>
-            <div className="ui-toolbar">
-              <input className="ui-input" value={ssoSearch} onChange={e => setSsoSearch(e.target.value)} placeholder="搜索账号/姓名/部门/添加人" style={{ minWidth: 260 }} onKeyDown={e => { if (e.key === 'Enter') loadSsoWhitelist(ssoSearch); }} />
-              <button className="ui-btn ui-btn--primary" onClick={() => loadSsoWhitelist(ssoSearch)}>查询</button>
-              <button className="ui-btn ui-btn--secondary" onClick={() => { setSsoSearch(''); loadSsoWhitelist(''); }}>重置</button>
-              <button className="ui-btn ui-btn--danger" style={{ marginLeft: 'auto' }} onClick={batchDelSSO} disabled={!ssoSelected.length}>
-                批量移除{ssoSelected.length ? '（' + ssoSelected.length + '）' : ''}
-              </button>
-            </div>
-            {ssoMsg && <div className="ui-alert ui-alert--success" style={{ marginTop: 12 }}>{ssoMsg}</div>}
-            <div className="ui-table__scroll" style={{ maxHeight: 380, marginTop: 12 }}>
-              <table className="ui-table">
-                <thead style={{ position: 'sticky', top: 0, background: 'var(--color-bg-tertiary)' }}><tr><th><input type="checkbox" checked={allSsoSelected} onChange={toggleSelectAllSso} /></th><th>账号</th><th>姓名</th><th>部门</th><th>备注</th><th>添加人</th><th>添加时间</th><th>操作</th></tr></thead>
-                <tbody>
-                  {ssoList.map((x: any) => (
-                    <tr key={x.account}>
-                      <td><input type="checkbox" checked={ssoSelected.includes(x.account)} onChange={() => toggleSsoSelect(x.account)} /></td>
-                      <td>{x.account}</td><td>{x.name || '-'}</td><td>{x.department || '-'}</td><td>{x.note || '-'}</td><td>{x.addedBy || '-'}</td><td>{x.addedAt ? x.addedAt.slice(0, 19).replace('T', ' ') : '-'}</td><td><button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => delSSO(x.account)}>移除</button></td>
-                    </tr>
-                  ))}
-                  {ssoList.length === 0 && <tr><td colSpan={8}>暂无白名单</td></tr>}
-                </tbody>
-              </table>
-            </div>
-            <p className="ui-text" style={{ color: '#999', fontSize: 12, marginTop: 8, marginBottom: 0 }}>白名单变更已自动同步至 OA 配置并写入审计日志。勾选后可批量移除，支持按账号 / 姓名 / 部门查询。</p>
-          </div>
-        </div>
-      )}
+      {/* SSO 白名单已合并至「接口设置」tab（见上方系统 SSO 登录白名单卡片） */}
 
       {/* 同义词 / 停用词 */}
       {subTab === 'dict' && (
