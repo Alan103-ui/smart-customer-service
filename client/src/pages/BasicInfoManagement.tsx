@@ -148,8 +148,10 @@ export default function BasicInfoManagement() {
   const [permArr, setPermArr] = useState<string[]>([]);
   const [permCatalog, setPermCatalog] = useState<{ group: string; items: { code: string; label: string }[] }[]>(PERM_GROUPS_LOCAL);
 
-  // 致远 OA
+  // 致远 OA / 通用 API
   const [oa, setOa] = useState<any>({ enabled: false, baseUrl: '', username: '', secret: '', fixedToken: '' });
+  const [oaApiType, setOaApiType] = useState<'seeyon' | 'generic'>('seeyon');
+  const [oaGeneric, setOaGeneric] = useState<any>(null);
   const [oaDeptRule, setOaDeptRule] = useState<any>({ nameKw: '', codePre: '', oaId: '' });
   const [oaTest, setOaTest] = useState<any>(null);
   const [oaMsg, setOaMsg] = useState('');
@@ -179,6 +181,8 @@ export default function BasicInfoManagement() {
   };
   const loadOA = () => fetch(API + '/oa/config', { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : {}).then((d: any) => {
     setOa({ enabled: !!d.enabled, baseUrl: d.baseUrl || '', username: d.username || '', secret: '', fixedToken: '' });
+    setOaApiType(d.apiType === 'generic' ? 'generic' : 'seeyon');
+    setOaGeneric(d.generic || null);
     const r = d.orgDeptRule || {};
     const j = (arr: any) => Array.isArray(arr) ? arr.join(',') : (arr ? String(arr) : '');
     setOaDeptRule({ nameKw: j(r.byNameKeyword), codePre: j(r.byCode), oaId: j(r.byOaId) });
@@ -402,9 +406,14 @@ export default function BasicInfoManagement() {
 
   // ==================== 致远 OA ====================
   const saveOA = async () => {
+    if (oaApiType === 'generic' && (!oaGeneric || typeof oaGeneric !== 'object')) {
+      setOaMsg('保存失败：通用适配配置不是合法 JSON'); return;
+    }
     const toArr = (s: string) => String(s || '').split(/[,，;；]/).map(x => x.trim()).filter(Boolean);
     const deptRule = { byNameKeyword: toArr(oaDeptRule.nameKw), byCode: toArr(oaDeptRule.codePre), byOaId: toArr(oaDeptRule.oaId) };
-    const r = await fetch(API + '/oa/config', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(Object.assign({}, oa, { orgDeptRule: deptRule })) }).then(r => r.json());
+    const payload: any = Object.assign({}, oa, { apiType: oaApiType, orgDeptRule: deptRule });
+    if (oaApiType === 'generic' && oaGeneric) payload.generic = oaGeneric;
+    const r = await fetch(API + '/oa/config', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(payload) }).then(r => r.json());
     if (r.success) { setOaMsg('配置已保存'); loadOA(); } else setOaMsg('保存失败：' + (r.error || ''));
   };
   const saveSoftware = async () => {
@@ -445,16 +454,17 @@ export default function BasicInfoManagement() {
     setOaTest(r);
     setOaMsg(r.success ? ('连接成功，组织数：' + (r.orgCount || 0)) : ('连接失败：' + (r.message || '')));
   };
+  const sourceLabel = oaApiType === 'generic' ? 'API' : '致远OA';
   const syncOAOrg = async () => {
-    if (!confirm('确定从致远OA同步组织架构到本地？')) return;
+    if (!confirm(`确定从${sourceLabel}同步组织架构到本地？`)) return;
     setOaMsg('同步中...');
     const r = await fetch(API + '/oa/sync-org', { method: 'POST', headers: getAuthHeaders() }).then(r => r.json());
     setOaMsg(r.success ? r.message : ('同步失败：' + (r.error || '')));
     if (r.success) loadOrg();
   };
   const syncOAMembers = async () => {
-    if (!confirm('确定从致远OA同步全部人员到本地？将拉取所有组织单位的人员档案（可能数百人，请耐心等待）。')) return;
-    setOaMsg('正在从 OA 拉取全部人员，请稍候...');
+    if (!confirm(`确定从${sourceLabel}同步全部人员到本地？将拉取所有组织单位的人员档案（可能数百人，请耐心等待）。`)) return;
+    setOaMsg(`正在从 ${sourceLabel} 拉取全部人员，请稍候...`);
     try {
       const r = await fetch(API + '/oa/sync-members', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({}) }).then(r => r.json());
       setOaMsg(r.success ? r.message : ('同步失败：' + (r.error || '')));
@@ -712,22 +722,52 @@ export default function BasicInfoManagement() {
         </div>
       )}
 
-      {/* 致远 OA 对接 */}
+      {/* 致远 OA / 通用 API 对接 */}
       {subTab === 'oa' && (
         <div className="ui-card">
           <div className="ui-card__header">
-            <span className="ui-card__title">致远 OA 对接</span>
+            <span className="ui-card__title">{oaApiType === 'generic' ? '通用 API 对接' : '致远 OA 对接'}</span>
             <span className="ui-tag">连接状态：{oaTest ? (oaTest.success ? '✅ 已连通' : '❌ 失败') : '未测试'}</span>
           </div>
           <div className="ui-card__body">
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <input type="checkbox" checked={oa.enabled} onChange={e => setOa({ ...oa, enabled: e.target.checked })} /> 启用致远 OA 对接
+              <input type="checkbox" checked={oa.enabled} onChange={e => setOa({ ...oa, enabled: e.target.checked })} /> 启用{oaApiType === 'generic' ? '通用 API' : '致远 OA'}对接
             </label>
 
+            <div className="ui-form-row ui-form-row--inline">
+              <label>接口类型</label>
+              <select className="ui-select" value={oaApiType} onChange={e => setOaApiType(e.target.value as any)} style={{ minWidth: 200 }}>
+                <option value="seeyon">致远 OA（内置适配）</option>
+                <option value="generic">通用 REST API</option>
+              </select>
+              <span className="ui-tag">切换类型不影响基础字段；通用模式需在下方配置端点与字段映射</span>
+            </div>
+
             <div className="ui-form-row"><label>服务地址</label><input className="ui-input" value={oa.baseUrl} onChange={e => setOa({ ...oa, baseUrl: e.target.value })} placeholder="http://IP:端口" /></div>
-            <div className="ui-form-row"><label>API 账号</label><input className="ui-input" value={oa.username} onChange={e => setOa({ ...oa, username: e.target.value })} placeholder="OA 接口账号" /></div>
+            <div className="ui-form-row"><label>API 账号</label><input className="ui-input" value={oa.username} onChange={e => setOa({ ...oa, username: e.target.value })} placeholder={oaApiType === 'generic' ? '账号 / Client ID' : 'OA 接口账号'} /></div>
             <div className="ui-form-row"><label>API 密钥</label><input className="ui-input" type="password" value={oa.secret} onChange={e => setOa({ ...oa, secret: e.target.value })} placeholder="已配置则留空" /></div>
             <div className="ui-form-row"><label>固定 Token</label><input className="ui-input" type="password" value={oa.fixedToken} onChange={e => setOa({ ...oa, fixedToken: e.target.value })} placeholder="可选，已配置则留空" /></div>
+
+            {oaApiType === 'generic' && (
+              <div className="ui-card" style={{ marginTop: 12, background: 'var(--color-bg-tertiary)' }}>
+                <div className="ui-card__header"><span className="ui-card__title">⚙️ 通用适配配置（JSON）</span></div>
+                <div className="ui-card__body">
+                  <p className="ui-text" style={{ fontSize: 12, color: '#888', marginTop: 0, marginBottom: 8 }}>
+                    支持配置认证方式（token_url / fixed_token / bearer / basic / api_key）、端点模板、字段映射。修改后请先「保存配置」再「测试连接」。
+                  </p>
+                  <textarea
+                    className="ui-input"
+                    style={{ width: '100%', minHeight: 360, fontFamily: 'monospace', fontSize: 12 }}
+                    value={oaGeneric ? JSON.stringify(oaGeneric, null, 2) : ''}
+                    onChange={e => { try { setOaGeneric(JSON.parse(e.target.value)); } catch (err) { setOaGeneric(e.target.value as any); } }}
+                    spellCheck={false}
+                  />
+                  {typeof oaGeneric === 'string' && (
+                    <div className="ui-alert ui-alert--error" style={{ marginTop: 8 }}>JSON 格式错误，请检查</div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="ui-toolbar">
               <button className="ui-btn ui-btn--primary" onClick={saveOA}>保存配置</button>

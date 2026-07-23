@@ -12,6 +12,50 @@ const oa = require('./oa-client');
 const auth = require('./auth');
 const { auditLog } = require('./logger');
 
+// 递归合并对象：新对象非空字段覆盖，空字段保留旧值（用于留空不覆盖敏感配置）
+function mergeDeep(target, source) {
+  const out = Object.assign({}, target);
+  for (const [k, v] of Object.entries(source || {})) {
+    if (v === undefined) continue;
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      out[k] = mergeDeep(out[k] || {}, v);
+    } else if (v === '' && typeof out[k] === 'string' && out[k]) {
+      // 字符串留空：保留旧值
+      continue;
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+// 脱敏 generic 配置中可能存在的敏感字段
+function maskGenericForClient(generic) {
+  if (!generic) return generic;
+  const g = JSON.parse(JSON.stringify(generic));
+  if (g.staticToken) g.staticTokenMasked = oa.maskCredential(g.staticToken);
+  delete g.staticToken;
+  if (g.basicAuth) {
+    g.basicAuth = {
+      username: g.basicAuth.username || '',
+      hasPassword: !!g.basicAuth.password,
+      passwordMasked: g.basicAuth.password ? oa.maskCredential(g.basicAuth.password) : '',
+    };
+  }
+  if (g.apiKey && g.apiKey.value) {
+    g.apiKey.valueMasked = oa.maskCredential(g.apiKey.value);
+    delete g.apiKey.value;
+  }
+  // tokenEndpoint 中的密码字段也脱敏
+  if (g.tokenEndpoint && g.tokenEndpoint.body) {
+    const b = g.tokenEndpoint.body;
+    for (const k of Object.keys(b)) {
+      if (/password|secret|key/i.test(k)) b[k] = '***';
+    }
+  }
+  return g;
+}
+
 // ---- 本地数据存储（自包含，避免依赖 data.js 的导出细节）----
 const DATA_DIR = path.join(__dirname, '../data');
 const ORG_PATH = path.join(DATA_DIR, 'org_structure.json');
@@ -73,6 +117,8 @@ router.get('/config', (req, res) => {
       hasFixedToken: !!cfg.fixedToken,
       secretMasked: oa.maskCredential(cfg.secret),
       fixedTokenMasked: oa.maskCredential(cfg.fixedToken),
+      apiType: cfg.apiType || 'seeyon',
+      generic: maskGenericForClient(cfg.generic || oa.defaultGenericConfig()),
       sso: {
         mode: sso.mode || 'whitelist',
         requireSign: !!sso.requireSign,
@@ -92,22 +138,27 @@ router.get('/config', (req, res) => {
 // ============ 配置保存 ============
 router.post('/config', (req, res) => {
   try {
-    const { enabled, baseUrl, username, secret, fixedToken, orgDeptRule } = req.body || {};
+    const { enabled, baseUrl, username, secret, fixedToken, apiType, generic, orgDeptRule } = req.body || {};
     const existing = oa.loadOAConfig();
     // secret / fixedToken 留空表示不修改（保留原值），避免脱敏值回写覆盖
-    const saved = oa.saveOAConfig({
+    const newCfg = {
       enabled: enabled !== undefined ? !!enabled : existing.enabled,
       baseUrl: (baseUrl && String(baseUrl).trim()) ? String(baseUrl).trim() : existing.baseUrl,
       username: (username && String(username).trim()) ? String(username).trim() : existing.username,
       secret: secret && String(secret).trim() ? String(secret).trim() : existing.secret,
-      fixedToken:
-        fixedToken && String(fixedToken).trim() ? String(fixedToken).trim() : existing.fixedToken,
+      fixedToken: fixedToken && String(fixedToken).trim() ? String(fixedToken).trim() : existing.fixedToken,
+      apiType: apiType === 'generic' ? 'generic' : 'seeyon',
+      // generic 配置合并：必须是对象；留空字段保留旧值，避免把脱敏后的 *** 回写
+      generic: (generic && typeof generic === 'object' && !Array.isArray(generic))
+        ? mergeDeep(existing.generic || oa.defaultGenericConfig(), generic)
+        : (existing.generic || oa.defaultGenericConfig()),
       // 保留已有 SSO 白名单配置，避免保存连接信息时误清空
       sso: existing.sso,
       orgDeptRule: normalizeDeptRule(orgDeptRule),
-    });
+    };
+    const saved = oa.saveOAConfig(newCfg);
     oa.clearTokenCache(); // 配置变更后强制刷新 token
-    auditLog('oa_config_save', req.user ? req.user.username : 'unknown', { enabled, baseUrl });
+    auditLog('oa_config_save', req.user ? req.user.username : 'unknown', { enabled, baseUrl, apiType: saved.apiType });
     res.json({
       success: true,
       data: {
@@ -116,6 +167,7 @@ router.post('/config', (req, res) => {
         username: saved.username,
         hasSecret: !!saved.secret,
         hasFixedToken: !!saved.fixedToken,
+        apiType: saved.apiType,
       },
     });
   } catch (e) {
@@ -209,18 +261,27 @@ router.post('/whitelist/sync-all', async (req, res) => {
 
 // ============ 测试连接 ============
 router.post('/test', async (req, res) => {
+  let cfg = null;
   try {
+    cfg = oa.loadOAConfig();
     const token = await oa.getToken(true);
     const accounts = await oa.getOrgAccounts();
     res.json({
       success: true,
       message: '连接成功',
+      apiType: cfg.apiType || 'seeyon',
+      authType: cfg.apiType === 'generic' ? (cfg.generic.authType || 'token_url') : 'seeyon_token',
       tokenMasked: oa.maskCredential(token),
       orgCount: accounts.length,
       sampleAccount: accounts[0] ? { name: accounts[0].name, code: accounts[0].code } : null,
     });
   } catch (e) {
-    res.json({ success: false, message: '连接失败：' + e.message });
+    res.json({
+      success: false,
+      message: '连接失败：' + e.message,
+      apiType: (cfg && cfg.apiType) || 'seeyon',
+      authType: cfg && cfg.apiType === 'generic' ? ((cfg.generic || {}).authType || 'token_url') : 'seeyon_token',
+    });
   }
 });
 
