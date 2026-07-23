@@ -16,6 +16,34 @@ async function safeFetch<T>(url: string): Promise<T> {
   return [] as unknown as T;
 }
 
+// 字节格式化
+function fmtBytes(n: number): string {
+  if (!n || n < 0) return '0 B';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+  return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+// 按修改日期分组（每组一行）：日期 / 文件数 / 总大小 / 文件名清单
+function groupByDate(files: any[]): { date: string; count: number; total: number; names: string }[] {
+  const map = new Map<string, any[]>();
+  for (const f of files || []) {
+    const d = new Date(f.mtime);
+    if (isNaN(d.getTime())) continue;
+    const key = d.toLocaleDateString('zh-CN');
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(f);
+  }
+  return Array.from(map.entries()).map(([date, arr]) => ({
+    date,
+    count: arr.length,
+    total: arr.reduce((s: number, f: any) => s + (f.size || 0), 0),
+    names: arr.map((f: any) => f.name).sort().join('、'),
+  })).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+
 type SubTab = 'org' | 'personnel' | 'permissions' | 'oa' | 'software' | 'config' | 'sso' | 'dict' | 'announcement' | 'backup';
 
 // 权限目录（本地兜底，后端 /api/admin/permissions/catalog 返回权威版本）
@@ -1063,10 +1091,15 @@ export default function BasicInfoManagement() {
             <div className="ui-card__body">
               {backupFiles.length === 0 ? <div className="ui-muted">暂无可备份的数据文件</div> : (
                 <table className="ui-table ui-table--compact">
-                  <thead><tr><th style={{ textAlign: 'left' }}>文件名</th><th>大小</th><th>最近修改</th></tr></thead>
+                  <thead><tr><th style={{ textAlign: 'left' }}>修改日期</th><th>文件数</th><th>总大小</th><th style={{ textAlign: 'left' }}>文件清单</th></tr></thead>
                   <tbody>
-                    {backupFiles.map((f: any) => (
-                      <tr key={f.name}><td style={{ textAlign: 'left' }}>{f.name}</td><td>{f.sizeText}</td><td className="ui-muted">{new Date(f.mtime).toLocaleString('zh-CN')}</td></tr>
+                    {groupByDate(backupFiles).map((g) => (
+                      <tr key={g.date}>
+                        <td style={{ textAlign: 'left' }}>{g.date}</td>
+                        <td>{g.count}</td>
+                        <td>{fmtBytes(g.total)}</td>
+                        <td style={{ textAlign: 'left' }} className="ui-muted">{g.names}</td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
