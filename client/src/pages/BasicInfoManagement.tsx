@@ -339,6 +339,8 @@ export default function BasicInfoManagement() {
   const [oaDeptRule, setOaDeptRule] = useState<any>({ nameKw: '', codePre: '', oaId: '' });
   const [oaTest, setOaTest] = useState<any>(null);
   const [oaMsg, setOaMsg] = useState('');
+  const [oaSecretVisible, setOaSecretVisible] = useState(false);
+  const [oaTokenVisible, setOaTokenVisible] = useState(false);
   // 软件信息（可编辑品牌/名称/欢迎语/界面图片）
   const [software, setSoftware] = useState<any>({ companyName: '', softwareName: '', assistantName: '', knowledgeBaseName: '', welcomeMessage: '', loginImage: '', chatImage: '' });
   const [softwareMsg, setSoftwareMsg] = useState('');
@@ -938,9 +940,9 @@ export default function BasicInfoManagement() {
 
             <div className="ui-form-row"><label>服务地址</label><input className="ui-input" value={oa.baseUrl} onChange={e => setOa({ ...oa, baseUrl: e.target.value })} placeholder="http://IP:端口" /></div>
             <div className="ui-form-row"><label>API 账号</label><input className="ui-input" value={oa.username} onChange={e => setOa({ ...oa, username: e.target.value })} placeholder={oaApiType === 'generic' ? '账号 / Client ID' : 'OA 接口账号'} /></div>
-            <div className="ui-form-row"><label>API 密钥</label><input className="ui-input" type="text" value={oa.secret} onChange={e => setOa({ ...oa, secret: e.target.value })} placeholder="OA 接口密钥" autoComplete="off" /></div>
+            <div className="ui-form-row"><label>API 密钥</label><div style={{ display: 'flex', gap: 6, flex: 1 }}><input className="ui-input" type={oaSecretVisible ? 'text' : 'password'} value={oa.secret} onChange={e => setOa({ ...oa, secret: e.target.value })} placeholder="OA 接口密钥" autoComplete="off" style={{ flex: 1, minWidth: 0 }} /><button type="button" className="ui-btn ui-btn--sm" onClick={() => setOaSecretVisible(v => !v)} title={oaSecretVisible ? '隐藏密钥' : '显示密钥'}>{oaSecretVisible ? '🙈' : '👁'}</button></div></div>
             {oaApiType === 'generic' && (
-              <div className="ui-form-row"><label>固定 Token</label><input className="ui-input" type="text" value={oa.fixedToken} onChange={e => setOa({ ...oa, fixedToken: e.target.value })} placeholder="fixed_token 认证方式使用，留空表示不使用" autoComplete="off" /></div>
+              <div className="ui-form-row"><label>固定 Token</label><div style={{ display: 'flex', gap: 6, flex: 1 }}><input className="ui-input" type={oaTokenVisible ? 'text' : 'password'} value={oa.fixedToken} onChange={e => setOa({ ...oa, fixedToken: e.target.value })} placeholder="fixed_token 认证方式使用，留空表示不使用" autoComplete="off" style={{ flex: 1, minWidth: 0 }} /><button type="button" className="ui-btn ui-btn--sm" onClick={() => setOaTokenVisible(v => !v)} title={oaTokenVisible ? '隐藏 Token' : '显示 Token'}>{oaTokenVisible ? '🙈' : '👁'}</button></div></div>
             )}
 
             {oaApiType === 'generic' && (
