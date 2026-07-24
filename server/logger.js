@@ -8,10 +8,20 @@
 const fs = require('fs');
 const path = require('path');
 
-const LOGS_DIR = path.join(__dirname, '../logs');
+const LOGS_DIR = process.env.LOG_DIR
+  ? path.resolve(process.env.LOG_DIR)
+  : path.join(__dirname, '../logs');
 if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
+
+// 日志轮转配置（按大小切割，防止单文件无限增长撑满磁盘）
+const MAX_LOG_SIZE = process.env.LOG_MAX_SIZE
+  ? parseInt(process.env.LOG_MAX_SIZE, 10)
+  : 50 * 1024 * 1024; // 单文件上限 50MB
+const MAX_LOG_ROLLS = process.env.LOG_MAX_ROLLS
+  ? parseInt(process.env.LOG_MAX_ROLLS, 10)
+  : 9; // 单日最多保留 9 个滚动历史文件（.1 ~ .9）
 
 // 日志级别
 const LEVELS = {
@@ -42,8 +52,14 @@ function writeLog(level, message, meta = {}) {
   };
   
   const logLine = JSON.stringify(logEntry) + '\n';
-  
+
   try {
+    // 按大小轮转：写入前若当前文件 + 本行将超过上限，先滚动再写，避免单文件无限增长
+    let size = 0;
+    try { size = fs.statSync(logFile).size; } catch (e) { /* 文件尚不存在 */ }
+    if (size + Buffer.byteLength(logLine, 'utf8') > MAX_LOG_SIZE) {
+      rotateLogFile(logFile);
+    }
     fs.appendFileSync(logFile, logLine);
   } catch (e) {
     console.error('[Logger] 写入日志失败:', e.message);
@@ -216,6 +232,47 @@ function readLogFile(filename, limit = 100, level = null, search = null) {
 }
 
 /**
+ * 日志文件按大小滚动
+ * 当当日日志文件超过 MAX_LOG_SIZE 时，将其滚动为带序号的文件：
+ *   YYYY-MM-DD.log → YYYY-MM-DD.log.1 → YYYY-MM-DD.log.2 → ...
+ * 序号越大越旧，达到 MAX_LOG_ROLLS 上限时删除最旧的一个。
+ * @param {string} logFile - 当前日志文件路径（YYYY-MM-DD.log）
+ */
+function rotateLogFile(logFile) {
+  try {
+    if (!fs.existsSync(logFile)) return;
+    const dir = path.dirname(logFile);
+    const base = path.basename(logFile); // YYYY-MM-DD.log
+
+    // 收集已有滚动文件 YYYY-MM-DD.log.N 的序号
+    const rollNums = fs.readdirSync(dir)
+      .filter(f => f.startsWith(base + '.') && /^\d+$/.test(f.slice(base.length + 1)))
+      .map(f => parseInt(f.slice(base.length + 1), 10))
+      .filter(n => Number.isInteger(n) && n > 0)
+      .sort((a, b) => b - a); // 降序：最大序号在前
+
+    const maxRoll = rollNums.length ? rollNums[0] : 0;
+
+    // 已达上限：删除最旧的滚动文件，腾出 .MAX_LOG_ROLLS
+    if (maxRoll >= MAX_LOG_ROLLS) {
+      const oldest = path.join(dir, base + '.' + MAX_LOG_ROLLS);
+      if (fs.existsSync(oldest)) fs.unlinkSync(oldest);
+    }
+
+    // 从后往前推移：N → N+1，最后把当前文件置为 .1
+    const top = Math.min(maxRoll, MAX_LOG_ROLLS - 1);
+    for (let n = top; n >= 1; n--) {
+      const src = path.join(dir, base + '.' + n);
+      const dst = path.join(dir, base + '.' + (n + 1));
+      if (fs.existsSync(src)) fs.renameSync(src, dst);
+    }
+    fs.renameSync(logFile, path.join(dir, base + '.1'));
+  } catch (e) {
+    console.error('[Logger] 日志滚动失败:', e.message);
+  }
+}
+
+/**
  * 清理旧日志（保留最近N天）
  * @param {number} daysToKeep - 保留天数（默认7天）
  */
@@ -250,5 +307,6 @@ module.exports = {
   getLogFiles,
   readLogFile,
   cleanOldLogs,
+  rotateLogFile,
   writeLog
 };

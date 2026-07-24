@@ -1636,6 +1636,14 @@ server.listen(PORT, '0.0.0.0', async () => {
     console.warn(`   模型自动切换启动失败: ${e.message}`);
   }
 
+  // 启动时清理过期日志（保留最近7天），防止日志无限堆积
+  try {
+    cleanOldLogs(7);
+    console.log(`   日志清理: 已清理7天前的旧日志`);
+  } catch (e) {
+    console.warn(`   日志清理失败: ${e.message}`);
+  }
+
   // 意图反馈闭环：启动时把已落库的纠错重新沉淀为规则 / few-shot，确保分类器能读到
   try {
     const fbStats = intentFeedback.applyFeedback();
