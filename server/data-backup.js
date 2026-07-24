@@ -30,7 +30,9 @@ function fmtSize(bytes) {
 
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); }
-  catch (e) { return { enabled: false, retention: 30, lastRun: null, nextRun: null }; }
+  // 默认开启自动备份（每日凌晨2:00，保留30天）：避免部署后遗漏导致数据无备份。
+  // 若运维显式将 enabled 设为 false，此兜底不覆盖其意图。
+  catch (e) { return { enabled: true, retention: 30, lastRun: null, nextRun: null }; }
 }
 
 function saveConfig(cfg) {
