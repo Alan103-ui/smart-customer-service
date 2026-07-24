@@ -318,6 +318,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const [faqFormLevel1Cat, setFaqFormLevel1Cat] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadCategory, setUploadCategory] = useState<string>('');
+  const [importMode, setImportMode] = useState<'append' | 'overwrite'>('append');
   const [uploadLevel1Cat, setUploadLevel1Cat] = useState<string>('');
   const [faqFilterCategory, setFaqFilterCategory] = useState<string>('');
   const [faqSearchKeyword, setFaqSearchKeyword] = useState<string>('');
@@ -732,9 +733,14 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (importMode === 'overwrite' && !confirm('覆盖模式将清空全部现有 FAQ，仅保留本次导入的内容（覆盖前已自动快照，可从「数据备份」页恢复）。\n确定继续？')) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('mode', importMode);
     let url = `${API_BASE}/faq/upload`;
     if (uploadCategory) url += `?category=${encodeURIComponent(uploadCategory)}`;
     try {
@@ -745,7 +751,11 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       if (token) headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch(url, { method: 'POST', headers, body: formData });
       const data = await res.json();
-      if (data.success) { alert(`文件解析完成！新增 ${data.added} 条 FAQ，当前共 ${data.total} 条。`); fetchFAQ(); }
+      if (data.success) {
+        const modeText = data.mode === 'overwrite' ? '覆盖' : '追加';
+        alert(`文件解析完成！【${modeText}】新增 ${data.added} 条 FAQ，当前共 ${data.total} 条。`);
+        fetchFAQ();
+      }
       else alert('上传失败：' + (data.error || '未知错误'));
     } catch (err: any) { alert('上传失败：' + (err?.message || '网络或解析异常，请重试')); }
     setUploading(false);
@@ -948,6 +958,11 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
               <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".txt,.md,.pdf,.doc,.docx,.xls,.xlsx" style={{ display: 'none' }} />
             </label>
             {uploading && <span style={{ color: '#1890ff' }}>上传中...</span>}
+            {/* 批量导入：模式（追加/覆盖） */}
+            <select value={importMode} onChange={e => setImportMode(e.target.value as 'append' | 'overwrite')} title="追加：保留现有 FAQ；覆盖：清空全部后只保留本次导入（覆盖前自动快照可恢复）" style={{ marginLeft: 8, padding: '6px 8px', borderRadius: 6, border: '1px solid #d9d9d9' }}>
+              <option value="append">➕ 追加（保留现有）</option>
+              <option value="overwrite">♻️ 覆盖（清空后导入）</option>
+            </select>
             {/* 批量导入：一级分类 */}
             <select value={uploadLevel1Cat} onChange={e => { setUploadLevel1Cat(e.target.value); setUploadCategory(''); }} style={{ marginLeft: 8, padding: '6px 8px', borderRadius: 6, border: '1px solid #d9d9d9' }}>
               <option value="">-- 导入一级分类 --</option>

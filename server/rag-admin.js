@@ -693,7 +693,17 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
     if (extracted.length === 0 && text.trim()) {
       extracted.push({ question: originalName, answer: text.trim().slice(0, 2000), category: uploadCategory || '其他', keywords: [] });
     }
-    const list = getFAQ();
+    const mode = (req.body.mode === 'overwrite') ? 'overwrite' : 'append';
+    let list = getFAQ();
+    if (mode === 'overwrite') {
+      // 覆盖前自动快照，误覆盖可从「数据备份」页恢复
+      try { dataBackup.createBackup(); console.log('[UPLOAD] 覆盖前自动快照完成'); }
+      catch (e) { console.warn('[UPLOAD] 覆盖前自动快照失败（仍继续覆盖）:', e.message); }
+      // 删除现有全部 FAQ 的向量，避免覆盖后留下孤儿向量干扰语义检索
+      for (const f of list) { try { deleteDocument(f.id); } catch (e) {} }
+      console.log('[UPLOAD] 覆盖模式：清空现有', list.length, '条 FAQ');
+      list = [];
+    }
     let added = 0;
     for (const item of extracted) {
       const id = 'faq_' + Date.now() + '_' + added;
@@ -707,7 +717,7 @@ router.post('/faq/upload', uploadSingleWithErrorHandler(upload, 'file'), async (
     saveFAQ(list);
     try { fs.unlinkSync(filePath); } catch (e) {}
     auditLog('faq_upload', req.user ? req.user.username : 'unknown', { filename: originalName, added, category: uploadCategory || '其他' });
-    res.json({ success: true, added, total: list.length });
+    res.json({ success: true, added, total: list.length, mode });
   } catch (err) {
     console.error('文件上传处理失败：', err);
     res.status(500).json({ error: err.message });
