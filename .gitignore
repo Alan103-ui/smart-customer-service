@@ -1,6 +1,8 @@
 # ============ 依赖 ============
 node_modules/
 package-lock.json
+# 例外：server 的 lockfile 需入库，供 CI 用 npm ci 确定性安装（避免 CI 因缺 lockfile 失败）
+!server/package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
