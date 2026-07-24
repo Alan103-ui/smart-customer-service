@@ -889,6 +889,194 @@ router.get('/intent-feedback/stats', (req, res) => {
   }
 });
 
+// ==========================================
+// 五-三、意图纠错规则导入 / 导出（备份与迁移，与 FAQ 对称）
+// ==========================================
+// 简单 CSV 行解析（处理引号转义 "" 与可选 BOM）
+function splitCsvLine(line) {
+  const out = []; let cur = ''; let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else q = false;
+      } else cur += ch;
+    } else {
+      if (ch === '"') q = true;
+      else if (ch === ',') { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+// 把一条规则（CSV 行 / JSON rules 项）转为纠错记录（makeRule=true 使其成为确定性规则）
+function ruleToCorrection(r) {
+  if (!r || typeof r !== 'object') return null;
+  return {
+    id: (r.id && typeof r.id === 'string' && r.id.startsWith('rule_')) ? r.id : ('rule_imp_' + uuidv4()),
+    source: 'import',
+    sessionId: null,
+    messageId: null,
+    userMessage: String(r.keyword != null ? r.keyword : (r.userMessage != null ? r.userMessage : '')).trim(),
+    originalIntent: null,
+    correctedIntent: { level1: r.level1, level2: (r.level2 != null ? r.level2 : null) },
+    correctedBy: 'import',
+    note: '从规则导入',
+    makeRule: true,
+    applied: false,
+    createdAt: new Date().toISOString()
+  };
+}
+
+// 把导入的 JSON/CSV 归一化为纠错记录数组 + 校验
+function normalizeImportedCorrections(rawList) {
+  const records = [];
+  const errors = [];
+  if (!Array.isArray(rawList)) { return { records, errors: ['导入数据不是数组'] }; }
+  for (let i = 0; i < rawList.length; i++) {
+    const item = rawList[i];
+    if (!item || typeof item !== 'object') { errors.push('第' + (i + 1) + '项不是对象'); continue; }
+    const userMessage = String(item.userMessage != null ? item.userMessage : (item.keyword != null ? item.keyword : '')).trim();
+    const level1 = item.level1 != null ? item.level1 : (item.correctedIntent && item.correctedIntent.level1);
+    const level2 = item.level2 != null ? item.level2 : (item.correctedIntent && item.correctedIntent.level2) || null;
+    if (!userMessage) { errors.push('第' + (i + 1) + '项缺少 userMessage/keyword'); continue; }
+    if (!level1) { errors.push('第' + (i + 1) + '项缺少 level1 意图'); continue; }
+    if (!intentFeedback.isValidIntent(level1, level2 || null)) {
+      errors.push('第' + (i + 1) + '项意图不合法: ' + level1 + '/' + (level2 || ''));
+      continue;
+    }
+    records.push({
+      id: (item.id && typeof item.id === 'string') ? item.id : uuidv4(),
+      source: 'import',
+      sessionId: null,
+      messageId: null,
+      userMessage,
+      originalIntent: item.originalIntent || null,
+      correctedIntent: { level1, level2: level2 || null },
+      correctedBy: 'import',
+      note: item.note || '导入',
+      makeRule: item.makeRule === true,
+      applied: false,
+      createdAt: item.createdAt || new Date().toISOString()
+    });
+  }
+  return { records, errors };
+}
+
+function normCorrKey(c) {
+  const lv = c.correctedIntent || {};
+  return ((c.userMessage || '').trim().toLowerCase()) + '|' + (lv.level1) + '|' + ((lv.level2) || '');
+}
+
+// 导出：JSON 全量（corrections + feedback）/ CSV 规则表
+router.get('/intent-feedback/export', auth.authMiddleware, auth.adminOnly, (req, res) => {
+  try {
+    const format = (req.query.format || 'json').toString().toLowerCase();
+    const corrections = intentFeedback._loadCorrections();
+    const feedback = intentFeedback._loadFeedback();
+    if (format === 'csv') {
+      const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""').replace(/\r/g, '').replace(/\n/g, ' ') + '"';
+      const cols = ['keyword', 'level1', 'level2', 'confidence', 'fromCorrectionId'];
+      const rows = (feedback.rules || []).map(r => [r.keyword, r.level1, r.level2 || '', r.confidence, r.fromCorrectionId || ''].map(esc).join(','));
+      const csv = '﻿' + [cols.map(esc).join(','), ...rows].join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="intent-rules-export-' + Date.now() + '.csv"');
+      res.send(csv);
+    } else {
+      const payload = { success: true, exportedAt: new Date().toISOString(), corrections, feedback };
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="intent-feedback-export-' + Date.now() + '.json"');
+      res.json(payload);
+    }
+    auditLog('intent_feedback_export', req.user ? req.user.username : 'unknown', { format });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 导入：JSON 全量包 / JSON 数组 / 规则 CSV，支持 append（默认）/ overwrite（覆盖前自动快照）
+router.post('/intent-feedback/import', auth.authMiddleware, auth.adminOnly, uploadSingleWithErrorHandler(upload, 'file'), async (req, res) => {
+  try {
+    const mode = (req.body.mode === 'overwrite') ? 'overwrite' : 'append';
+    let rawList = [];
+
+    if (req.file) {
+      const ext = path.extname(req.file.originalname).toLowerCase();
+      const text = fs.readFileSync(req.file.path, 'utf8');
+      try {
+        if (ext === '.json') {
+          const parsed = JSON.parse(text);
+          if (Array.isArray(parsed)) rawList = parsed;
+          else if (parsed && Array.isArray(parsed.corrections)) rawList = parsed.corrections;
+          else if (parsed && Array.isArray(parsed.rules)) rawList = parsed.rules.map(ruleToCorrection).filter(Boolean);
+          else return res.status(400).json({ error: 'JSON 无法识别：需含 corrections 数组或 rules 数组' });
+        } else if (ext === '.csv') {
+          const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim().length);
+          if (lines.length === 0) return res.status(400).json({ error: 'CSV 为空' });
+          const header = splitCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+          const idxKeyword = header.indexOf('keyword') >= 0 ? header.indexOf('keyword') : header.indexOf('usermessage');
+          const idxL1 = header.indexOf('level1');
+          const idxL2 = header.indexOf('level2');
+          if (idxL1 < 0) return res.status(400).json({ error: 'CSV 缺少 level1 列' });
+          for (let i = 1; i < lines.length; i++) {
+            const cells = splitCsvLine(lines[i]);
+            rawList.push({
+              keyword: idxKeyword >= 0 ? (cells[idxKeyword] || '').trim() : '',
+              level1: (cells[idxL1] || '').trim(),
+              level2: idxL2 >= 0 ? (cells[idxL2] || '').trim() : ''
+            });
+          }
+        } else {
+          return res.status(400).json({ error: '仅支持 .json / .csv 文件' });
+        }
+      } finally {
+        try { fs.unlinkSync(req.file.path); } catch (e) {}
+      }
+    } else if (req.body && req.body.data) {
+      const parsed = typeof req.body.data === 'string' ? JSON.parse(req.body.data) : req.body.data;
+      if (Array.isArray(parsed)) rawList = parsed;
+      else if (parsed && Array.isArray(parsed.corrections)) rawList = parsed.corrections;
+      else if (parsed && Array.isArray(parsed.rules)) rawList = parsed.rules.map(ruleToCorrection).filter(Boolean);
+      else return res.status(400).json({ error: 'data 字段需含 corrections 或 rules 数组' });
+    } else {
+      return res.status(400).json({ error: '请上传文件或在 data 字段提供 JSON' });
+    }
+
+    const { records, errors } = normalizeImportedCorrections(rawList);
+    if (errors.length) return res.status(400).json({ error: '导入数据校验失败', details: errors.slice(0, 20) });
+
+    let existing = intentFeedback._loadCorrections();
+    if (mode === 'overwrite') {
+      // 覆盖前自动快照，误覆盖可从「数据备份」页恢复
+      try { dataBackup.createBackup(); console.log('[IF-IMPORT] 覆盖前自动快照完成'); }
+      catch (e) { console.warn('[IF-IMPORT] 覆盖前自动快照失败（仍继续）:', e.message); }
+      existing = [];
+    }
+    const seen = new Set(existing.map(c => c.id));
+    let added = 0, skipped = 0;
+    for (const c of records) {
+      if (mode === 'append') {
+        if (seen.has(c.id)) { skipped++; continue; }
+        if (existing.some(e => normCorrKey(e) === normCorrKey(c))) { skipped++; continue; }
+      }
+      existing.push(c);
+      seen.add(c.id);
+      added++;
+    }
+    intentFeedback._saveCorrections(existing);
+    // 重新沉淀，保证规则/few-shot 与纠错记录一致
+    const stats = intentFeedback.applyFeedback();
+    auditLog('intent_feedback_import', req.user ? req.user.username : 'unknown', { mode, added, skipped, file: req.file ? req.file.originalname : 'body' });
+    res.json({ success: true, added, skipped, total: existing.length, rules: stats.ruleCount, fewShot: stats.fewShotCount, mode });
+  } catch (err) {
+    console.error('[IF-IMPORT] 失败:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 
 // ==========================================
 // 六、LLM 智能改写答案 API（RAG流程核心环节）

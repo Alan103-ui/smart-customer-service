@@ -93,11 +93,18 @@
 /* 按钮 */
 .btn {
   padding: 10px 20px;
-  border: none;
+  border: 1px solid #dcdfe6;
+  background: #f4f6fa;
+  color: #2b3245;
   border-radius: 4px;
   font-size: 14px;
   cursor: pointer;
   transition: all 0.3s;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: #409eff;
+  color: #409eff;
 }
 
 .btn-primary {
@@ -112,6 +119,63 @@
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* 规则导入导出工具条 */
+.io-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.io-divider {
+  width: 1px;
+  height: 22px;
+  background: #e4e7ed;
+  margin: 0 2px;
+}
+.file-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border: 1px dashed #c0c4cc;
+  border-radius: 4px;
+  color: #606266;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+.file-label:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+.file-label input[type="file"] {
+  display: none;
+}
+.io-toolbar select {
+  padding: 9px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #2b3245;
+  background: #fff;
+  cursor: pointer;
+}
+.file-name {
+  font-size: 13px;
+  color: #67c23a;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.io-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.6;
 }
 
 /* 结果展示 */

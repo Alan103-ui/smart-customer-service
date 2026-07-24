@@ -99,6 +99,11 @@ export default function IntentUnderstanding() {
   const [feedbackStats, setFeedbackStats] = useState<any>(null);
   const [applying, setApplying] = useState(false);
 
+  // ===== 规则导入 / 导出 =====
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importMode, setImportMode] = useState<'append' | 'overwrite'>('append');
+  const [importing, setImporting] = useState(false);
+
   function authHeaders() {
     const token = localStorage.getItem('cs_token');
     return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
@@ -171,6 +176,52 @@ export default function IntentUnderstanding() {
       } else showToast(data.error || '沉淀失败', 'error');
     } catch (e: any) { showToast(e.message, 'error'); }
     finally { setApplying(false); }
+  }
+
+  async function handleExport(format: 'json' | 'csv') {
+    try {
+      const token = localStorage.getItem('cs_token');
+      const res = await fetch(`/api/admin/intent-feedback/export?format=${format}`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || '导出失败'); }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = format === 'csv' ? `intent-rules-${Date.now()}.csv` : `intent-feedback-${Date.now()}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast('已导出', 'success');
+    } catch (e: any) { showToast(e.message, 'error'); }
+  }
+
+  async function handleImport() {
+    if (!importFile) { showToast('请先选择文件', 'error'); return; }
+    if (importMode === 'overwrite') {
+      if (!window.confirm('覆盖模式将清空现有全部纠错规则，仅保留本次导入，且导入前已自动快照。确认继续？')) return;
+    }
+    setImporting(true);
+    try {
+      const token = localStorage.getItem('cs_token');
+      const form = new FormData();
+      form.append('file', importFile);
+      form.append('mode', importMode);
+      const res = await fetch('/api/admin/intent-feedback/import', {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: form
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`导入完成：新增 ${data.added} 条，跳过 ${data.skipped} 条，现有规则 ${data.rules} 条`, 'success');
+        await Promise.all([loadCorrections(), loadFeedbackStats()]);
+        setImportFile(null);
+      } else {
+        showToast((data.error || '导入失败') + (data.details ? '：' + JSON.stringify(data.details) : ''), 'error');
+      }
+    } catch (e: any) { showToast(e.message, 'error'); }
+    finally { setImporting(false); }
   }
 
   async function handleParse() {
@@ -514,6 +565,33 @@ export default function IntentUnderstanding() {
 
       {corrMode && (
         <div className="intent-correction-panel">
+          {/* 规则导入 / 导出 */}
+          <div className="corr-section">
+            <h3>💾 规则导入 / 导出（备份与迁移）</h3>
+            <div className="io-toolbar">
+              <button className="btn" onClick={() => handleExport('json')}>⬇️ 导出 JSON（全量）</button>
+              <button className="btn" onClick={() => handleExport('csv')}>⬇️ 导出规则 CSV</button>
+              <span className="io-divider" />
+              <label className="file-label">
+                📂 选择文件
+                <input
+                  type="file"
+                  accept=".json,.csv"
+                  onChange={e => setImportFile(e.target.files && e.target.files.length ? e.target.files[0] : null)}
+                />
+              </label>
+              <select value={importMode} onChange={e => setImportMode(e.target.value as 'append' | 'overwrite')} title="追加：保留现有；覆盖：清空后导入（导入前自动快照，可恢复）">
+                <option value="append">➕ 追加（保留现有）</option>
+                <option value="overwrite">♻️ 覆盖（清空后导入）</option>
+              </select>
+              <button className="btn btn-primary" onClick={handleImport} disabled={!importFile || importing}>
+                {importing ? '导入中...' : '⬆️ 导入'}
+              </button>
+              {importFile && <span className="file-name">{importFile.name}</span>}
+            </div>
+            <p className="io-hint">导出含全部纠错记录与沉淀规则；导入支持本系统导出的 JSON（全量包或数组）或规则 CSV。覆盖模式导入前自动快照，可从「数据备份」页一键恢复。</p>
+          </div>
+
           {/* 反馈沉淀统计 */}
           <div className="corr-section">
             <h3>📈 反馈沉淀</h3>

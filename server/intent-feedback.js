@@ -304,6 +304,7 @@ module.exports = {
   getCorrectionRules,
   getCorrectionStats,
   getRecognitions,
+  isValidIntent,
   // 测试/运维辅助
   _loadCorrections: loadCorrections,
   _saveCorrections: saveCorrections,
