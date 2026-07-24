@@ -2015,6 +2015,115 @@ router.post('/models/test', async (req, res) => {
   }
 });
 
+// ============ 一键诊断（综合探测所有模型主/备可达性 + Ollama 模型是否存在）============
+// 供「模型设置」页「一键诊断」与「进页自动检测」调用：返回 per-type 主备状态、Ollama 已拉取列表、overall 与可操作建议
+router.get('/models/diagnose', async (req, res) => {
+  try {
+    const cfg = modelSwitcher.getModelConfig();
+    const baseUrl = modelSwitcher.getOllamaBaseUrl();
+    // 拉取 Ollama 已安装模型列表（用于判断「配置模型是否已拉取」，与单纯连通性区分）
+    let ollamaModels = [];
+    try { ollamaModels = await modelSwitcher.listOllamaModels(baseUrl); } catch (e) { ollamaModels = []; }
+
+    const TYPES = [
+      { key: 'embedding', label: '嵌入模型', isReranker: false },
+      { key: 'llm', label: 'LLM 大模型', isReranker: false },
+      { key: 'reranker', label: 'Rerank 重排序', isReranker: true },
+    ];
+    const items = [];
+    const issues = [];
+    const modelExists = (name) => {
+      if (!name) return null;
+      if (ollamaModels.includes(name)) return true;
+      // 兼容「未带 tag」写法：qwen2.5 命中 qwen2.5:14b / qwen2.5:latest
+      const base = name.split(':')[0];
+      return ollamaModels.some((m) => m === name || m.startsWith(base + ':'));
+    };
+
+    for (const t of TYPES) {
+      const blk = cfg[t.key] || {};
+      const primary = blk.primary;
+      const fallback = blk.fallback || null;
+      const primaryRes = t.isReranker
+        ? await modelSwitcher.testConnection(t.key, { serviceUrl: blk.serviceUrl, timeout: blk.timeout })
+        : await modelSwitcher.testConnection(t.key, { primary, baseUrl });
+      const primaryExists = t.isReranker ? null : modelExists(primary);
+
+      let fallbackRes = null, fallbackExists = null;
+      if (fallback) {
+        fallbackRes = t.isReranker
+          ? await modelSwitcher.testConnection(t.key, { serviceUrl: blk.serviceUrl, timeout: blk.timeout })
+          : await modelSwitcher.testConnection(t.key, { primary: fallback, baseUrl });
+        fallbackExists = t.isReranker ? null : modelExists(fallback);
+      }
+
+      let status, message;
+      if (primaryRes.available) {
+        status = 'ok';
+        message = `主模型 ${primary} 正常（${primaryRes.responseTime}ms）`;
+      } else if (fallback && fallbackRes && fallbackRes.available) {
+        status = 'fallback_active';
+        message = `主模型 ${primary} 不可达，已切到备用 ${fallback}（${fallbackRes.responseTime}ms）`;
+        issues.push({
+          level: 'warning',
+          title: `${t.label} 主模型不可达`,
+          detail: `主模型 ${primary} 连接失败：${primaryRes.error || '未知'}。当前由备用模型 ${fallback} 兜底。`,
+          suggestion: t.isReranker
+            ? `检查备用 Rerank 服务是否正常，并尽快恢复主服务 ${blk.serviceUrl}。`
+            : (primaryExists === false
+                ? `主模型 ${primary} 未在 Ollama 中拉取，请执行：ollama pull ${primary}`
+                : `检查主模型服务 ${baseUrl} 是否运行，或执行：ollama pull ${primary}`),
+        });
+      } else {
+        status = 'down';
+        const reason = t.isReranker
+          ? `Rerank 服务 ${blk.serviceUrl || '（未配置）'} 不可达：${primaryRes.error || '未知'}`
+          : (primaryExists === false
+              ? `模型 ${primary} 未在 Ollama 中拉取（服务 ${baseUrl} 可达但模型缺失）`
+              : `服务 ${baseUrl} 不可达或模型 ${primary} 不可用：${primaryRes.error || '未知'}`);
+        message = reason;
+        issues.push({
+          level: 'error',
+          title: `${t.label} 不可用`,
+          detail: reason,
+          suggestion: t.isReranker
+            ? `确认 Rerank 服务已启动且地址正确（当前 ${blk.serviceUrl || 'http://172.17.6.18:8000/rerank'}）。`
+            : (primaryExists === false
+                ? `模型未安装，请在 Ollama 主机执行：ollama pull ${primary}${fallback ? ` ；或临时启用备用模型 ${fallback}` : ''}`
+                : `确认 Ollama 服务 ${baseUrl} 正在运行且网络可达（本机：curl ${baseUrl}/api/tags）。`),
+        });
+      }
+
+      items.push({
+        type: t.key,
+        label: t.label,
+        isReranker: t.isReranker,
+        primary: { name: primary, available: primaryRes.available, exists: primaryExists, responseTime: primaryRes.responseTime, error: primaryRes.error || null },
+        fallback: fallback
+          ? { name: fallback, available: fallbackRes.available, exists: fallbackExists, responseTime: fallbackRes.responseTime, error: fallbackRes.error || null }
+          : null,
+        status,
+        message,
+      });
+    }
+
+    const overall = items.some((i) => i.status === 'down') ? 'critical'
+      : items.some((i) => i.status === 'fallback_active') ? 'degraded' : 'healthy';
+
+    res.json({
+      success: true,
+      timestamp: Date.now(),
+      ollamaBaseUrl: baseUrl,
+      ollamaModels,
+      overall,
+      items,
+      issues,
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // 性能监控页面（集成到管理后台）
 router.get('/performance', (req, res) => {
   try {

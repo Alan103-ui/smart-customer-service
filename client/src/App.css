@@ -2465,6 +2465,71 @@ body {
 .ms-overview-key { color: #888; }
 .ms-overview-val { font-weight: 600; color: #333; word-break: break-all; text-align: right; max-width: 60%; }
 
+/* ===== 模型连通性诊断（进页自动检测） ===== */
+.ms-diagnose-card { border-color: #e6f0ff; }
+.ms-diag-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin: 12px 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.ms-diag-summary-icon { font-size: 18px; }
+.ms-diag-time { font-weight: 400; font-size: 12px; color: #999; margin-left: 4px; }
+.ms-diag-healthy { background: #f6ffed; color: #389e0d; border: 1px solid #b7eb8e; }
+.ms-diag-degraded { background: #fffbe6; color: #d48806; border: 1px solid #ffe58f; }
+.ms-diag-critical { background: #fff2f0; color: #cf1322; border: 1px solid #ffccc7; }
+.ms-diag-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.ms-diag-item {
+  border: 1px solid #efefef;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+.ms-diag-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #f0f0f0;
+}
+.ms-diag-item-label { font-weight: 600; font-size: 14px; }
+.ms-diag-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 0;
+}
+.ms-diag-k { color: #888; flex-shrink: 0; }
+.ms-ok { color: #52c41a; font-weight: 600; }
+.ms-err { color: #f5222d; font-weight: 600; }
+.ms-muted { color: #bbb; }
+.ms-diag-issues { margin-top: 4px; }
+.ms-diag-issues-title { font-weight: 600; margin-bottom: 8px; color: #d48806; }
+.ms-diag-issue {
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.ms-diag-issue-error { background: #fff2f0; border: 1px solid #ffccc7; }
+.ms-diag-issue-warning { background: #fffbe6; border: 1px solid #ffe58f; }
+.ms-diag-issue-info { background: #e6f7ff; border: 1px solid #91d5ff; }
+.ms-diag-issue-title { font-weight: 600; margin-bottom: 4px; }
+.ms-diag-issue-detail { color: #555; margin-bottom: 4px; line-height: 1.5; }
+.ms-diag-issue-suggestion { color: #389e0d; line-height: 1.5; }
+
 .ms-form-block {
   border: 1px solid #f0f0f0;
   border-radius: 10px;
@@ -2503,4 +2568,33 @@ body {
 }
 .ms-test-ok { background: #f6ffed; border: 1px solid #b7eb8f; color: #389e0d; }
 .ms-test-err { background: #fff1f0; border: 1px solid #ffa39e; color: #cf1322; }
+
+/* ===== 全局连接状态横幅（进页自动检测连接） ===== */
+.conn-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.conn-banner-error { background: #cf1322; color: #fff; }
+.conn-banner-warn { background: #faad14; color: #262626; }
+.conn-banner-icon { font-size: 16px; }
+.conn-banner-text { flex: 1; line-height: 1.5; }
+.conn-banner-retry {
+  flex-shrink: 0;
+  padding: 4px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+}
+.conn-banner-retry:hover { background: rgba(255, 255, 255, 0.32); }
+.conn-banner-retry:disabled { opacity: 0.6; cursor: not-allowed; }
 

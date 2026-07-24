@@ -25,6 +25,8 @@ export default function ModelSettings() {
   const [errors, setErrors] = useState<Record<string, string>>({});   // 字段级校验错误
   const [testing, setTesting] = useState<string | null>(null);         // 正在测试连接的模型类型
   const [testResults, setTestResults] = useState<Record<string, { available: boolean; error: string | null; responseTime: number }>>({});  // 各模型测试连接结果
+  const [diagnose, setDiagnose] = useState<any>(null);                  // 一键诊断结果（进页自动检测）
+  const [diagLoading, setDiagLoading] = useState(false);                // 诊断进行中
 
   const showNotice = (text: string, type: NoticeType = 'info') => {
     setNotice({ text, type });
@@ -58,6 +60,29 @@ export default function ModelSettings() {
 
   useEffect(() => {
     loadAll();
+  }, []);
+
+  // ============ 一键诊断（进页自动检测 + 手动重跑）============
+  // 探测所有模型主/备可达性与 Ollama 模型是否已拉取，给出整体结论与可操作建议
+  const runDiagnose = async () => {
+    setDiagLoading(true);
+    try {
+      const res = await fetch('/api/admin/models/diagnose', { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setDiagnose(data);
+      } else {
+        setDiagnose({ overall: 'critical', items: [], issues: [{ level: 'error', title: '诊断失败', detail: data.error || '未知错误', suggestion: '请检查后端服务是否运行' }] });
+      }
+    } catch (err: any) {
+      setDiagnose({ overall: 'critical', items: [], issues: [{ level: 'error', title: '无法连接后端', detail: err?.message || '网络错误', suggestion: '请检查服务是否运行、网络是否可达' }] });
+    }
+    setDiagLoading(false);
+  };
+
+  // 进入页面即自动诊断一次（进页自动检测连接）
+  useEffect(() => {
+    runDiagnose();
   }, []);
 
   // ============ 表单字段更新 ============
@@ -224,6 +249,87 @@ export default function ModelSettings() {
       )}
 
       {loading && !config && <div className="rag-loading">加载中...</div>}
+
+      {/* ===== 一键诊断（进页自动检测连接） ===== */}
+      <div className="rag-card ms-diagnose-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 className="rag-card-title">🔍 模型连通性诊断</h3>
+          <button onClick={runDiagnose} className="rag-btn rag-btn-secondary" disabled={diagLoading}>
+            {diagLoading ? '诊断中...' : '🔄 重新诊断'}
+          </button>
+        </div>
+        <p className="rag-card-desc">进入本页自动探测 Ollama / Rerank 服务与各模型主备可达性，并校验模型是否已拉取。异常项给出可操作修复建议。</p>
+
+        {diagLoading && !diagnose && <div className="rag-loading">正在诊断模型连通性...</div>}
+
+        {diagnose && (
+          <>
+            <div className={`ms-diag-summary ms-diag-${diagnose.overall}`}>
+              <span className="ms-diag-summary-icon">
+                {diagnose.overall === 'healthy' ? '✅' : diagnose.overall === 'degraded' ? '⚠️' : '❌'}
+              </span>
+              <span>
+                {diagnose.overall === 'healthy' && '所有模型连接正常'}
+                {diagnose.overall === 'degraded' && '部分模型已切换备用模型兜底'}
+                {diagnose.overall === 'critical' && '存在不可用模型，请检查配置与服务'}
+              </span>
+              {diagnose.timestamp && (
+                <span className="ms-diag-time">（诊断于 {new Date(diagnose.timestamp).toLocaleTimeString()}）</span>
+              )}
+            </div>
+
+            <div className="ms-diag-items">
+              {diagnose.items.map((it: any) => (
+                <div key={it.type} className="ms-diag-item">
+                  <div className="ms-diag-item-head">
+                    <span className="ms-diag-item-label">{it.label}</span>
+                    <span className={`ms-badge ${it.status === 'ok' ? 'ms-badge-ok' : it.status === 'fallback_active' ? 'ms-badge-warn' : 'ms-badge-err'}`}>
+                      {it.status === 'ok' ? '✅ 正常' : it.status === 'fallback_active' ? '⚠️ 备用兜底' : '❌ 异常'}
+                    </span>
+                  </div>
+                  <div className="ms-diag-item-row">
+                    <span className="ms-diag-k">主模型 {it.primary.name}</span>
+                    <span className={it.primary.available ? 'ms-ok' : 'ms-err'}>
+                      {it.primary.available ? `可达 ${it.primary.responseTime}ms` : `不可达${it.primary.error ? '：' + it.primary.error : ''}`}
+                    </span>
+                  </div>
+                  {!it.isReranker && (
+                    <div className="ms-diag-item-row">
+                      <span className="ms-diag-k">Ollama 是否已拉取</span>
+                      <span className={it.primary.exists ? 'ms-ok' : it.primary.exists === false ? 'ms-err' : 'ms-muted'}>
+                        {it.primary.exists ? '✅ 已安装' : it.primary.exists === false ? '❌ 未拉取' : '—'}
+                      </span>
+                    </div>
+                  )}
+                  {it.fallback && (
+                    <div className="ms-diag-item-row">
+                      <span className="ms-diag-k">备用 {it.fallback.name}</span>
+                      <span className={it.fallback.available ? 'ms-ok' : 'ms-err'}>
+                        {it.fallback.available ? `可达 ${it.fallback.responseTime}ms` : '不可达'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {diagnose.issues && diagnose.issues.length > 0 && (
+              <div className="ms-diag-issues">
+                <div className="ms-diag-issues-title">⚠️ 诊断建议</div>
+                {diagnose.issues.map((iss: any, i: number) => (
+                  <div key={i} className={`ms-diag-issue ms-diag-issue-${iss.level}`}>
+                    <div className="ms-diag-issue-title">
+                      [{iss.level === 'error' ? '错误' : iss.level === 'warning' ? '警告' : '提示'}] {iss.title}
+                    </div>
+                    <div className="ms-diag-issue-detail">{iss.detail}</div>
+                    <div className="ms-diag-issue-suggestion">💡 {iss.suggestion}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {/* ===== 已配置模型概览 ===== */}
       <div className="rag-card">

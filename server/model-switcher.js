@@ -650,6 +650,43 @@ function getOllamaBaseUrl() {
   return (typeof url === 'string' && url.trim()) ? url.trim() : `http://${OLLAMA_HOST}:${OLLAMA_PORT}`;
 }
 
+// 列出 Ollama 已拉取的模型名（供「诊断」判断配置模型是否已安装）
+// 支持 http/https；baseUrl 为空时回退默认地址。返回模型名数组（如 ['qwen2.5:14b','bge-m3:latest']）
+function listOllamaModels(baseUrl) {
+  return new Promise((resolve) => {
+    let u;
+    try {
+      u = new URL((baseUrl && baseUrl.trim()) ? baseUrl.trim() : `http://${OLLAMA_HOST}:${OLLAMA_PORT}`);
+    } catch (e) {
+      return resolve([]);
+    }
+    const lib = u.protocol === 'https:' ? require('https') : http;
+    const options = {
+      hostname: u.hostname,
+      port: u.port ? Number(u.port) : (u.protocol === 'https:' ? 443 : 11434),
+      path: '/api/tags',
+      method: 'GET',
+      timeout: 5000,
+    };
+    const req = lib.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const models = Array.isArray(json.models) ? json.models.map((m) => m.name).filter(Boolean) : [];
+          resolve(models);
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.on('timeout', () => { req.destroy(); resolve([]); });
+    req.end();
+  });
+}
+
 // 解析 Ollama baseUrl 为 { hostname, port }，供各调用方构造 http 请求
 function parseOllamaBaseUrl() {
   try {
@@ -805,6 +842,7 @@ module.exports = {
   getRerankerConfig,
   getOllamaBaseUrl,
   parseOllamaBaseUrl,
+  listOllamaModels,
   testConnection,
 };
 

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import ChatWindow from './components/ChatWindow';
 import AdminDashboard from './pages/AdminDashboard';
 import LoginPage from './pages/LoginPage';
+import ConnectionBanner from './components/ConnectionBanner';
 import type { Message, WebSocketMessage, Candidate } from './types';
 import { useSoftwareInfo } from './services/softwareInfo';
 import './App.css';
@@ -365,11 +366,17 @@ function MainApp({ user, onLogout }: MainAppProps) {
         </div>
       );
     }
-    return <AdminDashboard onBack={() => setShowAdmin(false)} user={user} onLogout={onLogout} />;
+    return (
+      <>
+        <ConnectionBanner />
+        <AdminDashboard onBack={() => setShowAdmin(false)} user={user} onLogout={onLogout} />
+      </>
+    );
   }
 
   return (
     <div className="app-container">
+      <ConnectionBanner />
       <div className="app-header">
         <div className="header-left">
           <div className="logo">

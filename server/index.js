@@ -550,6 +550,11 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const ragAdminRouter = require('./rag-admin');
 app.use('/api/admin', ragAdminRouter);
 
+// ============ 公开轻量健康检查（供前端「进页自动检测连接」无鉴权探测后端可达性）============
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, timestamp: Date.now(), uptime: Math.floor(process.uptime()) });
+});
+
 // 致远 OA（seeyon / A8）基础信息管理对接接口
 const oaAdminRouter = require('./oa-admin');
 app.use('/api/admin/oa', oaAdminRouter);
